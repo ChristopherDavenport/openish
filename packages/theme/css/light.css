@@ -1,0 +1,7 @@
+/*
+ * The Jack Henry light theme. Declares the `--jh-*` tokens on `:root`.
+ *
+ * On its own this gives you JH tokens but not the `--openish-*` hooks the elements read - import
+ * `tokens.css` as well, or just use `index.css`, which wires everything up.
+ */
+@import '@jack-henry/jh-core/platforms/web/css/jh-theme-light.css';

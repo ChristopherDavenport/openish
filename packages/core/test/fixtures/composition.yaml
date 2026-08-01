@@ -1,0 +1,65 @@
+# Composition keywords, each isolated so a failure names the keyword that broke.
+openapi: 3.1.0
+info:
+  title: Composition
+  version: 1.0.0
+paths:
+  /pets:
+    post:
+      summary: Create a pet
+      tags: [pets]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Pet'
+      responses:
+        '201':
+          description: Created
+components:
+  schemas:
+    Base:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+          format: uuid
+    Named:
+      type: object
+      properties:
+        name:
+          type: string
+          example: Rex
+    # allOf is an intersection: the sample must carry properties from every branch.
+    Pet:
+      allOf:
+        - $ref: '#/components/schemas/Base'
+        - $ref: '#/components/schemas/Named'
+        - type: object
+          properties:
+            legs:
+              type: integer
+              default: 4
+    # oneOf is a choice: the sample takes the first branch.
+    Payment:
+      oneOf:
+        - type: object
+          properties:
+            card:
+              type: string
+              example: '4242'
+        - type: object
+          properties:
+            iban:
+              type: string
+    Status:
+      type: string
+      enum: [active, archived]
+    Nullable:
+      type: [string, 'null']
+    Dictionary:
+      type: object
+      additionalProperties:
+        type: integer

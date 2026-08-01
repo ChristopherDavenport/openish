@@ -1,0 +1,74 @@
+body {
+  margin: 0;
+  background: var(--openish-color-page);
+  color: var(--openish-color-text);
+  font: var(--openish-font-body);
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: var(--openish-space-md);
+  padding: var(--openish-space-sm) var(--openish-space-lg);
+  background: var(--openish-color-surface);
+  border-bottom: 1px solid var(--openish-color-border);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.file {
+  font: var(--openish-font-small);
+  color: var(--openish-color-text-muted);
+}
+
+button {
+  font: var(--openish-font-body);
+  color: var(--openish-color-text);
+  background: var(--openish-color-surface-raised);
+  border: 1px solid var(--openish-color-border-strong);
+  border-radius: var(--openish-radius-md);
+  padding: var(--openish-space-2xs) var(--openish-space-sm);
+  cursor: pointer;
+}
+
+button:focus-visible {
+  outline: none;
+  box-shadow: var(--openish-focus-ring);
+}
+
+main {
+  padding: var(--openish-space-lg);
+}
+
+.meta {
+  font: var(--openish-font-small);
+  color: var(--openish-color-text-muted);
+}
+
+/*
+ * The height chain, all the way down.
+ *
+ * `<openish-api-reference>` fills its container - it does not decide how tall it is. Break the chain
+ * anywhere and it falls back to the height of its content, which means nothing inside it scrolls on
+ * its own: the sidebar and, on a narrow viewport, the navigation disclosure scroll off the top of
+ * the page and there is no way back to them. `#app` is a plain `<div>` between `body` and the
+ * element, so it has to carry the height too.
+ */
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body,
+#app {
+  display: flex;
+  flex-direction: column;
+}
+
+openish-api-reference {
+  flex: 1;
+  min-height: 0;
+}

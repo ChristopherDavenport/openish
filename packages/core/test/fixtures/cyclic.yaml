@@ -1,0 +1,43 @@
+# A self-referential schema. `Node.children` is an array of `Node`, which is ordinary in real
+# documents (comment trees, category trees, org charts) and non-terminating for any naive walker.
+openapi: 3.1.0
+info:
+  title: Cyclic
+  version: 1.0.0
+paths:
+  /tree:
+    get:
+      summary: Get the tree
+      tags: [tree]
+      responses:
+        '200':
+          description: The root node
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Node'
+components:
+  schemas:
+    Node:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+        parent:
+          $ref: '#/components/schemas/Node'
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/Node'
+    Pair:
+      # Mutual recursion, which a naive "have I seen this exact schema" check still has to handle.
+      type: object
+      properties:
+        left:
+          $ref: '#/components/schemas/Other'
+    Other:
+      type: object
+      properties:
+        back:
+          $ref: '#/components/schemas/Pair'

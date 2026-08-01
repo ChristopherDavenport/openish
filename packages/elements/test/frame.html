@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>openish test frame</title>
+  </head>
+  <body>
+    <!--
+      A same-origin document for router tests to run inside.
+
+      `Router` installs listeners on `window` and reads `location.pathname`, so each test needs its
+      own window or they corrupt each other and the runner's own URL. `about:blank` and `about:srcdoc`
+      both fail, because `history.pushState` refuses to set an http URL on a document whose own URL is
+      not one - hence a real file served over http.
+
+      The elements are imported here rather than shared from the parent: a custom element registry
+      belongs to its document, so definitions made in the parent realm would never upgrade a tag
+      created in this one.
+    -->
+    <!--
+      Vitest's browser mode rewrites every `import()` into a call through
+      `__vitest_browser_runner__.wrapDynamicImport`, and that global is installed on the tester
+      window - not on this one. Without it, the lazy import of `@scalar/snippetz` in
+      `@openish/core` throws here and nowhere else. Vitest ships this exact shim for the same
+      reason when it transforms a worker file.
+    -->
+    <script>
+      globalThis.__vitest_browser_runner__ ??= { wrapDynamicImport: (factory) => factory() }
+    </script>
+    <!--
+      The real theme, so a test sees the colours and fonts a reader does. Without it every
+      `--openish-*` hook resolves to nothing, and an accessibility check for contrast would be
+      measuring the browser's defaults rather than this project's palette.
+    -->
+    <link rel="stylesheet" href="../../theme/css/index.css" />
+    <!--
+      A host that gives the element a height, like a real one should. Without this the reference is
+      as tall as its content, nothing inside it scrolls, and a test cannot tell the difference.
+    -->
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      openish-api-reference {
+        display: block;
+        height: 100%;
+      }
+    </style>
+    <script type="module" src="../src/index.ts"></script>
+  </body>
+</html>

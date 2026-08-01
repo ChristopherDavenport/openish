@@ -1,0 +1,40 @@
+{
+  "name": "openish",
+  "private": true,
+  "type": "module",
+  "description": "Lit web components for viewing OpenAPI documents, built on Scalar's framework-agnostic core",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @openish/playground",
+    "build": "npm run build -ws --if-present",
+    "clean": "rm -rf packages/*/dist apps/*/dist packages/*/tsconfig.tsbuildinfo",
+    "typecheck": "tsc -b && tsc -p packages/elements/tsconfig.test.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "guard": "npm run guard:vue && npm run guard:specs",
+    "guard:vue": "node scripts/guard-no-vue.mjs",
+    "guard:specs": "node scripts/guard-no-specs.mjs",
+    "verify": "npm run guard && npm run typecheck && npm run test"
+  },
+  "devDependencies": {
+    "@custom-elements-manifest/analyzer": "^0.11.0",
+    "@types/node": "^24.13.3",
+    "@vitest/browser": "^4.1.10",
+    "@vitest/browser-playwright": "^4.1.10",
+    "axe-core": "^4.12.1",
+    "playwright": "^1.62.1",
+    "typescript": "~5.9.3",
+    "vite": "^7.1.9",
+    "vitest": "^4.1.10"
+  },
+  "overrides": {
+    "lit": "^3.3.3"
+  }
+}

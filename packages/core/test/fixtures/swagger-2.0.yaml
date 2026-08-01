@@ -1,0 +1,32 @@
+# A Swagger 2.0 document. The store must upgrade it so everything downstream sees one shape.
+swagger: '2.0'
+info:
+  title: Legacy
+  version: 1.0.0
+host: api.example.com
+basePath: /v1
+schemes:
+  - https
+paths:
+  /widgets:
+    get:
+      summary: List widgets
+      tags: [widgets]
+      produces:
+        - application/json
+      parameters:
+        - name: limit
+          in: query
+          required: true
+          type: integer
+      responses:
+        '200':
+          description: OK
+          schema:
+            $ref: '#/definitions/Widget'
+definitions:
+  Widget:
+    type: object
+    properties:
+      id:
+        type: string

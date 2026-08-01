@@ -1,0 +1,43 @@
+{
+  "name": "@openish/elements",
+  "version": "0.0.0",
+  "description": "Lit web components for rendering OpenAPI reference documentation",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "custom-elements.json",
+    "README.md"
+  ],
+  "sideEffects": [
+    "./dist/**/*.js"
+  ],
+  "scripts": {
+    "build": "tsc -b && npm run docs",
+    "clean": "rm -rf dist tsconfig.tsbuildinfo custom-elements.json",
+    "docs": "cem analyze --litelement --globs \"src/**/*.ts\" --outdir . && node ../../scripts/docs-elements.mjs"
+  },
+  "dependencies": {
+    "@jack-henry/jh-icons": "^2.0.0",
+    "@jack-henry/jh-ui": "^1.15.5",
+    "@lit-labs/router": "^0.1.4",
+    "@lit/context": "^1.1.6",
+    "@lit/task": "^1.0.3",
+    "@openish/core": "0.0.0",
+    "@openish/theme": "0.0.0",
+    "@scalar/code-highlight": "^0.4.3",
+    "lit": "^3.3.3",
+    "urlpattern-polyfill": "^10.1.0"
+  },
+  "customElements": "custom-elements.json"
+}

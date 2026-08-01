@@ -1,0 +1,8 @@
+/*
+ * The Jack Henry dark theme.
+ *
+ * Unlike the light theme, this one is scoped to `.jh-theme-dark` rather than `:root`, so the two can
+ * be loaded together and switched with a class. It must come after light.css in the cascade: both
+ * selectors have the same specificity, so source order decides.
+ */
+@import '@jack-henry/jh-core/platforms/web/css/jh-theme-dark.css';

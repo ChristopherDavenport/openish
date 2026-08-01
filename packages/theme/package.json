@@ -1,0 +1,24 @@
+{
+  "name": "@openish/theme",
+  "version": "0.0.0",
+  "description": "Jack Henry Design System token bridge for openish elements",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./css/index.css",
+    "./index.css": "./css/index.css",
+    "./tokens.css": "./css/tokens.css",
+    "./light.css": "./css/light.css",
+    "./dark.css": "./css/dark.css",
+    "./fonts.css": "./css/fonts.css",
+    "./highlight.css": "./css/highlight.css"
+  },
+  "files": [
+    "css",
+    "README.md"
+  ],
+  "scripts": {},
+  "dependencies": {
+    "@jack-henry/jh-core": "^1.6.1"
+  }
+}

@@ -1,0 +1,43 @@
+/*
+ * Syntax colour hooks for the markup `@scalar/code-highlight` emits (highlight.js class names).
+ *
+ * Like the HTTP method palette in tokens.css, syntax highlighting has no JH alias equivalent -
+ * "this token is a string literal" is not a product semantic - so these bind to the JH global
+ * palette - and a global does *not* re-point per scheme the way an alias does, so the dark theme
+ * has to restate every one of them. It did not until M6, and the result was syntax colouring at
+ * 1.4-1.9:1 on the dark code surface: legible enough to look deliberate, and far below AA.
+ *
+ * Only the hooks live here. The rules that *use* them are a Lit stylesheet in `@openish/elements`
+ * (`highlightStyles` in `styles/shared.ts`), because every code block openish renders is inside a
+ * shadow root, and a document-level `.hljs-keyword` selector does not cross that boundary. Custom
+ * properties do - which is the whole reason the split works.
+ */
+
+:root {
+  --openish-hl-keyword: var(--jh-color-violet-600);
+  --openish-hl-string: var(--jh-color-green-600);
+  --openish-hl-number: var(--jh-color-orange-600);
+  --openish-hl-literal: var(--jh-color-azure-600);
+  --openish-hl-comment: var(--jh-color-gray-600);
+  --openish-hl-attr: var(--jh-color-azure-700);
+  --openish-hl-title: var(--jh-color-magenta-600);
+  --openish-hl-punctuation: var(--jh-color-content-secondary-enabled);
+}
+
+/*
+ * The same hues, several steps lighter, because the dark code surface is `gray-750`-ish and a
+ * 600-weight colour on it is unreadable. The 250 step measures 5.5-6.9:1 for every hue here;
+ * `packages/elements/test/contrast.test.ts` is what keeps that true.
+ *
+ * `--openish-hl-punctuation` is absent on purpose: it binds to a JH *alias*, which already
+ * re-points itself for the dark theme.
+ */
+.jh-theme-dark {
+  --openish-hl-keyword: var(--jh-color-violet-250);
+  --openish-hl-string: var(--jh-color-green-250);
+  --openish-hl-number: var(--jh-color-orange-250);
+  --openish-hl-literal: var(--jh-color-azure-250);
+  --openish-hl-comment: var(--jh-color-gray-250);
+  --openish-hl-attr: var(--jh-color-azure-200);
+  --openish-hl-title: var(--jh-color-magenta-250);
+}

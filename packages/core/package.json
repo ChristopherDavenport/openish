@@ -1,0 +1,38 @@
+{
+  "name": "@openish/core",
+  "version": "0.0.0",
+  "description": "Framework-agnostic OpenAPI document store, navigation traversal, and helpers for openish. No DOM, no Vue.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist tsconfig.tsbuildinfo"
+  },
+  "dependencies": {
+    "@scalar/helpers": "^0.9.2",
+    "@scalar/json-magic": "^0.12.19",
+    "@scalar/openapi-parser": "^0.28.11",
+    "@scalar/openapi-types": "^0.9.4",
+    "@scalar/snippetz": "^0.9.24",
+    "@scalar/types": "^0.17.0"
+  },
+  "devDependencies": {
+    "@scalar/galaxy": "^0.6.12",
+    "@types/har-format": "^1.2.16"
+  }
+}

@@ -1,0 +1,85 @@
+# Everything the HAR builder reads: server variables, path/query/header/cookie parameters,
+# parameter overrides, security, and a request body.
+openapi: 3.1.0
+info:
+  title: Request
+  version: 1.0.0
+servers:
+  - url: https://{region}.example.com/v1
+    variables:
+      region:
+        default: us
+        enum: [us, eu]
+security:
+  - bearerAuth: []
+paths:
+  /users/{userId}/notes:
+    parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: string
+        example: u_123
+      - name: trace
+        in: header
+        required: true
+        schema:
+          type: string
+        example: path-level
+    post:
+      summary: Create a note
+      operationId: createNote
+      tags: [notes]
+      parameters:
+        # Same name and location as the path-level one, so this must win.
+        - name: trace
+          in: header
+          required: true
+          schema:
+            type: string
+          example: operation-level
+        - name: limit
+          in: query
+          required: true
+          schema:
+            type: integer
+            default: 25
+        - name: verbose
+          in: query
+          # Optional and with no example or default: must be left out of the sample.
+          schema:
+            type: boolean
+        - name: fields
+          in: query
+          # Optional but with a default, which is a signal that it is worth showing.
+          schema:
+            type: string
+            default: id,title
+        - name: session
+          in: cookie
+          required: true
+          schema:
+            type: string
+          example: abc
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                  example: Groceries
+                secret:
+                  type: string
+                  writeOnly: true
+      responses:
+        '201':
+          description: Created
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
