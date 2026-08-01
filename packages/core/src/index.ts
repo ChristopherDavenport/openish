@@ -8,7 +8,7 @@ export {
   SNIPPET_CLIENTS,
   type SnippetClient,
 } from './har/snippet.js'
-export { SlugRegistry } from './navigation/ids.js'
+export { joinId, SlugRegistry } from './navigation/ids.js'
 export {
   collectOperations,
   operationSlugSource,
@@ -26,12 +26,37 @@ export {
   type ParameterLocation,
   type ParameterSource,
 } from './operation/parameters.js'
+export {
+  describeSecurityScheme,
+  preferredSecurityIndex,
+  resolveSecurityScheme,
+  securityRequirements,
+  securitySchemesFor,
+  type DescribableSecurityScheme,
+  type SecurityEntry,
+  type SecurityRequirement,
+} from './operation/security.js'
+export { authorSamples, type AuthorSample } from './har/author-samples.js'
+export { operationBadges, type OperationBadge } from './operation/badges.js'
+export { isHidden } from './navigation/hidden.js'
 export { getResolvedRef, isRefObject, resolveProperty, type RefObject } from './ref.js'
 export { schemaExample, type SchemaExampleOptions } from './schema/schema-example.js'
-export { createDocumentStore, type CreateDocumentStoreOptions } from './store/create-document-store.js'
+export { resolveSources } from './sources.js'
+export {
+  createDocumentStore,
+  IMPLICIT_SOURCE,
+  type CreateDocumentStoreOptions,
+} from './store/create-document-store.js'
+export {
+  documentFilename,
+  serializeDocument,
+  FORMAT_DETAILS,
+  type DocumentFormat,
+} from './store/serialize.js'
 export { HTTP_METHODS, isHttpMethod } from './types.js'
 export type {
   ColorScheme,
+  ColorSchemePreference,
   DocumentStore,
   HttpMethod,
   Layout,
@@ -42,6 +67,12 @@ export type {
   NavTagNode,
   NavTextNode,
   NavWebhookNode,
+  OAuthSchemeConfig,
   OpenishConfig,
   ResolvedOpenishConfig,
+  ResolvedSource,
+  ServerOverride,
+  SlugOverrides,
+  SourceConfig,
+  SourceDescriptor,
 } from './types.js'

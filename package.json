@@ -25,6 +25,9 @@
   },
   "devDependencies": {
     "@custom-elements-manifest/analyzer": "^0.11.0",
+    "@jack-henry/jh-core": "^1.6.1",
+    "@jack-henry/jh-icons": "^2.0.0",
+    "@jack-henry/jh-ui": "^1.15.5",
     "@types/node": "^24.13.3",
     "@vitest/browser": "^4.1.10",
     "@vitest/browser-playwright": "^4.1.10",

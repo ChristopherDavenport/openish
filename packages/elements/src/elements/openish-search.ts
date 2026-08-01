@@ -7,7 +7,13 @@ import { live } from 'lit/directives/live.js'
 import { createRef, ref } from 'lit/directives/ref.js'
 import { repeat } from 'lit/directives/repeat.js'
 
-import { documentContext, uiContext, type OpenishUiState } from '../context/contexts.js'
+import {
+  documentContext,
+  sourcesContext,
+  uiContext,
+  type OpenishSourcesState,
+  type OpenishUiState,
+} from '../context/contexts.js'
 import { HotkeyController } from '../controllers/hotkey.js'
 import { hrefFor } from '../router/urls.js'
 import { searchNodes, type SearchResult } from '../search/search.js'
@@ -159,6 +165,19 @@ export class OpenishSearch extends LitElement {
         color: var(--openish-color-text-muted);
         font: var(--openish-font-small);
       }
+
+      /* Which document the results below are in. Only rendered when there is more than one. */
+      .group {
+        position: sticky;
+        top: 0;
+        margin: 0;
+        padding: var(--openish-space-2xs) var(--openish-space-md);
+        background: var(--openish-color-surface);
+        color: var(--openish-color-text-muted);
+        font: var(--openish-font-micro);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
     `,
   ]
 
@@ -167,6 +186,10 @@ export class OpenishSearch extends LitElement {
   store: DocumentStore | undefined
 
   /** Presentation state. Provided by `<openish-api-reference>` through context. */
+  /** Every document on offer, and which of them are loaded. Provided through context. */
+  @consume({ context: sourcesContext, subscribe: true })
+  sources: OpenishSourcesState | undefined
+
   @consume({ context: uiContext, subscribe: true })
   ui: OpenishUiState | undefined
 
@@ -193,7 +216,11 @@ export class OpenishSearch extends LitElement {
   readonly #activeOption = createRef<HTMLAnchorElement>()
 
   /** The shortcuts that open this dialog. Public because it is part of the element's behaviour. */
-  readonly hotkeys = new HotkeyController(this, [{ key: '/' }, { key: 'k', modifier: true }], () => {
+  /*
+   * The configured key plus Cmd/Ctrl-K, which is not configurable because it is the convention every
+   * application shares and a host that changed it would only be surprising people.
+   */
+  readonly hotkeys = new HotkeyController(this, () => [{ key: this.ui?.config.searchHotKey || '/' }, { key: 'k', modifier: true }], () => {
     this.#show(deepActiveElement())
   })
 
@@ -205,7 +232,28 @@ export class OpenishSearch extends LitElement {
    * keep in step with the query it came from.
    */
   get #results(): SearchResult[] {
-    return searchNodes(this.store, this.query)
+    return searchNodes(this.#stores, this.query)
+  }
+
+  /**
+   * The documents to search, in the order the host configured them.
+   *
+   * Every document that has *loaded*, not just the one on screen - a reader who types `institution`
+   * should find it in the admin API without first having to know it is there. The idle prefetch is
+   * what makes that true shortly after first render; until it lands, this is the active document
+   * alone, which is the behaviour a single-document reference has always had.
+   *
+   * Configured order rather than the order they finished loading, or two equally good matches would
+   * swap places depending on which document happened to parse first.
+   */
+  get #stores(): DocumentStore[] {
+    const state = this.sources
+    if (!state) {
+      return this.store ? [this.store] : []
+    }
+    return state.sources
+      .map((source) => state.loaded.get(source.slug))
+      .filter((store): store is DocumentStore => store !== undefined)
   }
 
   /**
@@ -301,7 +349,7 @@ export class OpenishSearch extends LitElement {
         id="result-${index}"
         role="option"
         aria-selected=${index === this.active ? 'true' : 'false'}
-        href=${hrefFor(node, this.ui?.basePath ?? '')}
+        href=${hrefFor(node, this.ui)}
         ${ref(index === this.active ? this.#activeOption : undefined)}
         @click=${() => {
           this.open = false
@@ -318,6 +366,53 @@ export class OpenishSearch extends LitElement {
     `
   }
 
+  /**
+   * The result list, with a heading wherever the document changes.
+   *
+   * The headings are `role="presentation"` and the options keep one flat, gapless index. A listbox
+   * whose options are grouped is still one list to `aria-activedescendant` and to the arrow keys,
+   * and interleaving anything the combobox counts would break both.
+   */
+  #renderRows(results: readonly SearchResult[]): TemplateResult {
+    const grouped = (this.sources?.sources.length ?? 0) > 1
+
+    type Row =
+      | { kind: 'heading'; key: string; title: string }
+      | { kind: 'result'; key: string; result: SearchResult; index: number }
+
+    const rows: Row[] = []
+    let shown: string | undefined
+
+    results.forEach((result, index) => {
+      if (grouped && result.source.slug !== shown) {
+        shown = result.source.slug
+        /*
+         * The title from the context, not from the store's own descriptor: an untitled document is
+         * named from its `info.title` once it has loaded, and that upgrade happens in the root. The
+         * descriptor is what the source was called when it was built.
+         */
+        const named = this.sources?.sources.find((source) => source.slug === result.source.slug)
+        rows.push({
+          kind: 'heading',
+          key: `group-${result.source.slug}`,
+          title: named?.title ?? result.source.title,
+        })
+      }
+      rows.push({ kind: 'result', key: result.node.id, result, index })
+    })
+
+    return html`
+      ${repeat(
+        rows,
+        (row) => row.key,
+        (row) =>
+          row.kind === 'heading'
+            ? html`<p class="group" role="presentation">${row.title}</p>`
+            : this.#renderResult(row.result, row.index),
+      )}
+    `
+  }
+
   override render(): TemplateResult {
     const results = this.#results
 
@@ -331,7 +426,7 @@ export class OpenishSearch extends LitElement {
         <kbd>/</kbd>
       </button>
 
-      <dialog aria-label="Search the API reference" @close=${this.#onClose}>
+      <dialog part="dialog" aria-label="Search the API reference" @close=${this.#onClose}>
         <input
           type="text"
           role="combobox"
@@ -347,11 +442,7 @@ export class OpenishSearch extends LitElement {
           @keydown=${this.#onKeydown}
         />
         <div id="results" class="results" role="listbox" aria-label="Results">
-          ${repeat(
-            results,
-            (result) => result.node.id,
-            (result, index) => this.#renderResult(result, index),
-          )}
+          ${this.#renderRows(results)}
           ${this.query !== '' && results.length === 0
             ? html`<p class="empty">Nothing matches <code>${this.query}</code>.</p>`
             : nothing}

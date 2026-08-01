@@ -1,5 +1,5 @@
 import { consume, provide } from '@lit/context'
-import type { DocumentStore } from '@openish/core'
+import { joinId, type DocumentStore } from '@openish/core'
 import { LitElement, html, css, nothing, type TemplateResult } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
 import { classMap } from 'lit/directives/class-map.js'
@@ -18,6 +18,9 @@ import {
   hasBody,
   refName,
   refPointer,
+  additionalPropertiesName,
+  enumDescriptions,
+  orderProperties,
   schemaConstraints,
   schemaProperties,
   schemaTypeLabel,
@@ -82,6 +85,24 @@ export class OpenishSchema extends LitElement {
       .type {
         font: var(--openish-font-code-small);
         color: var(--openish-color-text-muted);
+      }
+
+      dl.enum {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        gap: var(--openish-space-3xs) var(--openish-space-xs);
+        margin: var(--openish-space-2xs) 0 0;
+        font: var(--openish-font-micro);
+        color: var(--openish-color-text-muted);
+      }
+
+      dl.enum dt {
+        font-family: var(--openish-font-family-mono);
+        color: var(--openish-color-text);
+      }
+
+      dl.enum dd {
+        margin: 0;
       }
 
       .constraints {
@@ -264,12 +285,13 @@ export class OpenishSchema extends LitElement {
       return nothing
     }
 
-    const node = this.store?.bySlug.get(`models/${name}`)
+    /* Ids are namespaced by the document they belong to, so the models section is under its slug. */
+    const node = this.store && this.store.bySlug.get(joinId(this.store.source.slug, 'models', name))
     if (!node) {
       return html`<code>${name}</code>`
     }
 
-    return html`<a href=${hrefFor(node, this.ui?.basePath ?? '')}>${name}</a>`
+    return html`<a href=${hrefFor(node, this.ui)}>${name}</a>`
   }
 
   #renderFlags(value: unknown): TemplateResult | typeof nothing {
@@ -307,12 +329,37 @@ export class OpenishSchema extends LitElement {
     `
   }
 
+  /**
+   * What each enum value means, where the document says.
+   *
+   * The values themselves are already in the constraint line - this is the half a bare
+   * `one of PENDING, SETTLED, REVERSED` cannot express, and it is usually the half the reader came
+   * for. Rendered as a definition list because that is what it is.
+   */
+  #renderEnumDescriptions(target: unknown): TemplateResult | typeof nothing {
+    const described = enumDescriptions(target)
+    if (described.size === 0) {
+      return nothing
+    }
+
+    return html`
+      <dl class="enum">
+        ${repeat(
+          [...described],
+          ([value]) => value,
+          ([value, text]) => html`<dt><code>${value}</code></dt>
+            <dd>${text}</dd>`,
+        )}
+      </dl>
+    `
+  }
+
   /** A map-shaped schema: no named properties, one rule for every key. */
-  #renderAdditional(additional: unknown): TemplateResult {
+  #renderAdditional(additional: unknown, parent: unknown): TemplateResult {
     return html`
       <li>
         <div class="head">
-          <code class="name">[key: string]</code>
+          <code class="name">[${additionalPropertiesName(parent)}: string]</code>
           <span class="type">${schemaTypeLabel(additional)}</span>
           <span class="flag">any other property</span>
         </div>
@@ -350,7 +397,10 @@ export class OpenishSchema extends LitElement {
    * has not opened. That is the whole reason `<openish-disclosure>` reports its state upward.
    */
   #renderProperties(target: unknown, isArray: boolean): TemplateResult | typeof nothing {
-    const properties = schemaProperties(target)
+    const properties = orderProperties(schemaProperties(target), {
+      by: this.ui?.config.orderSchemaPropertiesBy ?? 'document',
+      requiredFirst: this.ui?.config.orderRequiredPropertiesFirst ?? false,
+    })
     const resolved = asSchema(target)
     const additional = resolved?.['additionalProperties']
     const hasAdditional = typeof additional === 'object' && additional !== null && !Array.isArray(additional)
@@ -366,7 +416,7 @@ export class OpenishSchema extends LitElement {
           (property) => property.name,
           (property) => this.#renderProperty(property),
         )}
-        ${hasAdditional ? this.#renderAdditional(additional) : nothing}
+        ${hasAdditional ? this.#renderAdditional(additional, target) : nothing}
       </ul>
     `
 
@@ -423,7 +473,17 @@ export class OpenishSchema extends LitElement {
     }
 
     const description = resolved?.['description']
-    const constraints = schemaConstraints(target)
+    /*
+     * Constraints come from both halves of an array.
+     *
+     * `unwrapArray` hands back the *items* schema, because that is what has properties worth
+     * expanding - but `minItems`, `maxItems` and `uniqueItems` are facts about the array, and they
+     * were being dropped on the floor with the wrapper. The array's line comes first: how many,
+     * then what each one is.
+     */
+    const constraints = isArray
+      ? [...schemaConstraints(this.schema), ...schemaConstraints(target)]
+      : schemaConstraints(target)
     const not = resolved?.['not']
     const variants = schemaVariants(target)
 
@@ -433,6 +493,7 @@ export class OpenishSchema extends LitElement {
         ? html`<openish-markdown .markdown=${description} .headingOffset=${4}></openish-markdown>`
         : nothing}
       ${constraints.length > 0 ? html`<div class="constraints">${constraints.join(' · ')}</div>` : nothing}
+      ${this.#renderEnumDescriptions(target)}
       ${not !== undefined
         ? html`<div class="constraints">not ${schemaTypeLabel(not) || 'the schema below'}</div>`
         : nothing}

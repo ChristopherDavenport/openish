@@ -5,7 +5,7 @@ import type { ColorScheme } from '@openish/core'
 import type { OpenishApiReference } from '@openish/elements'
 
 import { applyColorScheme, initialColorScheme } from './theme.js'
-import { loadInitialSpec, loadSpecFromFile, type SpecSource } from './spec-source.js'
+import { loadInitialSpec, loadSpecFromFiles, type PlaygroundSources } from './spec-source.js'
 
 const app = document.querySelector<HTMLDivElement>('#app')
 if (!app) {
@@ -18,8 +18,8 @@ app.innerHTML = `
     <span id="source" class="file"></span>
     <span class="spacer"></span>
     <label class="file">
-      Load a document
-      <input id="file" type="file" accept=".yaml,.yml,.json" />
+      Load documents
+      <input id="file" type="file" accept=".yaml,.yml,.json" multiple />
     </label>
     <button id="scheme" type="button"></button>
   </header>
@@ -45,25 +45,50 @@ schemeButton.addEventListener('click', () => {
 })
 
 /*
- * The reference re-dispatches scheme changes rather than applying them: only the host can swap the
- * Jack Henry theme, which is declared at `:root`. This is that host doing its half.
+ * The reference applies a scheme to itself - `color-scheme` is reflected and the theme matches the
+ * attribute - and re-dispatches so the host can do the parts only it can: style its own chrome, and
+ * remember the choice. This is that host doing its half.
+ *
+ * `auto` is skipped rather than mapped to a concrete scheme: the point of it is that nobody decides,
+ * so the toolbar has nothing to store and the page falls back to `prefers-color-scheme` like the
+ * reference does.
  */
 reference.addEventListener('openish-color-scheme-change', (event) => {
-  if (event.detail !== colorScheme) {
+  if (event.detail !== 'auto' && event.detail !== colorScheme) {
     applyScheme(event.detail)
   }
 })
 
 fileInput.addEventListener('change', () => {
-  const file = fileInput.files?.[0]
-  if (file) {
-    void loadSpecFromFile(file).then(show)
+  const files = [...(fileInput.files ?? [])]
+  if (files.length > 0) {
+    void loadSpecFromFiles(files).then(show)
   }
 })
 
-const show = (source: SpecSource) => {
-  sourceLabel.textContent = `${source.label} · ${(source.text.length / 1024).toFixed(0)} KB`
-  reference.spec = source.text
+const sizeOf = (text: string) => `${(text.length / 1024).toFixed(0)} KB`
+
+/*
+ * One document goes to `spec` and several to `sources`, because that is the difference the
+ * playground exists to be able to see: `spec` keeps today's URLs and shows no picker, `sources`
+ * namespaces every URL and shows one.
+ */
+const show = (loaded: PlaygroundSources) => {
+  if (loaded.kind === 'single') {
+    sourceLabel.textContent = `${loaded.source.label} · ${sizeOf(loaded.source.text)}`
+    reference.sources = undefined
+    reference.spec = loaded.source.text
+    return
+  }
+
+  sourceLabel.textContent = loaded.sources
+    .map((source) => `${source.label} · ${sizeOf(source.text)}`)
+    .join(' + ')
+  reference.spec = undefined
+  reference.sources = loaded.sources.map((source) => ({
+    ...(source.name ? { slug: source.name } : {}),
+    content: source.text,
+  }))
 }
 
 applyScheme(colorScheme)

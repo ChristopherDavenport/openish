@@ -50,6 +50,15 @@ export class OpenishRequestBody extends LitElement {
   @property({ attribute: false })
   requestBody: unknown = undefined
 
+  /**
+   * Document the schema without an example.
+   *
+   * Set when the try-it panel above is showing the same example in an editor. Two copies of the
+   * same generated JSON, one of them thousands of pixels tall, is not twice as informative.
+   */
+  @property({ type: Boolean, attribute: 'no-example' })
+  noExample = false
+
   override render(): TemplateResult | typeof nothing {
     const body = getResolvedRef(this.requestBody) as RequestBody | undefined
     if (!body) {
@@ -63,7 +72,7 @@ export class OpenishRequestBody extends LitElement {
       ${body.description
         ? html`<openish-markdown .markdown=${body.description} .headingOffset=${2}></openish-markdown>`
         : nothing}
-      ${renderMediaTypes(body.content, 'Request media types')}
+      ${renderMediaTypes(body.content, 'Request media types', { noExample: this.noExample })}
     `
   }
 }

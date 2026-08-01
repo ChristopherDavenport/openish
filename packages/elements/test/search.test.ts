@@ -42,7 +42,7 @@ describe('search', () => {
 
     const [first] = optionsOf(search)
     expect(textOf(first!)).toContain('List accounts')
-    expect(first!.getAttribute('href')).toBe('/tags/accounts/listAccounts')
+    expect(first!.getAttribute('href')).toBe('#/tags/accounts/listAccounts')
   })
 
   it('finds an operation by its path, its title, and its tag', async () => {
@@ -103,7 +103,7 @@ describe('search', () => {
     await userEvent.keyboard('{Enter}')
     await harness.settle()
 
-    expect(harness.window.location.pathname).toBe('/tags/accounts/listAccounts')
+    expect(harness.currentId()).toBe('tags/accounts/listAccounts')
     expect(dialogOf(search).open).toBe(false)
     expect(deepQuery(harness.element.shadowRoot!, 'openish-operation')).not.toBeNull()
   })

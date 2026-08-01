@@ -1,11 +1,13 @@
 import type { OpenishConfig } from '@openish/core'
 
 import type { OpenishApiReference } from '../src/elements/openish-api-reference.js'
+import { loadCode, loadMarkdown } from '../src/render/highlight.js'
+import { idFromHash, idFromPathname, type RoutingMode } from '../src/router/urls.js'
 
 /**
- * `Router` installs listeners on `window` and reads `location.pathname`, so tests that navigate have
- * to be isolated or they corrupt each other and the test runner's own URL. An iframe gives each test
- * its own `window`, `history`, and document.
+ * The reference reads `window.location` and listens for the browser's navigation events, so tests
+ * that navigate have to be isolated or they corrupt each other and the test runner's own URL. An
+ * iframe gives each test its own `window`, `history`, and document.
  */
 export type Harness = {
   frame: HTMLIFrameElement
@@ -15,9 +17,39 @@ export type Harness = {
   clickLink: (href: string) => Promise<void>
   /** Navigates the way a host application would. */
   goto: (path: string) => Promise<void>
+  /**
+   * The node id the URL currently names, read from whichever half of it this mode uses.
+   *
+   * Tests assert on this rather than on `location.pathname` so that "did navigating work" stays one
+   * question - the URL *shape* is the thing the modes disagree about, and it is asserted on its own
+   * in the tests that are about a mode.
+   */
+  currentId: () => string
+  /** The href the reference will have rendered for a page, in this harness's mode. */
+  hrefFor: (path: string) => string
   settle: () => Promise<void>
+  /**
+   * Settles, and waits for every configured document to have loaded.
+   *
+   * The idle prefetch is what puts the documents the reader has not opened into the search index,
+   * and it is scheduled through `requestIdleCallback` - so a test about cross-document search has
+   * to wait for something no render signals. This polls the element's own view of what is loaded,
+   * which is the same thing search reads.
+   */
+  settleSources: () => Promise<void>
   dispose: () => void
 }
+
+/**
+ * How many documents the reference has built stores for.
+ *
+ * Reaches into the state the root provides as `sourcesContext` rather than asserting on something
+ * rendered, because "the prefetch has finished" has no visible consequence of its own - it is what
+ * makes the *next* thing (a cross-document search) able to succeed. Reading the same value search
+ * reads is the closest a test can get to the actual precondition.
+ */
+const loadedCount = (element: OpenishApiReference): number =>
+  (element as unknown as { sourcesState?: { loaded: ReadonlyMap<string, unknown> } }).sourcesState?.loaded.size ?? 0
 
 const frames: HTMLIFrameElement[] = []
 
@@ -65,6 +97,14 @@ const deepSignature = (root: Element | ShadowRoot): string => {
 }
 
 const settleTree = async (element: Element, rounds = 8): Promise<void> => {
+  /*
+   * The markdown and highlight pipelines are loaded on demand, so an element that renders prose
+   * renders nothing on its first pass and fills in when the import resolves. A settle loop that only
+   * watched the DOM could return in between, which is a race that fails one test in twenty rather
+   * than reliably - so the load is awaited up front and the rest of the loop stays about rendering.
+   */
+  await Promise.all([loadMarkdown(), loadCode()])
+
   for (let round = 0; round < rounds; round += 1) {
     const before = element.shadowRoot ? deepSignature(element.shadowRoot) : ''
 
@@ -75,7 +115,15 @@ const settleTree = async (element: Element, rounds = 8): Promise<void> => {
         (child) => (child as Element & { updateComplete?: Promise<unknown> }).updateComplete,
       ),
     )
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    /*
+     * Two frames, not a zero timeout.
+     *
+     * The sidebar is virtualised, and a virtualiser cannot render until it has been *measured*: it
+     * waits for a `ResizeObserver` callback, which the browser delivers on a frame boundary and
+     * never inside a microtask. A settle loop that only drained promises saw an empty list twice
+     * running and concluded the tree had settled - which it had, at zero rows.
+     */
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
 
     const after = element.shadowRoot ? deepSignature(element.shadowRoot) : ''
     if (before === after && round > 0) {
@@ -84,18 +132,72 @@ const settleTree = async (element: Element, rounds = 8): Promise<void> => {
   }
 }
 
+/**
+ * The URL a mode has to be at for the reference to resolve `path`.
+ *
+ * `history` is the literal path. The fragment modes carry the node id instead, so the base prefix
+ * comes off and what is left goes after the `#` - which is also the difference the modes exist over,
+ * stated once here rather than in eighty call sites.
+ */
+const locationFor = (routing: RoutingMode, path: string, basePath: string): string => {
+  if (routing === 'history') {
+    return path
+  }
+
+  const id = idIn(path, basePath)
+  return id === '' ? '/' : `/#/${id}`
+}
+
+/** The node id a test's path names, whichever half of the URL it wrote it in. */
+const idIn = (path: string, basePath: string): string => {
+  const [pathname = '', fragment] = path.split('#')
+  return idFromPathname(pathname, basePath) || (fragment ?? '')
+}
+
+/** The href the reference will have rendered for a page, in the mode under test. */
+const hrefInMode = (routing: RoutingMode, path: string, basePath: string): string =>
+  routing === 'history' ? path : `#/${idIn(path, basePath)}`
+
 export const mountReference = async (
   attributes: Partial<{
+    /**
+     * Where the reference should think it is, written as a path.
+     *
+     * Translated to whatever the routing mode actually reads, so a test says which *page* it is on
+     * rather than which URL shape that mode spells it with - `/tags/accounts` is the same intent in
+     * every mode, and only `routing: 'history'` tests should care that it is a real path there.
+     */
     path: string
     basePath: string
-    routing: 'history' | 'none'
+    routing: RoutingMode
     layout: 'modern' | 'classic'
     selected: string
     config: OpenishConfig
     /** A document other than the shell fixture. */
     spec: unknown
+    /**
+     * Several documents, with a picker. Takes precedence over `spec` and `url`.
+     *
+     * Each entry's `content` is serialised on the way in for the same realm reason `spec` is - see
+     * the note below - so a test writes plain fixture objects here.
+     */
+    sources: Array<import('@openish/core').SourceConfig>
+    /**
+     * Runs in the frame after it loads and before the reference is appended.
+     *
+     * The only point at which a `fetch` stub can be installed and be certain of catching the first
+     * request an element makes - discovery happens on the auth form's first render, and a stub
+     * installed after that arrives too late to matter.
+     */
+    beforeMount: (frameWindow: Window) => void
     /** Load from a URL instead of the inline fixture, to exercise the failure path. */
     url: string
+    /** Credentials a host already holds, applied before the first render. */
+    credentials: Record<string, string>
+    /** Where the host keeps credentials between page loads, if anywhere. */
+    credentialStore: import('@openish/client').CredentialStore
+    /** A query string for the frame's URL, e.g. `?api=ledger`. */
+    search: string
   }> = {},
 ): Promise<Harness> => {
   const frame = document.createElement('iframe')
@@ -116,13 +218,28 @@ export const mountReference = async (
   const frameWindow = frame.contentWindow!
   const frameDocument = frame.contentDocument!
 
-  frameWindow.history.replaceState({}, '', attributes.path ?? '/')
+  const location = locationFor(attributes.routing ?? 'hash', attributes.path ?? '/', attributes.basePath ?? '')
+  /* The query goes before the fragment, which is where a real URL carries it. */
+  const [beforeHash = '', fragment] = location.split('#')
+  frameWindow.history.replaceState(
+    {},
+    '',
+    attributes.search ? `${beforeHash}${attributes.search}${fragment ? `#${fragment}` : ''}` : location,
+  )
 
   /* frame.html imports the elements into its own realm; wait for that module to have run. */
   await frameWindow.customElements.whenDefined('openish-api-reference')
 
+  attributes.beforeMount?.(frameWindow)
+
   const element = frameDocument.createElement('openish-api-reference') as OpenishApiReference
-  if (attributes.url === undefined) {
+  if (attributes.sources !== undefined) {
+    element.sources = attributes.sources.map((source) =>
+      source.content !== undefined && typeof source.content !== 'string'
+        ? { ...source, content: JSON.stringify(source.content) }
+        : source,
+    )
+  } else if (attributes.url === undefined) {
     const { SHELL_SPEC } = await import('./fixtures.js')
     const spec = attributes.spec ?? SHELL_SPEC
     /*
@@ -154,30 +271,63 @@ export const mountReference = async (
   if (attributes.config !== undefined) {
     element.config = attributes.config
   }
+  if (attributes.credentials !== undefined) {
+    element.credentials = attributes.credentials
+  }
+  if (attributes.credentialStore !== undefined) {
+    element.credentialStore = attributes.credentialStore
+  }
   frameDocument.body.append(element)
 
   const settle = () => settleTree(element)
 
+  const settleSources = async () => {
+    const total = (attributes.sources ?? []).length || 1
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      await settle()
+      if (loadedCount(element) >= total) {
+        return
+      }
+      await new Promise((resolve) => frameWindow.setTimeout(resolve, 16))
+    }
+    await settle()
+  }
+
   await settle()
 
   return {
+    settleSources,
     frame,
     window: frameWindow,
     element,
     settle,
     clickLink: async (href: string) => {
-      const link = deepQuery<HTMLAnchorElement>(element.shadowRoot!, `a[href="${href}"]`)
+      /* Tests name the page; the mode decides how that page is spelled as an href. */
+      const wanted = hrefInMode(attributes.routing ?? 'hash', href, attributes.basePath ?? '')
+      const link = deepQuery<HTMLAnchorElement>(element.shadowRoot!, `a[href="${wanted}"]`)
       if (!link) {
-        throw new Error(`No link with href "${href}". Found: ${listHrefs(element).join(', ')}`)
+        throw new Error(`No link with href "${wanted}". Found: ${listHrefs(element).join(', ')}`)
       }
       link.click()
       await settle()
     },
     goto: async (path: string) => {
-      frameWindow.history.pushState({}, '', path)
+      const target = locationFor(attributes.routing ?? 'hash', path, attributes.basePath ?? '')
+      frameWindow.history.pushState({}, '', target)
+      /*
+       * `pushState` announces nothing, and in the fragment modes it does not fire `hashchange`
+       * either - so the signal the mode actually listens for has to be made by hand. Both are the
+       * browser's own events, which is what `LocationController` subscribes to.
+       */
       frameWindow.dispatchEvent(new PopStateEvent('popstate'))
+      frameWindow.dispatchEvent(new HashChangeEvent('hashchange'))
       await settle()
     },
+    currentId: () =>
+      (attributes.routing ?? 'hash') === 'history'
+        ? idFromPathname(frameWindow.location.pathname, attributes.basePath ?? '')
+        : idFromHash(frameWindow.location.hash),
+    hrefFor: (path: string) => hrefInMode(attributes.routing ?? 'hash', path, attributes.basePath ?? ''),
     dispose: () => frame.remove(),
   }
 }
@@ -282,4 +432,22 @@ export const deepTextOf = (root: Element | ShadowRoot | null): string => {
     }
   }
   return text.replace(/\s+/g, ' ').trim()
+}
+
+/**
+ * Opens the try-it client the way a reader does, and returns the panel.
+ *
+ * Everything a reader fills in lives behind one button now, so a test that wants a field has to
+ * press it first - and pressing the real button rather than setting `open` means every test that
+ * needs the panel also proves the button opens it.
+ */
+export const openTryIt = async (harness: Harness): Promise<Element> => {
+  const panel = deepQuery(harness.element.shadowRoot!, 'openish-try-it')
+  if (!panel?.shadowRoot) {
+    throw new Error('No try-it panel on the page.')
+  }
+
+  panel.shadowRoot.querySelector<HTMLButtonElement>('button.test')!.click()
+  await harness.settle()
+  return panel
 }

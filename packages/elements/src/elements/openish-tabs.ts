@@ -33,6 +33,8 @@ export type OpenishTab = {
  *
  * Only the selected panel is rendered. That is what makes `content` a callback: the alternative -
  * rendering every panel and hiding all but one - would generate every schema example on the page.
+ *
+ * @fires openish-tab-change - The reader picked a tab. `detail` is its id.
  */
 @customElement('openish-tabs')
 export class OpenishTabs extends LitElement {
@@ -164,6 +166,13 @@ export class OpenishTabs extends LitElement {
     }
     this.#focusOnUpdate = focus
     this.chosenByUser = tab.id
+    /*
+     * Announced for the same reason `<openish-disclosure>` announces a toggle: a parent that renders
+     * different content for a different tab has to know which one, and asking it to read a private
+     * field would be worse than telling it. Bubbles, but not composed - this is a control changing,
+     * not something the host application has any business hearing.
+     */
+    this.dispatchEvent(new CustomEvent<string>('openish-tab-change', { detail: tab.id, bubbles: true }))
   }
 
   readonly #onKeydown = (event: KeyboardEvent): void => {
@@ -242,5 +251,9 @@ export class OpenishTabs extends LitElement {
 declare global {
   interface HTMLElementTagNameMap {
     'openish-tabs': OpenishTabs
+  }
+
+  interface HTMLElementEventMap {
+    'openish-tab-change': CustomEvent<string>
   }
 }

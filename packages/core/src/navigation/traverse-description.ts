@@ -1,5 +1,7 @@
-import type { NavNode, NavTextNode } from '../types.js'
-import { asProse, type SlugRegistry } from './ids.js'
+import { slugify } from '@scalar/helpers/string/slugify'
+
+import type { NavNode, NavTextNode, SlugOverrides } from '../types.js'
+import { asProse, joinId, type SlugRegistry } from './ids.js'
 
 /** ATX heading: one to six `#`, a space, then the text. Setext headings are not supported. */
 const HEADING = /^(#{1,6})\s+(.+?)\s*#*\s*$/
@@ -51,7 +53,12 @@ export const extractHeadings = (markdown: string): Heading[] => {
  * Headings nest by level, so an `##` following an `#` becomes its child. A level that skips (an
  * `###` directly after an `#`) attaches to the nearest shallower heading rather than being dropped.
  */
-export const traverseDescription = (description: string | undefined, registry: SlugRegistry): NavNode[] => {
+export const traverseDescription = (
+  description: string | undefined,
+  registry: SlugRegistry,
+  slugs: SlugOverrides = {},
+  prefix = '',
+): NavNode[] => {
   if (!description?.trim()) {
     return []
   }
@@ -68,7 +75,12 @@ export const traverseDescription = (description: string | undefined, registry: S
     const parent = stack[stack.length - 1]
     const node: NavTextNode = {
       type: 'text',
-      id: registry.claim(parent ? parent.id : 'overview', asProse(text), 'section'),
+      id: registry.claim(
+        parent ? parent.id : joinId(prefix, 'overview'),
+        asProse(text),
+        'section',
+        slugs.heading?.({ slug: slugify(text), title: text }),
+      ),
       title: text,
       level,
     }

@@ -121,29 +121,132 @@ export const schemaConstraints = (value: unknown): string[] => {
   }
 
   const constraints: string[] = []
+  const number = (key: string): number | undefined =>
+    typeof schema[key] === 'number' ? (schema[key] as number) : undefined
+
   const enumValues = schema['enum']
   if (Array.isArray(enumValues) && enumValues.length > 0) {
     constraints.push(`one of ${enumValues.map(asText).join(', ')}`)
   }
+  /* `const` is `enum` with one member, and a document that uses it means the value is fixed. */
+  if (schema['const'] !== undefined) {
+    constraints.push(`always ${asText(schema['const'])}`)
+  }
   if (schema['default'] !== undefined) {
     constraints.push(`default ${asText(schema['default'])}`)
   }
-  if (typeof schema['minimum'] === 'number') {
-    constraints.push(`min ${schema['minimum']}`)
+
+  /*
+   * Bounds, exclusive and inclusive together.
+   *
+   * In OpenAPI 3.1 - which is what the store has upgraded everything to - `exclusiveMinimum` is a
+   * number, not the 3.0 boolean modifier on `minimum`. The upgrade handles the conversion, so only
+   * the 3.1 spelling is read here, and the two never both apply to the same edge.
+   */
+  const minimum = number('minimum')
+  const exclusiveMinimum = number('exclusiveMinimum')
+  if (minimum !== undefined) {
+    constraints.push(`min ${minimum}`)
+  } else if (exclusiveMinimum !== undefined) {
+    constraints.push(`greater than ${exclusiveMinimum}`)
   }
-  if (typeof schema['maximum'] === 'number') {
-    constraints.push(`max ${schema['maximum']}`)
+
+  const maximum = number('maximum')
+  const exclusiveMaximum = number('exclusiveMaximum')
+  if (maximum !== undefined) {
+    constraints.push(`max ${maximum}`)
+  } else if (exclusiveMaximum !== undefined) {
+    constraints.push(`less than ${exclusiveMaximum}`)
   }
-  if (typeof schema['minLength'] === 'number') {
+
+  const multipleOf = number('multipleOf')
+  if (multipleOf !== undefined) {
+    constraints.push(`multiple of ${multipleOf}`)
+  }
+
+  if (number('minLength') !== undefined) {
     constraints.push(`min length ${schema['minLength']}`)
   }
-  if (typeof schema['maxLength'] === 'number') {
+  if (number('maxLength') !== undefined) {
     constraints.push(`max length ${schema['maxLength']}`)
   }
   if (typeof schema['pattern'] === 'string') {
     constraints.push(`pattern ${schema['pattern']}`)
   }
+
+  if (number('minItems') !== undefined) {
+    constraints.push(`min ${schema['minItems']} items`)
+  }
+  if (number('maxItems') !== undefined) {
+    constraints.push(`max ${schema['maxItems']} items`)
+  }
+  if (schema['uniqueItems'] === true) {
+    constraints.push('unique items')
+  }
+
+  if (number('minProperties') !== undefined) {
+    constraints.push(`min ${schema['minProperties']} properties`)
+  }
+  if (number('maxProperties') !== undefined) {
+    constraints.push(`max ${schema['maxProperties']} properties`)
+  }
+
   return constraints
+}
+
+/**
+ * What each member of an `enum` means, when the document bothered to say.
+ *
+ * Four spellings are in the wild and generators disagree about which to emit, so all four are read:
+ * `x-enumDescriptions` and `x-enum-descriptions` map a value to prose, while `x-enumNames` and
+ * `x-enum-varnames` give each value a symbolic name positionally. Returned keyed by the *rendered*
+ * value, which is how the enum is displayed and therefore how a caller can match one back up.
+ */
+export const enumDescriptions = (value: unknown): Map<string, string> => {
+  const schema = asSchema(value)
+  const described = new Map<string, string>()
+  if (!schema) {
+    return described
+  }
+
+  const values = Array.isArray(schema['enum']) ? schema['enum'] : []
+
+  const byValue = schema['x-enumDescriptions'] ?? schema['x-enum-descriptions']
+  if (isPlainObject(byValue)) {
+    for (const [key, text] of Object.entries(byValue)) {
+      if (typeof text === 'string') {
+        described.set(key, text)
+      }
+    }
+  }
+
+  const names = schema['x-enumNames'] ?? schema['x-enum-varnames']
+  if (Array.isArray(names)) {
+    names.forEach((name, index) => {
+      if (typeof name !== 'string' || index >= values.length) {
+        return
+      }
+      const key = asText(values[index])
+      /* A real description outranks a symbolic name; the name is a fallback, not an override. */
+      if (!described.has(key)) {
+        described.set(key, name)
+      }
+    })
+  }
+
+  return described
+}
+
+/**
+ * What the document calls the key of a free-form map, from `x-additionalPropertiesName`.
+ *
+ * The default row for `additionalProperties` reads `[key: string]`, which is honest and tells the
+ * reader nothing. A document that says the key is a currency code should get to say so.
+ */
+export const additionalPropertiesName = (value: unknown): string => {
+  const schema = asSchema(value)
+  const name = schema?.['x-additionalPropertiesName']
+  return typeof name === 'string' && name.trim() !== '' ? name.trim() : 'key'
 }
 
 export type SchemaProperty = {
@@ -206,6 +309,38 @@ export const schemaProperties = (value: unknown, depth = 0): SchemaProperty[] =>
   }
 
   return [...collected.values()]
+}
+
+/**
+ * Puts a property list in the order the host asked for.
+ *
+ * Separate from {@link schemaProperties} because that function recurses through `allOf` and sorting
+ * a branch before merging it would let a branch's order decide the whole list's. Sort once, at the
+ * top, on the merged result.
+ *
+ * The default is document order for both options - the order an author wrote is information, and a
+ * reference that silently alphabetises it has thrown that away.
+ */
+export const orderProperties = (
+  properties: readonly SchemaProperty[],
+  { by = 'document', requiredFirst = false }: { by?: 'document' | 'preserve' | 'alpha'; requiredFirst?: boolean } = {},
+): SchemaProperty[] => {
+  const ordered = [...properties]
+
+  if (by === 'alpha') {
+    ordered.sort((left, right) => left.name.localeCompare(right.name, undefined, { numeric: true, sensitivity: 'base' }))
+  }
+
+  if (requiredFirst) {
+    /*
+     * A stable partition rather than a comparator, so whichever order was just chosen survives
+     * inside each group. `Array.prototype.sort` is stable in every engine this runs on, but saying
+     * it with a filter is clearer than relying on the reader knowing that.
+     */
+    return [...ordered.filter((property) => property.required), ...ordered.filter((property) => !property.required)]
+  }
+
+  return ordered
 }
 
 /**
@@ -288,17 +423,27 @@ export const schemaVariants = (value: unknown): SchemaVariants | undefined => {
  * all. Asking first is what keeps a fifty-property model from creating fifty empty elements.
  */
 export const hasBody = (value: unknown): boolean => {
-  const { schema } = unwrapArray(value)
+  const { schema, isArray } = unwrapArray(value)
   const resolved = asSchema(schema)
   if (!resolved) {
     return false
   }
 
+  /*
+   * An array is two schemas, and both can have something to say.
+   *
+   * `minItems`/`maxItems`/`uniqueItems` belong to the wrapper while the properties belong to the
+   * items, so asking only the unwrapped schema misses "at least one, all distinct" on an array of
+   * plain strings - and because this function decides whether a nested `<openish-schema>` is created
+   * at all, missing it meant the constraint was never rendered anywhere.
+   */
   const description = resolved['description']
   return (
     (typeof description === 'string' && description.trim() !== '') ||
     resolved['not'] !== undefined ||
     schemaConstraints(schema).length > 0 ||
+    (isArray && schemaConstraints(value).length > 0) ||
+    enumDescriptions(schema).size > 0 ||
     schemaVariants(schema) !== undefined ||
     schemaProperties(schema).length > 0 ||
     isPlainObject(resolved['additionalProperties'])

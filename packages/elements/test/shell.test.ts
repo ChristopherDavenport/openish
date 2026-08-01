@@ -53,8 +53,8 @@ describe('openish-api-reference', () => {
   })
 
   it('renders sidebar entries as real anchors, not click handlers', async () => {
-    const { element } = await mountReference({ path: '/' })
-    const link = deepQuery<HTMLAnchorElement>(element.shadowRoot!, 'a[href="/tags/accounts"]')
+    const harness = await mountReference({ path: '/' })
+    const link = deepQuery<HTMLAnchorElement>(harness.element.shadowRoot!, `a[href="${harness.hrefFor('/tags/accounts')}"]`)
 
     expect(link).not.toBeNull()
     expect(link!.tagName).toBe('A')
@@ -101,7 +101,7 @@ describe('routing', () => {
     await harness.clickLink('/tags/accounts')
     await harness.clickLink('/tags/accounts/listAccounts')
 
-    expect(harness.window.location.pathname).toBe('/tags/accounts/listAccounts')
+    expect(harness.currentId()).toBe('tags/accounts/listAccounts')
     expect(textOf(shadowOf(harness.element.shadowRoot!, 'openish-operation').querySelector('h1'))).toBe('List accounts')
   })
 
@@ -115,7 +115,7 @@ describe('routing', () => {
     await new Promise((resolve) => setTimeout(resolve, 50))
     await harness.settle()
 
-    expect(harness.window.location.pathname).toBe('/tags/accounts')
+    expect(harness.currentId()).toBe('tags/accounts')
     expect(deepQuery(harness.element.shadowRoot!, 'openish-tag-section')).not.toBeNull()
 
     harness.window.history.forward()
@@ -141,13 +141,16 @@ describe('routing', () => {
     expect(deepTextOf(element.shadowRoot!)).toContain('tags/accounts/nope')
   })
 
-  it('mounts each section as a Routes controller under the one Router', async () => {
+  it('resolves a deep URL straight to its node, with nothing routing in between', async () => {
     const { element } = await mountReference({ path: '/tags/accounts/listAccounts' })
-    const section = deepQuery(element.shadowRoot!, 'openish-section')!
 
-    expect(section.getAttribute('section')).toBe('tags')
-    /* The section matched the tail the router handed it, and rendered the page itself. */
-    expect(deepQuery(section.shadowRoot!, 'openish-operation')).not.toBeNull()
+    /*
+     * There is no route table and no section element: the id in the URL is a key into `bySlug`, so
+     * an operation three segments deep costs the same lookup as the overview. This test is what is
+     * left of the one that used to assert a nested `Routes` controller had matched a tail.
+     */
+    expect(deepQuery(element.shadowRoot!, 'openish-operation')).not.toBeNull()
+    expect(textOf(shadowOf(element.shadowRoot!, 'openish-operation').querySelector('h1'))).toBe('List accounts')
   })
 
   it('renders a section index at the bare section URL, which has no tail to match', async () => {
@@ -156,12 +159,12 @@ describe('routing', () => {
     expect(textOf(shadowOf(element.shadowRoot!, 'openish-tag-section').querySelector('h1'))).toBe('Models')
   })
 
-  it('navigates within a section without leaving it', async () => {
+  it('navigates from a section index to a page inside it', async () => {
     const harness = await mountReference({ path: '/models' })
     await harness.clickLink('/models/Account')
 
     expect(textOf(shadowOf(harness.element.shadowRoot!, 'openish-model').querySelector('h1'))).toBe('Account')
-    expect(harness.window.location.pathname).toBe('/models/Account')
+    expect(harness.currentId()).toBe('models/Account')
   })
 
   it('renders the webhooks section', async () => {
@@ -170,17 +173,55 @@ describe('routing', () => {
     expect(textOf(shadowOf(element.shadowRoot!, 'openish-tag-section').querySelector('h1'))).toBe('Webhooks')
   })
 
-  it('honours a basePath', async () => {
-    const { element } = await mountReference({ path: '/docs/tags/accounts', basePath: '/docs' })
+  it('honours a basePath in history mode', async () => {
+    const { element } = await mountReference({ path: '/docs/tags/accounts', basePath: '/docs', routing: 'history' })
 
     expect(textOf(shadowOf(element.shadowRoot!, 'openish-tag-section').querySelector('h1'))).toBe('accounts')
     expect(deepQuery(element.shadowRoot!, 'a[href="/docs/tags/accounts/listAccounts"]')).not.toBeNull()
   })
 
   it('renders the overview at the bare basePath, with no trailing slash', async () => {
-    const { element } = await mountReference({ path: '/docs', basePath: '/docs' })
+    const { element } = await mountReference({ path: '/docs', basePath: '/docs', routing: 'history' })
 
     expect(deepQuery(element.shadowRoot!, 'openish-overview')).not.toBeNull()
+  })
+})
+
+describe('routing="hash"', () => {
+  it('is the default, and needs no server cooperation to deep-link', async () => {
+    const harness = await mountReference({ path: '/tags/accounts/listAccounts' })
+
+    /*
+     * The whole point of the default: the server was only ever asked for `/`. A static host with no
+     * rewrite rule serves that, and the page the reader bookmarked is in the part of the URL the
+     * server never sees.
+     */
+    expect(harness.window.location.pathname).toBe('/')
+    expect(harness.window.location.hash).toBe('#/tags/accounts/listAccounts')
+    expect(textOf(shadowOf(harness.element.shadowRoot!, 'openish-operation').querySelector('h1'))).toBe('List accounts')
+  })
+
+  it('renders fragment hrefs, which the browser navigates without interception', async () => {
+    const { element } = await mountReference({ path: '/' })
+
+    expect(deepQuery(element.shadowRoot!, 'a[href="#/tags/accounts"]')).not.toBeNull()
+  })
+
+  it('follows the fragment when the reader edits it directly', async () => {
+    const harness = await mountReference({ path: '/' })
+    expect(deepQuery(harness.element.shadowRoot!, 'openish-overview')).not.toBeNull()
+
+    harness.window.location.hash = '#/models/Account'
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    await harness.settle()
+
+    expect(textOf(shadowOf(harness.element.shadowRoot!, 'openish-model').querySelector('h1'))).toBe('Account')
+  })
+
+  it('ignores basePath, which is a history-mode concern', async () => {
+    const harness = await mountReference({ path: '/tags/accounts', basePath: '/docs' })
+
+    expect(deepQuery(harness.element.shadowRoot!, 'a[href="#/tags/accounts/listAccounts"]')).not.toBeNull()
   })
 })
 

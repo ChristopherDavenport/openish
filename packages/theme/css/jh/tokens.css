@@ -1,0 +1,137 @@
+/*
+ * The Jack Henry binding for the openish style-hook tier.
+ *
+ * `../tokens.css` gives every `--openish-*` hook a value of its own, so openish renders with no
+ * design system at all. This file re-points the same hooks at Jack Henry alias tokens, for a host
+ * that has JH on the page and wants the reference to match the rest of it. It is a peer of the
+ * neutral file rather than a layer on top of it: importing this one alone is enough, and
+ * `@openish/theme/jh.css` is the entry that does.
+ *
+ * Per the JH token tiers, bindings point at ALIAS tokens (`--jh-color-content-primary-enabled`),
+ * never at global tokens (`--jh-color-gray-900`). The one documented exception is the HTTP method
+ * palette at the bottom of this file - see the note there.
+ *
+ * These bindings are scheme-agnostic. `var(--jh-*)` inside a custom property resolves against the
+ * declaring element - `:root`, i.e. `<html>` - so adding `.jh-theme-dark` to `<html>` changes what
+ * every hook below resolves to without a second copy of this file.
+ */
+
+:root {
+  /* ---- Surfaces ------------------------------------------------------- */
+  --openish-color-page: var(--jh-color-container-page);
+  --openish-color-surface: var(--jh-color-container-primary-enabled);
+  --openish-color-surface-raised: var(--jh-color-container-secondary-enabled);
+  --openish-color-surface-hover: var(--jh-color-container-primary-hover);
+  --openish-color-surface-active: var(--jh-color-container-primary-active);
+  --openish-color-surface-selected: var(--jh-color-container-primary-selected);
+  --openish-color-surface-muted: var(--jh-color-container-neutral-enabled);
+  --openish-color-overlay: var(--jh-color-overlay);
+
+  /*
+   * Code panels read against `--openish-color-surface` (the card), not against the page. In the
+   * light scheme this resolves to the same value as `--openish-color-page`, which is fine - a code
+   * block sits on a card, never directly on the page background.
+   */
+  --openish-color-code-surface: var(--jh-color-container-neutral-enabled);
+  --openish-color-code-content: var(--jh-color-content-primary-enabled);
+
+  /* ---- Content -------------------------------------------------------- */
+  --openish-color-text: var(--jh-color-content-primary-enabled);
+  --openish-color-text-muted: var(--jh-color-content-secondary-enabled);
+  --openish-color-text-on-accent: var(--jh-color-content-on-brand-enabled);
+  --openish-color-link: var(--jh-color-content-brand-enabled);
+  --openish-color-link-hover: var(--jh-color-content-brand-hover);
+  --openish-color-accent: var(--jh-color-content-brand-enabled);
+
+  /* ---- Status --------------------------------------------------------- */
+  --openish-color-danger: var(--jh-color-content-negative-enabled);
+  --openish-color-danger-surface: var(--jh-color-container-negative-enabled);
+  --openish-color-success: var(--jh-color-content-positive-enabled);
+  --openish-color-success-surface: var(--jh-color-container-positive-enabled);
+  --openish-color-info: var(--jh-color-content-brand-enabled);
+  --openish-color-info-surface: var(--jh-color-container-brand-enabled);
+
+  /* ---- Lines and focus ------------------------------------------------ */
+  --openish-color-border: var(--jh-color-divider-secondary);
+  --openish-color-border-strong: var(--jh-color-divider-primary);
+  --openish-focus-ring: var(--jh-shadow-focus);
+  /* For a control that fills its cell, where an outset ring would be clipped by the cell's edge. */
+  --openish-focus-ring-inset: inset 0 0 0 2px var(--jh-color-interactive-focus-outer);
+  --openish-color-focus: var(--jh-color-interactive-focus-outer);
+  --openish-color-highlight: var(--jh-color-interactive-highlight);
+
+  /* ---- Space ---------------------------------------------------------- */
+  --openish-space-3xs: var(--jh-space-50); /* 2px  */
+  --openish-space-2xs: var(--jh-space-100); /* 4px  */
+  --openish-space-xs: var(--jh-space-200); /* 8px  */
+  --openish-space-sm: var(--jh-space-300); /* 12px */
+  --openish-space-md: var(--jh-space-400); /* 16px */
+  --openish-space-lg: var(--jh-space-600); /* 24px */
+  --openish-space-xl: var(--jh-space-800); /* 32px */
+  --openish-space-2xl: var(--jh-space-1200); /* 48px */
+
+  /* ---- Radius and elevation ------------------------------------------- */
+  --openish-radius-sm: var(--jh-border-radius-50);
+  --openish-radius-md: var(--jh-border-radius-100);
+  --openish-radius-lg: var(--jh-border-radius-200);
+  --openish-radius-pill: var(--jh-border-radius-pill);
+  --openish-shadow-sm: var(--jh-shadow-100);
+  --openish-shadow-md: var(--jh-shadow-200);
+
+  /* ---- Type ----------------------------------------------------------- */
+  --openish-font-body: var(--jh-font-body-regular-1);
+  --openish-font-body-bold: var(--jh-font-body-bold-1);
+  --openish-font-small: var(--jh-font-helper-regular);
+  --openish-font-micro: var(--jh-font-micro-regular);
+  --openish-font-code: var(--jh-font-code-regular-1);
+  --openish-font-code-small: var(--jh-font-code-regular-2);
+  --openish-font-heading-1: var(--jh-font-heading-bold-4);
+  --openish-font-heading-2: var(--jh-font-heading-bold-3);
+  --openish-font-heading-3: var(--jh-font-heading-bold-2);
+  --openish-font-heading-4: var(--jh-font-heading-bold-1);
+  --openish-font-family-mono: var(--jh-font-family-mono);
+  --openish-font-family-sans: var(--jh-font-family-primary);
+
+  /* ---- Layout --------------------------------------------------------- */
+  --openish-sidebar-width: 18rem;
+  /* How tall a code block grows before it scrolls on its own. */
+  --openish-code-max-height: 24rem;
+  --openish-content-max-width: 48rem;
+  --openish-z-overlay: var(--jh-z-index-positive-800);
+  --openish-z-dialog: var(--jh-z-index-positive-900);
+
+  /*
+   * ---- HTTP methods ----------------------------------------------------
+   *
+   * The documented exception to the alias-only rule. JH's alias tier is semantic in a product
+   * sense (brand / positive / negative / neutral) and has no entry for "this is a PUT". Rather
+   * than misuse `positive` to mean POST, openish declares its own alias here and binds it to the
+   * JH global palette. This is the only place globals are referenced, and it is deliberate.
+   */
+  --openish-method-get: var(--jh-color-azure-600);
+  --openish-method-post: var(--jh-color-green-600);
+  --openish-method-put: var(--jh-color-orange-600);
+  --openish-method-patch: var(--jh-color-yellow-600);
+  --openish-method-delete: var(--jh-color-red-600);
+  --openish-method-options: var(--jh-color-violet-600);
+  --openish-method-head: var(--jh-color-cyan-600);
+  --openish-method-trace: var(--jh-color-magenta-600);
+  --openish-method-on-color: var(--jh-color-content-on-brand-enabled);
+}
+
+/*
+ * The JH alias tokens re-point themselves per scheme, but the global palette does not - `azure-600`
+ * is the same blue in both themes. The method colours bind to globals (see the note above), so they
+ * are the one group that has to be restated for dark, where the 600 shades sit too close to the
+ * background to read. The lighter shades restore contrast.
+ */
+.jh-theme-dark {
+  --openish-method-get: var(--jh-color-azure-400);
+  --openish-method-post: var(--jh-color-green-400);
+  --openish-method-put: var(--jh-color-orange-400);
+  --openish-method-patch: var(--jh-color-yellow-400);
+  --openish-method-delete: var(--jh-color-red-400);
+  --openish-method-options: var(--jh-color-violet-400);
+  --openish-method-head: var(--jh-color-cyan-400);
+  --openish-method-trace: var(--jh-color-magenta-400);
+}

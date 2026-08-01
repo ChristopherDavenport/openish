@@ -3,11 +3,11 @@ import type {
   Document as OpenApiDocument,
   OperationObject,
   PathItemObject,
-  SecuritySchemeObject,
   ServerObject,
 } from '@scalar/openapi-types/3.1'
 
 import { collectParameters, type ParameterEntry } from '../operation/parameters.js'
+import { securityRequirements } from '../operation/security.js'
 import { getResolvedRef } from '../ref.js'
 import { schemaExample } from '../schema/schema-example.js'
 import type { HttpMethod } from '../types.js'
@@ -24,6 +24,30 @@ export type OperationToHarOptions = {
   serverVariables?: Record<string, string>
   /** Media type to send. Defaults to the first one the request body declares. */
   contentType?: string
+  /**
+   * What the reader typed, keyed `"{in}:{name}"`.
+   *
+   * The same key {@link collectParameters} merges on, so a table, a form, and this builder identify
+   * a parameter the same way with nothing to keep in step. A value here replaces the one derived
+   * from the document, and an empty string means "send it empty" rather than "fall back".
+   */
+  parameterValues?: Record<string, string>
+  /** A body the reader edited, replacing the one generated from the schema. */
+  body?: { mediaType: string; text: string }
+  /**
+   * Credentials by security scheme name.
+   *
+   * A scheme with no value here keeps its {@link AUTH_PLACEHOLDER}, so a sample still shows where
+   * the credential goes before anyone has entered one.
+   */
+  credentials?: Record<string, string>
+  /**
+   * Which alternative from `security` to apply, by index. Defaults to the first.
+   *
+   * OpenAPI lists alternatives - "OAuth or an API key" - and only the reader knows which one they
+   * hold.
+   */
+  securityIndex?: number
 }
 
 /** Placeholders for auth, so a generated snippet shows where the credential goes. */
@@ -106,41 +130,58 @@ const shouldInclude = (parameter: ParameterEntry): boolean => {
   return isPlainObject(schema) && (schema['default'] !== undefined || schema['example'] !== undefined)
 }
 
-/** Applies the document's first security requirement as a placeholder header or query parameter. */
+/**
+ * Places the credential for one security alternative, or a placeholder where there is none yet.
+ *
+ * The scheme decides *where* it goes - a header, a query parameter, a `Bearer` prefix - and the
+ * reader decides *what* goes there. Both halves matter: a sample with the value in the wrong place
+ * is not a sample, and a request with a placeholder in the right place is not a request.
+ */
 const applySecurity = (
   document: OpenApiDocument,
   operation: OperationObject,
   headers: NameValue[],
   queryString: NameValue[],
+  options: OperationToHarOptions,
 ): void => {
-  const requirements = operation.security ?? document.security
-  const requirement = requirements?.[0]
-  if (!requirement) {
+  const requirements = securityRequirements(document, operation)
+  const requirement = requirements[options.securityIndex ?? 0] ?? requirements[0]
+  if (!requirement || requirement.anonymous) {
     return
   }
 
-  for (const name of Object.keys(requirement)) {
-    const scheme = getResolvedRef(document.components?.securitySchemes?.[name]) as
-      | SecuritySchemeObject
-      | undefined
+  for (const entry of requirement.entries) {
+    const scheme = entry.scheme
     if (!scheme) {
+      /* Required but never declared. Nothing to place, and nowhere to place it. */
       continue
     }
 
+    const supplied = options.credentials?.[entry.name]
+
     if (scheme.type === 'http') {
-      const value = scheme.scheme?.toLowerCase() === 'basic' ? AUTH_PLACEHOLDER.basic : AUTH_PLACEHOLDER.bearer
+      const basic = scheme.scheme?.toLowerCase() === 'basic'
+      const fallback = basic ? AUTH_PLACEHOLDER.basic : AUTH_PLACEHOLDER.bearer
+      const prefix = basic ? 'Basic ' : 'Bearer '
+      /* A reader who pasted the whole header value meant it; do not prefix it twice. */
+      const value = supplied ? (hasScheme(supplied) ? supplied : `${prefix}${supplied}`) : fallback
       headers.push({ name: 'Authorization', value })
     } else if (scheme.type === 'apiKey' && scheme.name) {
+      const value = supplied ?? AUTH_PLACEHOLDER.apiKey
       if (scheme.in === 'query') {
-        queryString.push({ name: scheme.name, value: AUTH_PLACEHOLDER.apiKey })
+        queryString.push({ name: scheme.name, value })
       } else if (scheme.in === 'header') {
-        headers.push({ name: scheme.name, value: AUTH_PLACEHOLDER.apiKey })
+        headers.push({ name: scheme.name, value })
       }
     } else if (scheme.type === 'oauth2' || scheme.type === 'openIdConnect') {
-      headers.push({ name: 'Authorization', value: AUTH_PLACEHOLDER.bearer })
+      const value = supplied ? (hasScheme(supplied) ? supplied : `Bearer ${supplied}`) : AUTH_PLACEHOLDER.bearer
+      headers.push({ name: 'Authorization', value })
     }
   }
 }
+
+/** Whether a pasted credential already carries its own scheme prefix, e.g. `Bearer eyJ…`. */
+const hasScheme = (value: string): boolean => /^(bearer|basic|dpop)\s/i.test(value)
 
 export type OperationToHarInput = {
   document: OpenApiDocument
@@ -162,23 +203,29 @@ export const operationToHar = (input: OperationToHarInput, options: OperationToH
   const { document, operation, pathItem, path, method } = input
 
   const parameters = collectParameters(pathItem, operation)
+  /* What the reader typed wins over what the document implies, including an empty string. */
+  const supplied = (parameter: ParameterEntry): string | undefined =>
+    options.parameterValues?.[`${parameter.in}:${parameter.name}`]
   const headers: NameValue[] = []
   const queryString: NameValue[] = []
   const cookies: NameValue[] = []
   let resolvedPath = path
 
   for (const parameter of parameters) {
+    const value = supplied(parameter) ?? parameterValue(parameter)
+
     if (parameter.in === 'path') {
       /* Path parameters are always required in practice; substitute whatever we can derive. */
-      resolvedPath = resolvedPath.replace(`{${parameter.name}}`, encodeURIComponent(parameterValue(parameter)))
+      resolvedPath = resolvedPath.replace(`{${parameter.name}}`, encodeURIComponent(value))
       continue
     }
 
-    if (!shouldInclude(parameter)) {
+    /* A value the reader typed is included whatever the document would have decided. */
+    if (supplied(parameter) === undefined && !shouldInclude(parameter)) {
       continue
     }
 
-    const entry = { name: parameter.name, value: parameterValue(parameter) }
+    const entry = { name: parameter.name, value }
     if (parameter.in === 'query') {
       queryString.push(entry)
     } else if (parameter.in === 'header') {
@@ -188,7 +235,7 @@ export const operationToHar = (input: OperationToHarInput, options: OperationToH
     }
   }
 
-  applySecurity(document, operation, headers, queryString)
+  applySecurity(document, operation, headers, queryString, options)
 
   const serverUrl =
     options.server ??
@@ -203,6 +250,13 @@ export const operationToHar = (input: OperationToHarInput, options: OperationToH
     cookies,
     headersSize: -1,
     bodySize: -1,
+  }
+
+  /* An edited body replaces the generated one entirely - it is already the text to send. */
+  if (options.body) {
+    headers.push({ name: 'Content-Type', value: options.body.mediaType })
+    request.postData = { mimeType: options.body.mediaType, text: options.body.text }
+    return request
   }
 
   const requestBody: unknown = getResolvedRef(operation.requestBody)

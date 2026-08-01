@@ -55,9 +55,21 @@ export const collectOperations = (paths: PathsLike, section: 'paths' | 'webhooks
   return entries
 }
 
-/** What the sidebar shows for an operation, in the order a reader would find most useful. */
-export const operationTitle = (entry: OperationEntry): string =>
-  entry.operation.summary?.trim() || entry.operation.operationId?.trim() || `${entry.method.toUpperCase()} ${entry.path}`
+/**
+ * What the sidebar shows for an operation, in the order a reader would find most useful.
+ *
+ * `path` is not simply "skip the summary": it means the path *is* the title, which is what a
+ * document with generated summaries wants. The fallback chain is unchanged for `summary`, because a
+ * missing summary should still produce something readable rather than an empty row.
+ */
+export const operationTitle = (entry: OperationEntry, source: 'summary' | 'path' = 'summary'): string => {
+  if (source === 'path') {
+    return `${entry.method.toUpperCase()} ${entry.path}`
+  }
+  return (
+    entry.operation.summary?.trim() || entry.operation.operationId?.trim() || `${entry.method.toUpperCase()} ${entry.path}`
+  )
+}
 
 /**
  * What an operation's slug is built from.

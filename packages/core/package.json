@@ -29,7 +29,8 @@
     "@scalar/openapi-parser": "^0.28.11",
     "@scalar/openapi-types": "^0.9.4",
     "@scalar/snippetz": "^0.9.24",
-    "@scalar/types": "^0.17.0"
+    "@scalar/types": "^0.17.0",
+    "yaml": "^2.8.3"
   },
   "devDependencies": {
     "@scalar/galaxy": "^0.6.12",

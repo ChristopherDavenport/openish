@@ -74,12 +74,11 @@ export class OpenishTagSection extends LitElement {
   node!: NavTagNode | NavGroupNode
 
   #renderChild(child: NavNode): TemplateResult {
-    const basePath = this.ui?.basePath ?? ''
     const deprecated = child.type === 'operation' && child.deprecated === true
 
     return html`
       <li>
-        <a href=${hrefFor(child, basePath)}>
+        <a href=${hrefFor(child, this.ui)}>
           ${child.type === 'operation' || child.type === 'webhook'
             ? html`<span class="method" data-method=${child.method}>${child.method}</span>`
             : nothing}

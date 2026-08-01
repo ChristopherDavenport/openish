@@ -80,7 +80,7 @@ describe('the stacked layout', () => {
     menu.click()
     await harness.settle()
 
-    deepQuery<HTMLAnchorElement>(harness.element.shadowRoot!, 'a[href="/tags/accounts"]')!.focus()
+    deepQuery<HTMLAnchorElement>(harness.element.shadowRoot!, 'a[href="#/tags/accounts"]')!.focus()
     await userEvent.keyboard('{Escape}')
     await harness.settle()
 

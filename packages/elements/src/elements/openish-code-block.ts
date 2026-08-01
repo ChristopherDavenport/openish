@@ -1,9 +1,8 @@
-import { syntaxHighlight } from '@scalar/code-highlight/code'
-import { standardLanguages } from '@scalar/code-highlight/languages'
 import { LitElement, html, css, nothing, type TemplateResult } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
 import { unsafeHTML } from 'lit/directives/unsafe-html.js'
 
+import { codeNow, loadCode } from '../render/highlight.js'
 import { baseStyles, highlightStyles, visuallyHidden } from '../styles/shared.js'
 
 /** How long the copy button stays confirmed before going back to its label. */
@@ -71,12 +70,18 @@ export class OpenishCodeBlock extends LitElement {
         background: var(--openish-color-surface-hover);
       }
 
+      /*
+       * Capped, because a generated request body can run to a thousand lines and a reader should
+       * not have to scroll past all of it to reach the button that sends it. The cap is a token, so
+       * a host that would rather show everything can say so.
+       */
       pre {
         margin: 0;
         padding: var(--openish-space-md);
+        max-height: var(--openish-code-max-height, 24rem);
         color: var(--openish-color-code-content);
         font: var(--openish-font-code);
-        overflow-x: auto;
+        overflow: auto;
       }
 
       code {
@@ -99,6 +104,10 @@ export class OpenishCodeBlock extends LitElement {
 
   @state()
   private copied = false
+
+  /** Bumped once the highlighter arrives, purely to ask for another render. See `#highlighted`. */
+  @state()
+  private loaded = 0
 
   #timer: ReturnType<typeof setTimeout> | undefined
 
@@ -125,9 +134,29 @@ export class OpenishCodeBlock extends LitElement {
     }
   }
 
+  /**
+   * The highlighted markup, or `''` to fall back to plain code.
+   *
+   * The highlighter is loaded on demand, and until it arrives this returns `''` - which the render
+   * below already handles, because an unknown language has always fallen back to a plain
+   * `<pre><code>`. That makes the loading state and the failure state the same state, and it is the
+   * right one either way: the code is readable immediately and gains colour when colour arrives,
+   * with no layout shift, because both forms are the same block of text.
+   */
   #highlighted(): string {
+    const highlighter = codeNow()
+    if (!highlighter) {
+      void loadCode().then(() => {
+        this.loaded += 1
+      })
+      return ''
+    }
+
     try {
-      return syntaxHighlight(this.code, { lang: this.language, languages: standardLanguages })
+      return highlighter.syntaxHighlight(this.code, {
+        lang: this.language,
+        languages: highlighter.standardLanguages,
+      })
     } catch {
       /* An unknown language is not a reason to show nothing; show the code. */
       return ''
@@ -142,12 +171,12 @@ export class OpenishCodeBlock extends LitElement {
     const highlighted = this.#highlighted()
 
     return html`
-      <div class="frame">
-        <div class="head">
+      <div class="frame" part="code">
+        <div class="head" part="code-head">
           <span class="label">${this.label || this.language}</span>
           ${this.#canCopy
             ? html`
-                <button type="button" @click=${this.#copy}>
+                <button type="button" part="copy" @click=${this.#copy}>
                   ${this.copied ? 'Copied' : 'Copy'}
                   <span class="visually-hidden">${this.label || this.language} sample</span>
                 </button>

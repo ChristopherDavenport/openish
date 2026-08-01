@@ -17,21 +17,30 @@ import { traverseWebhooks } from './traverse-webhooks.js'
  *
  * Section order is the reading order of the rendered page: prose, then the API surface, then
  * webhooks, then the type dictionary.
+ *
+ * `prefix` is the slug of the source this document is, and every id begins with it. It is a
+ * parameter rather than a condition on how many documents a reference has, because a traversal that
+ * namespaced itself only sometimes would be two traversals to keep in step. Whether the segment
+ * reaches the URL is decided at the URL boundary in `@openish/elements`, not here.
  */
-export const traverseDocument = (document: OpenApiDocument, config: ResolvedOpenishConfig): NavNode[] => {
+export const traverseDocument = (
+  document: OpenApiDocument,
+  config: ResolvedOpenishConfig,
+  prefix = '',
+): NavNode[] => {
   const registry = new SlugRegistry()
   const nodes: NavNode[] = []
 
-  nodes.push(...traverseDescription(document.info?.description, registry))
-  nodes.push(...traverseTags(document, config, registry))
+  nodes.push(...traverseDescription(document.info?.description, registry, config.slugs, prefix))
+  nodes.push(...traverseTags(document, config, registry, prefix))
 
-  const webhooks = traverseWebhooks(document, registry)
+  const webhooks = traverseWebhooks(document, registry, config.slugs, prefix)
   if (webhooks) {
     nodes.push(webhooks)
   }
 
   if (!config.hideModels) {
-    const models = traverseSchemas(document, config.modelsSectionLabel, registry)
+    const models = traverseSchemas(document, config.modelsSectionLabel, registry, config.slugs, prefix)
     if (models) {
       nodes.push(models)
     }

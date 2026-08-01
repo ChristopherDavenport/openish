@@ -7,6 +7,7 @@ import {
   deepTextOf,
   disposeAll,
   mountReference,
+  openTryIt,
   schemaRows,
   shadowOf,
   textOf,
@@ -187,7 +188,7 @@ describe('request body', () => {
     expect(tabsIn(body).map((tab) => textOf(tab))).toEqual(['application/json', 'application/xml'])
   })
 
-  it('shows the referenced model by name, with its property tree and an example', async () => {
+  it('shows the referenced model by name, with its property tree', async () => {
     const { element } = await operationOf('replaceAccount')
     const body = shadowOf(element.shadowRoot!, 'openish-request-body')
 
@@ -196,11 +197,26 @@ describe('request body', () => {
       { name: 'id', type: 'string', required: 'required' },
       { name: 'balance', type: 'integer', required: 'optional' },
     ])
-    expect(textOf(deepQuery(body, 'pre'))).toContain('"balance"')
   })
 
-  it('highlights the generated example, like any other block of code', async () => {
-    const { element } = await operationOf('replaceAccount')
+  /*
+   * The generated body is shown once, in whichever place the reader can act on.
+   *
+   * With the panel on it belongs in the editor, where it can be changed and sent; printing it again
+   * below only makes the reader scroll past the same thousand lines twice to reach the responses.
+   */
+  it('leaves the example to the editor the try-it panel provides', async () => {
+    const harness = await operationOf('replaceAccount')
+    await openTryIt(harness)
+    const body = shadowOf(harness.element.shadowRoot!, 'openish-request-body')
+    const editor = deepQuery<HTMLTextAreaElement>(harness.element.shadowRoot!, 'textarea')!
+
+    expect(deepQuery(body, 'openish-code-block')).toBeNull()
+    expect(editor.value).toContain('"balance"')
+  })
+
+  it('highlights the generated example when there is no editor to hold it', async () => {
+    const { element } = await operationOf('replaceAccount', { hideTryIt: true })
     const body = shadowOf(element.shadowRoot!, 'openish-request-body')
     const example = deepQuery(body, 'openish-code-block')!
 

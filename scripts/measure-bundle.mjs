@@ -51,16 +51,67 @@ const bundleOf = async (entry, workingDirectory) => {
   return result.outputFiles[0].text
 }
 
+/**
+ * The same bundle, split at its dynamic imports.
+ *
+ * Without splitting, esbuild inlines an `import()` into the single output file, so the total is all
+ * you can see - and the total is not what a reader waits for. openish defers three things on
+ * purpose (the markdown pipeline, the syntax highlighter, and the snippet generator), so the number
+ * that matters is the entry chunk: what has to arrive before the page exists.
+ */
+const splitBundleOf = async (entry, workingDirectory) => {
+  const result = await build({
+    stdin: { contents: entry, resolveDir: workingDirectory, loader: 'ts', sourcefile: 'entry.ts' },
+    bundle: true,
+    minify: true,
+    splitting: true,
+    format: 'esm',
+    platform: 'browser',
+    outdir: 'out',
+    write: false,
+    logLevel: 'silent',
+    loader: { '.css': 'text', '.woff2': 'dataurl', '.yaml': 'text' },
+  })
+
+  let entryCode = ''
+  let lazyBytes = { raw: 0, gzip: 0, brotli: 0 }
+  for (const file of result.outputFiles) {
+    if (file.path.endsWith('stdin.js') || file.path.endsWith('entry.js')) {
+      entryCode = file.text
+    } else {
+      const measured = sizes(file.text)
+      lazyBytes = {
+        raw: lazyBytes.raw + measured.raw,
+        gzip: lazyBytes.gzip + measured.gzip,
+        brotli: lazyBytes.brotli + measured.brotli,
+      }
+    }
+  }
+
+  return { entryCode, lazyBytes }
+}
+
 console.log('entry'.padEnd(34), 'raw'.padStart(9), '     gzip', '        brotli')
 console.log('-'.repeat(78))
 
 report('@openish/core', await bundleOf(`export * from '@openish/core'`, join(ROOT, 'packages/core/src')))
+report('@openish/client', await bundleOf(`export * from '@openish/client'`, join(ROOT, 'packages/client/src')))
 report(
   '@openish/elements (everything)',
   await bundleOf(`import '@openish/elements'`, join(ROOT, 'packages/elements/src')),
 )
 
-/* The lazy half, so the split is visible rather than asserted. */
+/*
+ * The split, so what a reader actually waits for is visible rather than asserted. The entry chunk is
+ * the shell, the sidebar, the schema renderer and the parser; the deferred chunks are the markdown
+ * pipeline, the syntax highlighter, and the snippet generator.
+ */
+const split = await splitBundleOf(`import '@openish/elements'`, join(ROOT, 'packages/elements/src'))
+report('  entry chunk (before first paint)', split.entryCode)
+console.log(
+  `${'  deferred chunks'.padEnd(34)} ${kb(split.lazyBytes.raw).padStart(9)}  ${kb(split.lazyBytes.gzip).padStart(9)} gzip  ${kb(split.lazyBytes.brotli).padStart(9)} br`,
+)
+
 report(
   '  of which @scalar/snippetz',
   await bundleOf(`export { snippetz } from '@scalar/snippetz'`, join(ROOT, 'packages/core/src')),

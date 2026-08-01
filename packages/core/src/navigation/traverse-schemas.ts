@@ -1,8 +1,10 @@
 import { escapeJsonPointer } from '@scalar/json-magic/helpers/escape-json-pointer'
 import type { Document as OpenApiDocument } from '@scalar/openapi-types/3.1'
 
-import type { NavGroupNode, NavModelNode } from '../types.js'
-import { asIdentifier, asProse, type SlugRegistry } from './ids.js'
+import { getResolvedRef } from '../ref.js'
+import type { NavGroupNode, NavModelNode, SlugOverrides } from '../types.js'
+import { isHidden } from './hidden.js'
+import { asIdentifier, asProse, joinId, type SlugRegistry } from './ids.js'
 
 /**
  * Builds the Models section from `components.schemas`.
@@ -15,20 +17,28 @@ export const traverseSchemas = (
   document: OpenApiDocument,
   label: string,
   registry: SlugRegistry,
+  slugs: SlugOverrides = {},
+  prefix = '',
 ): NavGroupNode | undefined => {
   const schemas = document.components?.schemas
   if (!schemas) {
     return undefined
   }
 
-  const names = Object.keys(schemas)
+  /*
+   * A schema the document marks internal is dropped from the Models section, but the schema itself
+   * is untouched: an operation whose request body refers to it still renders its property tree, and
+   * the reader still gets the shape they need to call the operation. `x-internal` on a schema means
+   * "this is not a type worth listing in the dictionary", not "pretend it does not exist".
+   */
+  const names = Object.keys(schemas).filter((name) => !isHidden(getResolvedRef(schemas[name])))
   if (names.length === 0) {
     return undefined
   }
 
   const children: NavModelNode[] = names.map((name) => ({
     type: 'model',
-    id: registry.claim('models', asIdentifier(name), 'model'),
+    id: registry.claim(joinId(prefix, 'models'), asIdentifier(name), 'model', slugs.model?.({ name })),
     title: name,
     name,
     pointer: `#/components/schemas/${escapeJsonPointer(name)}`,
@@ -36,7 +46,7 @@ export const traverseSchemas = (
 
   return {
     type: 'group',
-    id: registry.claim('', asProse('models'), 'models'),
+    id: registry.claim(prefix, asProse('models'), 'models'),
     title: label,
     children,
   }

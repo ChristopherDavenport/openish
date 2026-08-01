@@ -1,10 +1,45 @@
 import type { NavNode } from '@openish/core'
 
 /**
- * Navigation ids are already URL paths - `tags/accounts/listAccounts`, `models/PaymentIntent` - so
- * turning one into an href is prefixing, and turning a URL back into a node is a single map lookup.
- * That is the whole reason ids are minted the way they are in `@openish/core`.
+ * Navigation ids are already URL paths - `consumer/tags/accounts/listAccounts`,
+ * `consumer/models/PaymentIntent` - so turning one into an href is prefixing, and turning a URL back
+ * into a node is a single map lookup. That is the whole reason ids are minted the way they are in
+ * `@openish/core`, and it is why this project needs no route table: `store.bySlug` *is* the router.
+ *
+ * Every id begins with the slug of the document it belongs to, always, whether the reference shows
+ * one document or six. Whether that segment *appears* in the URL is decided here and only here, by
+ * {@link stripFirstSegment} on the way out and {@link applySlugPrefix} on the way in. Keeping the
+ * decision at this boundary is what lets a reference configured with `url`/`spec` have exactly the
+ * URLs it always had while the traversal below has only one shape to produce.
  */
+
+/**
+ * How the reference reads and writes the URL.
+ *
+ * - `hash` puts the node id in the fragment. Nothing has to be installed for it to work: a fragment
+ *   link is navigation the browser already performs, and `hashchange` is the browser telling us it
+ *   did. It survives a static host with no rewrite rule, a `file://` page, and a sub-path the
+ *   reference was never told about, which is why it is the default.
+ * - `history` puts the node id in the path. Real URLs, at the cost of a server that has to serve the
+ *   application for every one of them.
+ * - `none` hands navigation to the host, which sets `selected` and hears `openish-navigate`.
+ */
+export type RoutingMode = 'hash' | 'history' | 'none'
+
+/** What {@link hrefFor} needs to know about the reference it is linking inside. */
+export type RoutingState = {
+  readonly routing: RoutingMode
+  readonly basePath: string
+  /**
+   * The document slug the URL leaves out, or `''` when the URL carries it.
+   *
+   * Set to the active source's slug when the host configured a single `url`/`spec`, because that
+   * reference has one document and naming it in every URL would be noise the reader never chose.
+   * `''` whenever `sources` is used - there the slug is the first thing a URL has to say, since it
+   * is what decides which document the rest of the id is even about.
+   */
+  readonly slugPrefix?: string | undefined
+}
 
 /** Strips a trailing slash and guarantees a leading one, or returns `''` for the root mount. */
 export const normalizeBasePath = (basePath: string): string => {
@@ -16,23 +51,75 @@ export const normalizeBasePath = (basePath: string): string => {
 }
 
 /**
- * The href for a node.
+ * Drops the leading document slug from an id.
  *
- * Headings from `info.description` are not their own page - they are anchors on the overview - so
- * they get a fragment rather than a path.
+ * Used on the way out, when the URL does not name the document. A trailing slash survives so that
+ * `api-1/` - the id of a source's own overview - becomes `''` rather than disappearing into a
+ * segment that was never there.
  */
-export const hrefFor = (node: NavNode, basePath: string): string => {
-  if (node.type === 'text') {
-    return `${basePath}/#${node.id}`
-  }
-  return `${basePath}/${node.id}`
+export const stripFirstSegment = (id: string): string => {
+  const hasTrailingSlash = id.endsWith('/')
+  const result = id.split('/').filter(Boolean).slice(1).join('/')
+  return hasTrailingSlash && result ? `${result}/` : result
 }
 
-/** The node id a pathname refers to, or `''` for the overview. */
-export const idFromPathname = (pathname: string, basePath: string): string => {
-  const withoutBase = basePath && pathname.startsWith(basePath) ? pathname.slice(basePath.length) : pathname
-  return withoutBase.replace(/^\/+/, '').replace(/\/+$/, '')
+/** Puts it back, on the way in. The inverse of {@link stripFirstSegment}. */
+export const applySlugPrefix = (id: string, slugPrefix: string): string =>
+  slugPrefix ? `${slugPrefix}${id ? '/' : ''}${id}` : id
+
+/** An id as the URL carries it. */
+const idForUrl = (id: string, routing: RoutingState | undefined): string =>
+  routing?.slugPrefix ? stripFirstSegment(id) : id
+
+/**
+ * The href for an id.
+ *
+ * In `history` mode `isAnchor` puts the id in the fragment rather than the path, because a heading
+ * lifted out of `info.description` is not its own page - it is a position on the overview. In the
+ * fragment modes the distinction disappears: the id goes in the fragment either way, and
+ * `renderNode` already knows that a text node means "the overview, scrolled here".
+ */
+export const hrefForId = (id: string, routing: RoutingState | undefined, isAnchor = false): string => {
+  const target = idForUrl(id, routing)
+  if (routing?.routing === 'history') {
+    return isAnchor ? `${routing.basePath}/#${target}` : `${routing.basePath}/${target}`
+  }
+  return `#/${target}`
 }
+
+/**
+ * The href for a node.
+ *
+ * `none` gets fragment hrefs too, deliberately. The host is going to intercept the click, but an
+ * href that has not been intercepted yet should not be able to navigate the whole page away - and a
+ * middle-click on one still produces a URL that deep-links.
+ */
+export const hrefFor = (node: NavNode, routing: RoutingState | undefined): string =>
+  hrefForId(node.id, routing, node.type === 'text')
+
+/**
+ * The href for a document's overview, which is the one page that is not a node.
+ *
+ * `slug` is the source's own slug - the id of its overview. With one document that is exactly what
+ * the URL omits, so this collapses to today's `#/`; with several, it is the whole of the URL.
+ */
+export const hrefForOverview = (routing: RoutingState | undefined, slug = ''): string =>
+  hrefForId(slug, routing)
+
+/** The node id a `history`-mode pathname refers to. */
+export const idFromPathname = (pathname: string, basePath: string, slugPrefix = ''): string => {
+  const withoutBase = basePath && pathname.startsWith(basePath) ? pathname.slice(basePath.length) : pathname
+  return applySlugPrefix(withoutBase.replace(/^\/+/, '').replace(/\/+$/, ''), slugPrefix)
+}
+
+/**
+ * The node id a fragment refers to.
+ *
+ * Tolerant of both `#/tags/accounts` and `#tags/accounts` on the way in, because a hand-written link
+ * and a hand-edited address bar both happen, and the two differ by a character nobody can see.
+ */
+export const idFromHash = (hash: string, slugPrefix = ''): string =>
+  applySlugPrefix(hash.replace(/^#/, '').replace(/^\/+/, '').replace(/\/+$/, ''), slugPrefix)
 
 /**
  * Whether a node is on the path to the active one, so the sidebar can mark ancestors open.

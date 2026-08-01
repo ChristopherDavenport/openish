@@ -1,10 +1,12 @@
 import { consume } from '@lit/context'
 import { Task } from '@lit/task'
 import {
+  authorSamples,
   generateSnippet,
   operationToHar,
   resolveOperationNode,
   snippetClients,
+  type AuthorSample,
   type DocumentStore,
   type NavOperationNode,
   type SnippetClient,
@@ -24,6 +26,8 @@ import './openish-code-block.js'
  * The request itself is built by `@openish/core` from the same reads the parameter table makes, so
  * the sample and the documentation beside it cannot disagree about what an operation takes.
  *
+ * Anything slotted into `actions` is placed in the toolbar beside the client picker.
+ *
  * Picking a client dispatches `openish-client-change` and changes nothing locally. The root handles
  * it and re-provides `uiContext.selectedClient`, so every sample on the page follows - which is the
  * behaviour a reader expects, and the reason this is an event rather than local state.
@@ -40,10 +44,15 @@ export class OpenishCodeSample extends LitElement {
         display: block;
       }
 
+      /*
+       * The picker sits right; anything slotted in sits left. The try-it panel puts its button
+       * there rather than in a bar of its own, so opening the panel costs the page no height.
+       */
       .head {
         display: flex;
         align-items: center;
-        justify-content: flex-end;
+        justify-content: space-between;
+        gap: var(--openish-space-xs);
         margin-bottom: var(--openish-space-xs);
       }
 
@@ -84,9 +93,37 @@ export class OpenishCodeSample extends LitElement {
   @property({ attribute: false })
   node!: NavOperationNode
 
+  /**
+   * A request to render instead of deriving one.
+   *
+   * `<openish-try-it>` passes the request it is about to send, so the snippet is that request and
+   * not a second description of it. Left unset - which is how this element renders on its own - the
+   * request is derived from the document as before.
+   */
+  @property({ attribute: false })
+  request: ReturnType<typeof operationToHar> | undefined = undefined
+
   /** The offered clients. A getter: nothing outside this render needs the list to persist. */
   get #clients(): readonly SnippetClient[] {
     return snippetClients(this.ui?.config.hiddenClients ?? [])
+  }
+
+  /**
+   * Samples the document's author wrote for this operation.
+   *
+   * Offered *above* the generated clients, because an author who took the trouble to write the SDK
+   * call meant it to be the first thing a reader sees. They are not filtered by `hiddenClients`:
+   * that option is about which of snippetz's forty-one clients to offer, and an author sample is not
+   * one of those.
+   */
+  get #authored(): readonly AuthorSample[] {
+    return authorSamples(resolveOperationNode(this.store?.document, this.node)?.operation)
+  }
+
+  /** The author sample the reader picked, if that is what the current selection names. */
+  get #authoredChoice(): AuthorSample | undefined {
+    const selected = this.ui?.selectedClient ?? ''
+    return this.#authored.find((sample) => sample.id === selected)
   }
 
   /**
@@ -101,29 +138,57 @@ export class OpenishCodeSample extends LitElement {
     return clients.find((client) => client.id === selected) ?? clients[0]
   }
 
+  /**
+   * The id the sample is generated for: an author sample if the reader picked one, else a client.
+   *
+   * An author sample is never selected *by default*, even when the document has one. The default is
+   * `config.defaultHttpClient`, and a host that set it meant it; surfacing the author's samples at
+   * the top of the picker is enough to make them findable without overriding that.
+   */
+  get #selectedId(): string {
+    return this.#authoredChoice?.id ?? this.#client?.id ?? ''
+  }
+
   /*
    * Keyed on ids and the context values, not on the HAR object, which is rebuilt on every render -
    * `Task` compares args by identity, so passing the request itself would regenerate the snippet on
    * every update. The request is built inside the task instead.
    */
   readonly #snippet = new Task(this, {
-    task: async ([store, node, clientId]: readonly [DocumentStore | undefined, NavOperationNode | undefined, string]) => {
+    task: async ([store, node, clientId]: readonly [
+      DocumentStore | undefined,
+      NavOperationNode | undefined,
+      string,
+      string,
+    ]) => {
       const resolved = resolveOperationNode(store?.document, node)
       if (!store || !resolved?.operation || clientId === '') {
         return undefined
       }
 
-      const request = operationToHar({
-        document: store.document,
-        operation: resolved.operation,
-        pathItem: resolved.pathItem,
-        path: resolved.path,
-        method: resolved.method,
-      })
+      const authored = this.#authored.find((sample) => sample.id === clientId)
+      if (authored) {
+        return authored.source
+      }
+
+      const request =
+        this.request ??
+        operationToHar({
+          document: store.document,
+          operation: resolved.operation,
+          pathItem: resolved.pathItem,
+          path: resolved.path,
+          method: resolved.method,
+        })
 
       return generateSnippet(request, clientId)
     },
-    args: () => [this.store, this.node, this.#client?.id ?? ''] as const,
+    /*
+     * Keyed on the request's contents, not its identity: a panel rebuilds it on every keystroke, and
+     * regenerating a snippet for a request that has not changed is work nobody asked for.
+     */
+    args: () =>
+      [this.store, this.node, this.#selectedId, this.request ? JSON.stringify(this.request) : ''] as const,
   })
 
   #onChange(event: Event): void {
@@ -132,7 +197,8 @@ export class OpenishCodeSample extends LitElement {
   }
 
   #renderPicker(): TemplateResult {
-    const selected = this.#client?.id ?? ''
+    const selected = this.#selectedId
+    const authored = this.#authored
 
     /* Grouped by target, in the order core lists them, so the picker reads like a language list. */
     const targets: Array<[string, SnippetClient[]]> = []
@@ -148,6 +214,19 @@ export class OpenishCodeSample extends LitElement {
     return html`
       <label class="visually-hidden" for="client">Code sample client</label>
       <select id="client" @change=${this.#onChange}>
+        ${authored.length > 0
+          ? html`
+              <optgroup label="From the API's authors">
+                ${repeat(
+                  authored,
+                  (sample) => sample.id,
+                  (sample) => html`
+                    <option value=${sample.id} ?selected=${sample.id === selected}>${sample.label}</option>
+                  `,
+                )}
+              </optgroup>
+            `
+          : nothing}
         ${repeat(
           targets,
           ([label]) => label,
@@ -172,11 +251,17 @@ export class OpenishCodeSample extends LitElement {
       return nothing
     }
 
+    const authored = this.#authoredChoice
     const client = this.#client
-    const label = client ? `${client.targetLabel} · ${client.clientLabel}` : ''
+    const label = authored
+      ? `${authored.targetLabel} · ${authored.label}`
+      : client
+        ? `${client.targetLabel} · ${client.clientLabel}`
+        : ''
+    const language = authored?.language ?? client?.language ?? 'plaintext'
 
     return html`
-      <div class="head">${this.#renderPicker()}</div>
+      <div class="head"><slot name="actions"></slot>${this.#renderPicker()}</div>
       ${this.#snippet.render({
         pending: () => html`<p class="status" role="status">Generating the sample…</p>`,
         error: () => html`<p class="status" role="status">This client could not generate a sample.</p>`,
@@ -184,8 +269,9 @@ export class OpenishCodeSample extends LitElement {
           snippet
             ? html`
                 <openish-code-block
+                  exportparts="code, code-head, copy"
                   .code=${snippet}
-                  language=${client?.language ?? 'plaintext'}
+                  language=${language}
                   label=${label}
                 ></openish-code-block>
               `

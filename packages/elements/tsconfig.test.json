@@ -11,5 +11,5 @@
       "@openish/core": ["../core/src/index.ts"]
     }
   },
-  "include": ["test/**/*.ts", "src/types/**/*.d.ts"]
+  "include": ["test/**/*.ts"]
 }

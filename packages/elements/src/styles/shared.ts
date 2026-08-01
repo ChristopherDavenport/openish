@@ -189,3 +189,104 @@ export const visuallyHidden = css`
     border: 0;
   }
 `
+
+/**
+ * The dense key-and-value grammar the request panel is built from.
+ *
+ * One table, hairlines, and borderless inputs that fill their cell. Every kind of thing a reader
+ * supplies - a credential, a header, a query parameter, a body - is the same shape, because they are
+ * the same kind of thing: a name and a value that will be on the wire. Giving each its own bordered
+ * box and its own label above it, which is what this replaced, turned nine short facts into a page.
+ */
+export const rowStyles = css`
+  .rows {
+    border: 1px solid var(--openish-color-border);
+    border-radius: var(--openish-radius-md);
+    overflow: hidden;
+  }
+
+  .group {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--openish-space-xs);
+    padding: var(--openish-space-3xs) var(--openish-space-xs);
+    background: var(--openish-color-surface-raised);
+    border-top: 1px solid var(--openish-color-border);
+    font: var(--openish-font-micro);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--openish-color-text-muted);
+  }
+
+  .row {
+    display: grid;
+    grid-template-columns: minmax(6rem, 13rem) minmax(0, 1fr);
+    border-top: 1px solid var(--openish-color-border);
+  }
+
+  /* The first band, whichever kind it is, sits flush against the container's own border. */
+  .rows > :first-child {
+    border-top: 0;
+  }
+
+  /*
+   * The name is set smaller than the value beside it. A reader scans values and reads a name only
+   * when they need to know which field they are in, so the name is the quieter of the two.
+   */
+  .key {
+    display: flex;
+    align-items: center;
+    gap: var(--openish-space-3xs);
+    padding: var(--openish-space-2xs) var(--openish-space-xs);
+    border-right: 1px solid var(--openish-color-border);
+    background: var(--openish-color-surface);
+    font: var(--openish-font-micro);
+    font-family: var(--openish-font-family-mono);
+    color: var(--openish-color-text-muted);
+    overflow-wrap: anywhere;
+  }
+
+  .value {
+    display: flex;
+    align-items: center;
+    gap: var(--openish-space-2xs);
+    min-width: 0;
+    padding-right: var(--openish-space-3xs);
+  }
+
+  /*
+   * Borderless, because the cell already has edges. A second border inside one is the single
+   * biggest source of the noise this layout exists to remove.
+   */
+  .value input[type='text'],
+  .value input[type='password'],
+  .value select,
+  .value textarea {
+    flex: 1;
+    min-width: 0;
+    padding: var(--openish-space-3xs) var(--openish-space-xs);
+    border: 0;
+    background: none;
+    color: var(--openish-color-text);
+    font: var(--openish-font-code-small);
+  }
+
+  .value input:focus-visible,
+  .value select:focus-visible,
+  .value textarea:focus-visible {
+    outline: none;
+    box-shadow: var(--openish-focus-ring-inset);
+  }
+
+  .required {
+    color: var(--openish-color-danger);
+  }
+
+  .note {
+    padding: 0 var(--openish-space-xs) var(--openish-space-3xs);
+    grid-column: 2;
+    font: var(--openish-font-micro);
+    color: var(--openish-color-text-muted);
+  }
+`

@@ -42,20 +42,37 @@ The root of an API reference.
 
 | Property | Attribute | Type | Default | |
 |---|---|---|---|---|
-| `url` | `url` | `string \| undefined` | — | URL to fetch the document from. Ignored when spec is set. |
-| `spec` | — | `string \| Record<string, unknown> \| undefined` | — | An inline document: a YAML/JSON string, or an already-parsed object. Property only. |
-| `config` | — | `OpenishConfig \| undefined` | — | Presentation options. Property only, because it is an object. |
+| `url` | `url` | `string \| undefined` | `undefined` | URL to fetch the document from. Ignored when spec is set. |
+| `spec` | — | `string \| Record<string, unknown> \| undefined` | `undefined` | An inline document: a YAML/JSON string, or an already-parsed object. Property only. |
+| `sources` | — | `SourceConfig[] \| undefined` | `undefined` | Several documents, with a picker to move between them. Takes precedence over `url` and `spec`. |
+| `config` | — | `OpenishConfig \| undefined` | `undefined` | Presentation options. Property only, because it is an object. |
 | `layout` | `layout` | `Layout` | `'modern'` | `modern` puts the navigation in a column beside the page. `classic` stacks it into a disclosure above the page - the same composition a narrow viewport gets, because "one column with the navigation folded away" is one design, not two, and a second implementation of it would only be a second thing to keep correct. |
-| `basePath` | `base-path` | `string` | `''` | URL prefix this reference is mounted under, e.g. `/docs`. |
-| `routing` | `routing` | `'history' \| 'none'` | `'history'` | `history` installs a router and reads the URL. `none` leaves navigation to the host, which drives it with selected and listens for `openish-navigate`. |
+| `basePath` | `base-path` | `string` | `''` | URL prefix this reference is mounted under, e.g. `/docs`. Only `routing="history"` reads it. |
+| `routing` | `routing` | `RoutingMode` | `'hash'` | How the reference reads and writes the URL. |
 | `selected` | `selected` | `string` | `''` | The active node id when `routing="none"`. Ignored otherwise. |
-| `colorScheme` | `color-scheme` | `ColorScheme` | `'light'` | Which scheme the reference renders in. The host still owns the theme stylesheet. |
+| `colorScheme` | `color-scheme` | `ColorSchemePreference` | `'auto'` | Which scheme the reference renders in. |
+| `credentials` | — | `Record<string, string> \| undefined` | `undefined` | Credentials a host already has - after its own login, say. |
+| `credentialStore` | — | `CredentialStore \| undefined` | `undefined` | Where credentials should be kept between page loads, if anywhere. |
 
 | Event | |
 |---|---|
-| `openish-color-scheme-change` | A descendant asked to switch schemes. Re-dispatched because only the host application can swap the Jack Henry theme stylesheet and persist the choice. |
+| `openish-color-scheme-change` | A descendant asked to switch schemes. Re-dispatched so the host can persist the choice and apply it to its own chrome; the reference itself needs nothing done for it, because `color-scheme` is reflected and `@openish/theme` matches the attribute. |
 | `openish-client-change` | The reader picked a different code-sample client. |
 | `openish-navigate` | The active node changed. Useful with `routing="none"`. |
+
+### `<openish-auth-form>`
+
+What the reader has to supply before an operation will answer.
+
+| Property | Attribute | Type | Default | |
+|---|---|---|---|---|
+| `ui` | — | `OpenishUiState \| undefined` | — | Presentation state. Provided by `<openish-api-reference>` through context. |
+| `request` | — | `OpenishRequestState \| undefined` | — | The server and credentials the reader has chosen. Provided through context. |
+| `schemes` | — | `readonly SecurityEntry[]` | `[]` | The schemes this operation accepts, from `securitySchemesFor`. |
+
+| Event | |
+|---|---|
+| `openish-auth-change` | The reader signed in, signed out, or pasted a credential. |
 
 ### `<openish-code-block>`
 
@@ -76,6 +93,7 @@ A ready-to-run request for one operation, in the reader's language.
 | `store` | — | `DocumentStore \| undefined` | — | The parsed document. Provided by `<openish-api-reference>` through context. |
 | `ui` | — | `OpenishUiState \| undefined` | — | Presentation state. Provided by `<openish-api-reference>` through context. |
 | `node` | — | `NavOperationNode` | — | The operation to build a request for. |
+| `request` | — | `ReturnType<typeof operationToHar> \| undefined` | `undefined` | A request to render instead of deriving one. |
 
 | Event | |
 |---|---|
@@ -94,6 +112,15 @@ A show/hide section.
 | Event | |
 |---|---|
 | `openish-toggle` | The reader opened or closed it. `detail` is the new state. |
+
+### `<openish-download>`
+
+Handing the reader the document the page was rendered from.
+
+| Property | Attribute | Type | Default | |
+|---|---|---|---|---|
+| `store` | — | `DocumentStore \| undefined` | — | The parsed document. Provided by `<openish-api-reference>` through context. |
+| `ui` | — | `OpenishUiState \| undefined` | — | Presentation state. Provided by `<openish-api-reference>` through context. |
 
 ### `<openish-markdown>`
 
@@ -121,6 +148,7 @@ One operation: what it is, what it takes, and what it answers with.
 | Property | Attribute | Type | Default | |
 |---|---|---|---|---|
 | `store` | — | `DocumentStore \| undefined` | — | The parsed document. Provided by `<openish-api-reference>` through context. |
+| `ui` | — | `OpenishUiState \| undefined` | — | Presentation state. Provided by `<openish-api-reference>` through context. |
 | `node` | — | `NavOperationNode \| NavWebhookNode` | — | The operation or webhook to render. |
 
 ### `<openish-overview>`
@@ -130,6 +158,7 @@ The landing page: what the API is, where it lives, and how to authenticate.
 | Property | Attribute | Type | Default | |
 |---|---|---|---|---|
 | `store` | — | `DocumentStore \| undefined` | — | The parsed document. Provided by `<openish-api-reference>` through context. |
+| `ui` | — | `OpenishUiState \| undefined` | — | Presentation state. Provided by `<openish-api-reference>` through context. |
 | `hash` | `hash` | `string` | `''` | Fragment to scroll to, passed down rather than read from `location` here. |
 
 ### `<openish-parameters>`
@@ -147,6 +176,24 @@ An operation's request body: what to send, and in which media type.
 | Property | Attribute | Type | Default | |
 |---|---|---|---|---|
 | `requestBody` | — | `unknown` | `undefined` | A Request Body Object, or a `$ref` to one. |
+| `noExample` | `no-example` | `boolean` | `false` | Document the schema without an example. |
+
+### `<openish-request-form>`
+
+The inputs an operation takes, as one table of names and values.
+
+| Property | Attribute | Type | Default | |
+|---|---|---|---|---|
+| `parameters` | — | `readonly ParameterEntry[]` | `[]` | Already merged: the path item's parameters plus the operation's. |
+| `values` | — | `Readonly<Record<string, string>>` | `{}` | Current values, keyed `"{in}:{name}"`. |
+| `mediaTypes` | — | `readonly string[]` | `[]` | The media types the request body declares, in document order. |
+| `mediaType` | `mediaType` | `string` | `''` |  |
+| `body` | `body` | `string` | `''` |  |
+
+| Event | |
+|---|---|
+| `openish-parameter-input` | A field changed. Bubbles within the operation panel, not beyond. |
+| `openish-body-input` | The body or its media type changed. |
 
 ### `<openish-response-list>`
 
@@ -156,6 +203,14 @@ An operation's responses.
 |---|---|---|---|---|
 | `ui` | — | `OpenishUiState \| undefined` | — | Presentation state. Provided by `<openish-api-reference>` through context. |
 | `responses` | — | `unknown` | `undefined` | A Responses Object: status codes to Response Objects. |
+
+### `<openish-response-view>`
+
+What the API actually answered.
+
+| Property | Attribute | Type | Default | |
+|---|---|---|---|---|
+| `result` | — | `SendResult \| undefined` | `undefined` | The outcome of the last send, or `undefined` before there has been one. |
 
 ### `<openish-schema>`
 
@@ -191,37 +246,57 @@ Search over the navigation tree.
 | Property | Attribute | Type | Default | |
 |---|---|---|---|---|
 | `store` | — | `DocumentStore \| undefined` | — | The parsed document. Provided by `<openish-api-reference>` through context. |
-| `ui` | — | `OpenishUiState \| undefined` | — | Presentation state. Provided by `<openish-api-reference>` through context. |
+| `sources` | — | `OpenishSourcesState \| undefined` | — | Every document on offer, and which of them are loaded. Provided through context. |
+| `ui` | — | `OpenishUiState \| undefined` | — |  |
 | `open` | `open` | `boolean` | `false` | Whether the dialog is showing. Set it; the element does the rest. |
-| `hotkeys` | — | `unknown` | `new HotkeyController(this, [{ key: '/' }, { key: 'k', modifier: true }], () => { this.#show(deepActiveElement()) })` | The shortcuts that open this dialog. Public because it is part of the element's behaviour. |
+| `hotkeys` | — | `unknown` | `new HotkeyController(this, () => [{ key: this.ui?.config.searchHotKey \|\| '/' }, { key: 'k', modifier: true }], () => { this.#show(deepActiveElement()) })` | The shortcuts that open this dialog. Public because it is part of the element's behaviour. |
 
-### `<openish-section>`
+### `<openish-server-select>`
 
-One routed section of the reference: everything under `/tags`, `/models`, or `/webhooks`.
+Which server a request goes to, and what its `{variables}` are.
 
 | Property | Attribute | Type | Default | |
 |---|---|---|---|---|
 | `store` | — | `DocumentStore \| undefined` | — | The parsed document. Provided by `<openish-api-reference>` through context. |
-| `ui` | — | `OpenishUiState \| undefined` | — | Presentation state. Provided by `<openish-api-reference>` through context. |
-| `section` | `section` | `SectionName` | `'tags'` | Which section this instance is mounted for. Set by the parent route that renders it. |
+| `request` | — | `OpenishRequestState \| undefined` | — | The server and credentials the reader has chosen. Provided through context. |
+
+| Event | |
+|---|---|
+| `openish-server-change` | The reader picked a server or filled in one of its variables. |
 
 ### `<openish-sidebar>`
 
-The navigation tree.
+The navigation tree, rendered as a virtualised list.
 
 | Property | Attribute | Type | Default | |
 |---|---|---|---|---|
 | `store` | — | `DocumentStore \| undefined` | — | The parsed document. Provided by `<openish-api-reference>` through context. |
 | `ui` | — | `OpenishUiState \| undefined` | — | Presentation state. Provided by `<openish-api-reference>` through context. |
+| `sources` | — | `OpenishSourcesState \| undefined` | — | Every document on offer, so the picker appears only when there is a choice to make. |
 
 ### `<openish-sidebar-item>`
 
-One row of the navigation tree, plus its children.
+One row of the navigation tree.
 
 | Property | Attribute | Type | Default | |
 |---|---|---|---|---|
 | `ui` | — | `OpenishUiState \| undefined` | — | Presentation state. Provided by `<openish-api-reference>` through context. |
-| `node` | — | `NavNode` | — | The node this row names. Its children render as nested rows. |
+| `node` | — | `NavNode` | — | The node this row names. |
+| `level` | `level` | `number` | `1` | How deep the row sits, 1-based. Rendered as indentation and as `aria-level`. |
+| `hasChildren` | `has-children` | `boolean` | `false` | Whether this node has anything under it, which decides between a toggle and a spacer. |
+| `expanded` | `expanded` | `boolean` | `false` | Whether it is currently open. Decided by `<openish-sidebar>`, never here. |
+
+### `<openish-source-select>`
+
+The document picker, for a reference configured with several `sources`.
+
+| Property | Attribute | Type | Default | |
+|---|---|---|---|---|
+| `sources` | — | `OpenishSourcesState \| undefined` | — | Every document on offer, and which of them are loaded. Provided through context. |
+
+| Event | |
+|---|---|
+| `openish-source-change` | The reader picked a different document. Carries its slug. |
 
 ### `<openish-table>`
 
@@ -244,6 +319,10 @@ A tab set.
 | `label` | `label` | `string` | `''` | Accessible name for the tab list, e.g. "Response status codes". |
 | `selected` | `selected` | `string` | `''` | The tab to start on. The reader's own choice takes over from there. |
 
+| Event | |
+|---|---|
+| `openish-tab-change` | The reader picked a tab. `detail` is its id. |
+
 ### `<openish-tag-section>`
 
 The landing page for a tag, a group, or any other node that has children: its prose, then an index of what is inside it.
@@ -252,5 +331,17 @@ The landing page for a tag, a group, or any other node that has children: its pr
 |---|---|---|---|---|
 | `ui` | — | `OpenishUiState \| undefined` | — | Presentation state. Provided by `<openish-api-reference>` through context. |
 | `node` | — | `NavTagNode \| NavGroupNode` | — | The tag or group whose children this page indexes. |
+
+### `<openish-try-it>`
+
+Sending the request the page describes.
+
+| Property | Attribute | Type | Default | |
+|---|---|---|---|---|
+| `store` | — | `DocumentStore \| undefined` | — | The parsed document. Provided by `<openish-api-reference>` through context. |
+| `ui` | — | `OpenishUiState \| undefined` | — | Presentation state. Provided by `<openish-api-reference>` through context. |
+| `request` | — | `OpenishRequestState \| undefined` | — | The server and credentials the reader has chosen. Provided through context. |
+| `node` | — | `NavOperationNode` | — | The operation this panel sends. |
+| `open` | `open` | `boolean` | `false` | Whether the client is showing. Set it; the element does the rest. |
 
 <!-- elements:end -->

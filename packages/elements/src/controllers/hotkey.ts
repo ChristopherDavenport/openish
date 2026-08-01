@@ -35,10 +35,21 @@ const isTyping = (event: KeyboardEvent): boolean => {
  * shortcut - while a modified one is, because Cmd-K types nothing.
  */
 export class HotkeyController implements ReactiveController {
-  readonly #keys: readonly Hotkey[]
+  readonly #keys: readonly Hotkey[] | (() => readonly Hotkey[])
   readonly #run: (event: KeyboardEvent) => void
 
-  constructor(host: ReactiveControllerHost, keys: readonly Hotkey[], run: (event: KeyboardEvent) => void) {
+  /**
+   * `keys` may be a function, for a host whose shortcut is configurable.
+   *
+   * A fixed array is read once at construction, which is before context has arrived - so a
+   * controller built from `config.searchHotKey` would always see the default. Reading through a
+   * function defers the question to the keystroke, when the answer is known.
+   */
+  constructor(
+    host: ReactiveControllerHost,
+    keys: readonly Hotkey[] | (() => readonly Hotkey[]),
+    run: (event: KeyboardEvent) => void,
+  ) {
     this.#keys = keys
     this.#run = run
     host.addController(this)
@@ -55,7 +66,7 @@ export class HotkeyController implements ReactiveController {
   readonly #onKeydown = (event: KeyboardEvent): void => {
     const modified = event.metaKey || event.ctrlKey
 
-    for (const hotkey of this.#keys) {
+    for (const hotkey of typeof this.#keys === 'function' ? this.#keys() : this.#keys) {
       if (event.key.toLowerCase() !== hotkey.key.toLowerCase()) {
         continue
       }

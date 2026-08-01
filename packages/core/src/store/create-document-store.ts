@@ -7,7 +7,7 @@ import { upgrade } from '@scalar/openapi-parser'
 
 import { resolveConfig } from '../config.js'
 import { indexNavigation, traverseDocument } from '../navigation/traverse-document.js'
-import type { DocumentStore, OpenishConfig } from '../types.js'
+import type { DocumentStore, OpenishConfig, SourceDescriptor } from '../types.js'
 
 /** Anything `bundle` accepts as a resolver. Typed loosely so callers can pass a stub in tests. */
 type BundlePlugin = Parameters<typeof bundle>[1]['plugins'][number]
@@ -25,7 +25,24 @@ export type CreateDocumentStoreOptions = {
    * than taking the page down.
    */
   onReferenceError?: (reference: string) => void
+  /**
+   * Which of the reference's documents this is.
+   *
+   * Its slug prefixes every id the traversal mints. Defaults to {@link IMPLICIT_SOURCE}, so a caller
+   * with one document never has to name it - and still gets ids of the same shape, which is what
+   * keeps there being one traversal rather than two.
+   */
+  source?: SourceDescriptor
 }
+
+/**
+ * The source a reference gets when the host configured a single document rather than a `sources`
+ * array.
+ *
+ * Its slug is real - it is the first segment of every id in the store - but `@openish/elements`
+ * strips it on the way to the URL, so a single-document reference has the URLs it always had.
+ */
+export const IMPLICIT_SOURCE: SourceDescriptor = Object.freeze({ slug: 'api-1', title: 'API #1', url: '' })
 
 /**
  * Builds a {@link DocumentStore} from an OpenAPI document.
@@ -49,6 +66,7 @@ export const createDocumentStore = async (
   options: CreateDocumentStoreOptions = {},
 ): Promise<DocumentStore> => {
   const config = resolveConfig(options.config)
+  const source = options.source ?? IMPLICIT_SOURCE
 
   const normalized = normalize(input)
   /* `normalize` returns a `Filesystem` - an array of file entries - for multi-file input. */
@@ -71,7 +89,7 @@ export const createDocumentStore = async (
   const { specification } = upgrade(bundled as Record<string, unknown>)
   const document = createMagicProxy(specification as unknown as Record<string, unknown>) as OpenApiDocument
 
-  const navigation = traverseDocument(document, config)
+  const navigation = traverseDocument(document, config, source.slug)
 
   return Object.freeze({
     document,
@@ -79,5 +97,6 @@ export const createDocumentStore = async (
     navigation,
     bySlug: indexNavigation(navigation),
     config,
+    source,
   })
 }

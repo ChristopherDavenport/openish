@@ -4,8 +4,7 @@ Lit web components for viewing OpenAPI documents.
 
 openish keeps the framework-agnostic half of [Scalar](https://github.com/scalar/scalar) — the parser, the
 `$ref` machinery, the type definitions, the snippet generator, the markdown and highlight pipeline — and
-replaces only the Vue render layer, with Lit and `@lit-labs/router`. The visual layer is the
-[Jack Henry Design System](https://jackhenry.design/v2).
+replaces only the Vue render layer, with Lit.
 
 Reusing upstream is the point, not a shortcut: anything of Scalar's that has no Vue in its dependency
 graph and makes no assumption about a component model belongs here rather than reimplemented. What
@@ -14,10 +13,11 @@ entry points.
 
 If you already ship web components, you should not have to adopt a second framework to render API docs.
 
-> Status: feature-complete for a reader's view, and hardened. A document loads, the sidebar, search,
-> and router navigate it, an operation shows a runnable code sample beside its parameters, request
-> body, and responses, and every schema is an expandable property tree that self-referential types
-> cannot hang. Accessibility and colour contrast are checked by the test suite in both schemes.
+> Status: a reader can read it and call it. A document loads, the sidebar, search, and the URL
+> navigate it, every schema is an expandable property tree that self-referential types cannot hang,
+> and an operation page will send the request its code sample describes — including obtaining an
+> OAuth token first, because most real documents declare nothing else to authenticate with.
+> Accessibility and colour contrast are checked by the test suite, in both schemes and both themes.
 
 ```html
 <link rel="stylesheet" href="@openish/theme/index.css" />
@@ -28,22 +28,97 @@ If you already ship web components, you should not have to adopt a second framew
 import '@openish/elements'
 ```
 
+No bundler? One script tag, with the stylesheet already inside it:
+
+```html
+<script type="module" src="https://unpkg.com/@openish/elements/dist/standalone.js"></script>
+<openish-api-reference url="/openapi.yaml"></openish-api-reference>
+```
+
 | Property | Default | |
 |---|---|---|
 | `url` | — | Fetch the document from here |
 | `spec` | — | An inline document: YAML/JSON string or object (property only) |
+| `sources` | — | Several documents, with a picker (property only). See below |
 | `config` | — | An `OpenishConfig` (property only) |
 | `layout` | `modern` | `classic` stacks the navigation into a disclosure above the page |
-| `base-path` | `''` | Mount under a sub-path, e.g. `/docs` |
-| `routing` | `history` | `none` hands navigation to the host via `selected` + `openish-navigate` |
-| `color-scheme` | `light` | |
+| `routing` | `hash` | `history` for real paths, `none` to hand navigation to the host |
+| `base-path` | `''` | Mount under a sub-path, e.g. `/docs`. Only `routing="history"` reads it |
+| `color-scheme` | `auto` | `light` or `dark` to decide it; `auto` follows the reader |
 
 Events (all bubbling and composed): `openish-navigate`, `openish-color-scheme-change`,
-`openish-client-change`. The scheme event is re-dispatched rather than acted on, because only the host
-can swap the Jack Henry theme, which is declared at `:root`. Readers open search with `/` or
-Cmd/Ctrl-K; `config.hideSearch` turns it off, and `config.hiddenClients` trims the sample picker.
+`openish-client-change`, `openish-server-change`, `openish-source-change`, `openish-auth-change`. Readers open search with `/`
+or Cmd/Ctrl-K; `config.hideSearch` turns it off, and `config.hiddenClients` trims the sample picker.
 
-Note that `routing` is read once, when the element connects — see the `@lit-labs/router` note below.
+## Routing
+
+Navigation ids are URL paths (`tags/accounts/listAccounts`) and `store.bySlug` resolves one to a node
+in a single lookup, so there is no route table and no router library — reading the id out of the URL
+is the whole of it, and it differs by mode in about three lines.
+
+**`hash` is the default** because it is the only mode that works with no cooperation from anything.
+`…/docs#/tags/accounts` asks the server for `…/docs`, which it already serves, so a static host with
+no rewrite rule deep-links correctly; a fragment link is navigation the browser performs by itself,
+so nothing has to intercept a click; and it works from `file://`.
+
+`history` gives real paths, at the cost of a server that serves the application for every one of
+them. It is the mode `base-path` exists for. `none` hands navigation over entirely: the host sets
+`selected` and listens for `openish-navigate`, which is now dispatched when a link is clicked rather
+than only after the fact.
+
+Unlike earlier versions, `routing` can be changed on a live element — nothing is installed at connect
+time any more.
+
+## Multiple documents
+
+```js
+reference.sources = [
+  { slug: 'consumer', title: 'Consumer API', url: '/consumer.yaml' },
+  { slug: 'admin', title: 'Admin API', url: '/admin.yaml', default: true },
+]
+```
+
+`slug` and `title` are both optional — a title becomes a slug, and a source with neither is `api-2` /
+`API #2`. `content` takes an inline document instead of a `url`, `default` picks the one shown when
+the URL names none, and `config` overrides the reference-level `OpenishConfig` for that document
+alone. The picker appears only when there is more than one document. `?api=<slug>` selects one from
+outside and rewrites itself out of the URL, for a link that knows the document but not the id scheme.
+
+Two things a host has to know:
+
+**`sources` namespaces every URL.** An operation is at `#/consumer/tags/accounts/listAccounts`, not
+`#/tags/accounts/listAccounts`. The slug is what decides which document the rest of the id is about,
+so it has to be in the URL before the rest of it means anything. A reference configured with `url`
+or `spec` keeps exactly the URLs it always had — internally its ids are namespaced too, and the slug
+is dropped at the URL boundary — so this is a change only for a host adopting `sources`, and
+`config.redirect` is the seam for keeping the old links working. `redirect` sees and returns URLs the
+way the URL bar has them, prefix and all.
+
+**Authentication and servers are per document.** Each gets its own session and its own selected
+server, so two documents that both declare `oauth2` — usually two different authorization servers —
+cannot send each other's tokens. A `credentialStore` is namespaced per document for the same reason;
+with a single `url` or `spec` it is passed through untouched, so anything already persisted still
+reads back.
+
+Documents load lazily. The one being shown is fetched and parsed first, and the rest are warmed while
+the browser is idle, one at a time — so first render does not scale with how many documents are
+configured, and search spans every one that has landed rather than only the one on screen. Results
+are grouped under the document they are in.
+
+## Colour scheme
+
+Light and dark are chosen in CSS, not in script. Every colour is declared once as
+`light-dark(light, dark)` and the browser picks according to the used value of `color-scheme`, so:
+
+- **Do nothing** and the reference follows the reader's `prefers-color-scheme` — no class, no script,
+  no flash of the wrong scheme before script runs, and it follows a reader who changes their mind
+  mid-session.
+- `<openish-api-reference color-scheme="dark">` decides it for one reference. The attribute is
+  reflected, so setting the property works too, and the override is scoped to that element's subtree.
+- `<html class="openish-dark">` decides it for the whole page, including your own chrome.
+
+`openish-color-scheme-change` is still re-dispatched, so a host can persist the choice and match its
+own UI — but the reference no longer needs anything done for it.
 
 Below 48rem the navigation stacks into the same disclosure `layout="classic"` uses, rather than being
 hidden by a media query: a sidebar that CSS has hidden is still in the tab order and still read out,
@@ -69,10 +144,16 @@ and it is generated from `custom-elements.json`, which ships with the package.
 
 | Package | What it is |
 |---|---|
-| `@openish/core` | The document store, navigation traversal, HAR generation, example generation. No DOM. |
-| `@openish/elements` | The `openish-*` custom elements. |
-| `@openish/theme` | The `--openish-*` style-hook layer, bound to Jack Henry alias tokens. |
+| `@openish/core` | The document: store, navigation traversal, HAR building, snippets, examples. No DOM. |
+| `@openish/client` | The API: sending a request, OIDC discovery, PKCE, tokens. No framework, no dependencies. |
+| `@openish/elements` | The `openish-*` custom elements. The only package that knows about Lit. |
+| `@openish/theme` | The `--openish-*` style-hook layer: a self-contained palette, plus a Jack Henry binding. |
 | `apps/playground` | Dev harness. Not published. |
+
+`@openish/client` is separate because calling an API is not reading a document and is not rendering
+one. It takes a HAR request and a security scheme, it holds no opinion about OpenAPI or about
+components, and it declares no dependencies — so a docs-only build never pays for it, and something
+that is not a documentation page can still use it.
 
 ## Using the core
 
@@ -118,11 +199,10 @@ schema traversal down the tree. The recursive schema renderer is what the third 
 a branch that arrives back where it started links to that model instead of expanding forever. Pointers,
 not object identity — the magic proxy hands back a fresh wrapper every time a reference resolves.
 
-**One `Router`, `Routes` everywhere else.** `<openish-api-reference>` owns the page's only `Router`,
-because a `Router` is what installs the global `click` and `popstate` listeners. It mounts one route
-per section — `/tags*`, `/models*`, `/webhooks*` — and `<openish-section>` matches everything below
-that prefix with a `Routes` controller, which finds its parent by dispatching a bubbling
-`lit-routes-connected` event on connect. Nothing about the routing is passed down as a property.
+**The URL is an input, not a subsystem.** `LocationController` makes `window.location` reactive;
+`<openish-api-reference>` reads the active id out of it in `willUpdate` and provides it as context.
+Everything else consumes an id. There is no route table, because ids already are paths and
+`store.bySlug` is the lookup — see [Routing](#routing).
 
 **No signals.** Not one, today. The two candidates for genuine globals — colour scheme and the selected
 snippet client — are both answered by root-level context plus a bubbling event. `@lit-labs/signals` is
@@ -156,20 +236,30 @@ by bundling each entry point and looking for `vue` in the module graph:
 | `@scalar/workspace-store/helpers/*` | Vue-free. |
 | `@scalar/oas-utils/helpers` | Vue-free now — but it is JSON/YAML parsing and plugin hooks, nothing openish needs. |
 
+The multi-document design is ported rather than invented: `@scalar/api-reference@1.64.0`'s
+`helpers/id-routing.ts`, `helpers/normalize-configurations.ts` and `ApiReference.vue` are where the
+slug-in-the-id / slug-out-of-the-URL split, the slug defaulting, the in-flight load map, and the idle
+prefetch come from. None of it could be imported — that package pulls in Vue — but the shapes are
+theirs, and the one deliberate divergence is search, which openish runs across every loaded document
+where Scalar scopes it to the active one.
+
 Note the second column is about the *graph*, not about tree-shaking: `@scalar/oas-utils` still
 declares `vue` as a dependency, so adopting it would put Vue in any consumer's `node_modules` even
 though the code openish would import never touches it. `npm run guard:vue` fails on exactly that, on
 purpose — the promise is "installing openish does not install Vue", and a promise that depends on a
 bundler's tree-shaking is not one.
 
-## Two integration notes
+## Integration notes
 
-**Lit versions.** `@jack-henry/jh-ui@1.15.5` declares `lit: 2.1.1` as a hard dependency, not a peer, so an
-untreated install ships two copies of Lit. The root `overrides: { "lit": "^3.3.3" }` forces it onto Lit 3.
-That is verified rather than assumed — `packages/elements/test/jh-ui-lit3.test.ts` mounts four jh components
-in real Chromium and asserts they upgrade, render shadow content, and reflect property changes. If that test
-ever fails, drop the override and accept two Lit copies; custom elements are independent, and the only cost
-is bundle size plus a dev-mode warning.
+**Lit versions, if you also ship jh-ui.** `@jack-henry/jh-ui@1.15.5` declares `lit: 2.1.1` as a hard
+dependency, not a peer, so an untreated install ships two copies of Lit. openish does not depend on
+jh-ui — nothing in `@openish/elements` imports it, and the Jack Henry connection is a token binding in
+`@openish/theme` — so this is a fact about *your* application, not about installing openish. This repo
+keeps the root `overrides: { "lit": "^3.3.3" }` and a tripwire for it anyway:
+`packages/elements/test/jh-ui-lit3.test.ts` mounts four jh components in real Chromium and asserts
+they upgrade, render shadow content, and reflect property changes. If that ever fails, drop the
+override and accept two copies; custom elements are independent, and the cost is bundle size plus a
+dev-mode warning.
 
 **Parser weight.** `@scalar/openapi-parser`'s barrel re-exports `validate`, which pulls in `ajv` (~120 KB).
 Validation stays behind a lazy `import()` so it never lands in the default chunk. `@scalar/snippetz`
@@ -183,20 +273,13 @@ properties do. So `@openish/theme/highlight.css` declares the `--openish-hl-*` h
 `@openish/elements` owns the rules that read them. Anything else styling highlighted code has the
 same constraint.
 
-**A `@lit-labs/router@0.1.4` bug.** `Routes`' constructor calls `host.addController(this)` *before*
-assigning `this.routes` and `this.fallback`. When the host is already connected, `addController` invokes
-`hostConnected()` straight away, which calls `goto()` against an empty route list — and `goto` then takes
-its "controller with no routes" branch and never sets `_currentRoute`. The outlet renders nothing, for the
-rest of the element's life, with no error anywhere. `openish-api-reference` therefore constructs its
-`Router` *before* `super.connectedCallback()`, and that is why `routing` cannot be changed on a live
-element. A child `Routes` is safe from this by construction, since a class field runs before the host
-is connected. The library is pre-1.0 Labs; this is worth an upstream issue.
-
-Two smaller ones from the same version: a section is mounted at `/models*`, not `/models/*`, because
-`URLPattern` requires the literal slash and `/models` is a real page — and the trailing-wildcard form
-always yields a tail group, which is the only thing a child `Routes` can match against. And a child
-`Routes` is given a `fallback`, because without one `goto()` *throws* on an unmatched path from a
-promise nobody awaits: an unhandled rejection and a blank page rather than a "not found".
+**Why there is no router.** There was one — `@lit-labs/router`, plus `urlpattern-polyfill` for the
+browsers without `URLPattern`, plus an `<openish-section>` element per section to match the tail of
+each route, plus three documented workarounds for pre-1.0 bugs in it. All of it resolved a URL to a
+navigation id. But ids *are* URL paths and `store.bySlug` is a map, so the id was already the answer;
+the route table was an elaborate way of arriving at a lookup that `renderNodeById` then performed
+anyway. Removing it took two dependencies, one element, and the workarounds with them, and made
+`routing` changeable on a live element.
 
 ## OpenAPI documents in this repo
 
@@ -207,6 +290,38 @@ Real documents are loaded by hand — drop one at the repo root (gitignored), th
 via the file picker or `?url=`. They are for surfacing what a small fixture cannot: deep `$ref` chains,
 large navigation trees, first-render cost at a few hundred operations. Anything one of them breaks gets
 reproduced as a small committed fixture first, then fixed.
+
+## Trying it
+
+An operation page sends the request its sample describes. One function builds that request and both
+consume it, so the snippet above the button is the request the button sends — with one deliberate
+difference: the credential is real on the wire and a placeholder in the sample, because a
+documentation page should not be the thing that puts a production token into a shell history.
+`revealCredentialsInSamples` opts out of that.
+
+Authentication is not a paste field. Most real documents — including the one this project is tested
+against — declare `openIdConnect` with nothing but a `.well-known` URL, so there is no token to paste
+until someone has completed a flow. openish reads the provider's metadata, offers its scopes, and
+runs **authorization code with PKCE**, in a popup by default or as a full-page redirect where popups
+do not work. Other grants are not implemented; any scheme still accepts a token you already have.
+
+```ts
+reference.config = {
+  proxyUrl: 'https://your-proxy.example.com/forward', // for APIs that refuse this origin
+  oauthRedirectUri: '/oauth-callback',                // must be same-origin and registered
+  oauthRedirectMode: 'popup',                         // or 'redirect'
+  oauth: { consumer: { clientId: 'docs-playground' } },
+}
+reference.credentials = { apiKey: 'from your own login' } // property only, never an attribute
+```
+
+Tokens live in memory for the life of the page and are never persisted: how long a credential should
+survive is a decision with a threat model attached, so it belongs to the host, which hears every
+change as `openish-auth-change`. `hideTryIt` removes the panel entirely.
+
+The proxy contract, the rule that a client secret is only ever sent through it, and the reason a
+cross-origin failure is explained rather than repeated are all in
+[`packages/client/README.md`](packages/client/README.md).
 
 ## What it weighs
 
@@ -219,18 +334,30 @@ a throwaway directory — installing it here would put Vue in the graph and fail
 
 | Bundle | Raw | gzip |
 |---|---|---|
-| `@openish/elements`, everything | 957.8 kB | **285.5 kB** |
-| `@openish/core` alone | 244.2 kB | 77.1 kB |
-| `@scalar/snippetz`, loaded on demand | 92.8 kB | 27.6 kB |
+| **Entry chunk — what arrives before first paint** | 237.2 kB | **65.6 kB** |
+| Deferred chunks, fetched when first needed | 803.3 kB | 242.3 kB |
+| `@openish/elements`, everything | 1048.4 kB | 306.1 kB |
+| `@openish/core` alone | 252.6 kB | 80.3 kB |
+| `@openish/client` alone | 10.3 kB | 3.8 kB |
 | `@scalar/api-reference` 1.64.0, for reference | 1226.8 kB | 334.4 kB |
 
-Where openish's 285 kB goes: 176 kB is `@scalar/code-highlight` — the markdown pipeline and
-highlight.js — and 77 kB is the parser and `$ref` machinery. Both are shared with Scalar, because
-they are the same code. openish's own components, Lit, the router, and `@lit/context` together are
-under 20 kB gzipped, which is the part that replaced a Vue application.
+The number that matters is the first row. Three things are deferred, because none of them is needed
+for the page to exist:
 
-(The 48 highlight.js languages cost 0.6 kB on top of markdown, because the markdown pipeline already
-pulls them in. That is why they are not loaded lazily; there is nothing to save.)
+- **the markdown pipeline and highlight.js** (`@scalar/code-highlight`, ~176 kB gzip) — the shell,
+  the sidebar, the parameter tables and the schema tree need none of it. Prose fills in a beat later;
+  a code block renders as plain text first and gains colour when colour arrives, which is the same
+  fallback an unknown language has always had, so there is no layout shift either way.
+- **the snippet generator** (`@scalar/snippetz`, 27.6 kB gzip) — forty-one client plugins, loaded
+  when a sample is first rendered. The client *picker* is built from `@scalar/types`, which is data.
+- **the YAML writer**, for the download button, and `ajv`, for validation.
+
+What is left in the entry chunk is mostly the parser and the `$ref` machinery, which is shared with
+Scalar because it is the same code. openish's own components, Lit, `@lit/context` and the virtualiser
+together are around 30 kB gzipped — the part that replaced a Vue application.
+
+The runtime dependency list is six entries: `lit`, `@lit/context`, `@lit/task`,
+`@lit-labs/virtualizer`, `@scalar/code-highlight`, and openish's own packages.
 
 ## Accessibility
 
@@ -240,15 +367,17 @@ in both colour schemes — inside the frame, with the real theme loaded, so cont
 palette rather than the browser's defaults.
 
 `packages/elements/test/contrast.test.ts` measures WCAG contrast for the palette directly, which axe
-cannot do through nested shadow roots. Current numbers, both schemes AA or better:
+cannot do through nested shadow roots. It runs over **both themes in both schemes** — twelve
+combinations — reading each colour through a probe element so `light-dark()` resolves the way it
+will when painting. Current numbers for the default theme, AA or better throughout:
 
 | | Light | Dark |
 |---|---|---|
-| Body text on the page | 11.8:1 | 13.8:1 |
-| Muted text on the page | 5.0:1 | 7.5:1 |
-| Links | 4.8:1 | 7.5:1 |
-| HTTP method chips | 5.7–6.2:1 | 4.7–5.0:1 |
-| Syntax colours on the code surface | 4.8–6.4:1 | 4.9–6.9:1 |
+| Body text on the page | 17.9:1 | 15.7:1 |
+| Muted text on the page | 5.9:1 | 7.6:1 |
+| Links | 6.4:1 | 8.4:1 |
+| HTTP method chips | 5.5–6.9:1 | 9.1–14.2:1 |
+| Syntax colours on the code surface | 4.7–6.2:1 | 7.3–12.3:1 |
 
 ## Development
 
@@ -259,9 +388,10 @@ npm run verify     # guards + typecheck + tests
 npm run build      # all packages
 ```
 
-`npm test` runs two projects: `core` in Node, and `elements` in real Chromium via Playwright. The browser is
-not optional — jh-ui calls `attachInternals()` and the router needs real `URLPattern` and history, so a
-simulated DOM would only test the shim. Run `npx playwright install chromium` once.
+`npm test` runs three projects: `core` and `client` in Node, and `elements` in real Chromium via
+Playwright. The browser is not optional — the reference needs real `history`, real `hashchange`, and a
+`light-dark()` that resolves, so a simulated DOM would only test the shim. Run
+`npx playwright install chromium` once.
 
 ## Prior art
 

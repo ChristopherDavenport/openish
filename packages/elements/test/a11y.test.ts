@@ -2,7 +2,7 @@ import axeSource from 'axe-core/axe.min.js?raw'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import '../src/index.js'
-import { deepQuery, disposeAll, mountReference, type Harness } from './helpers.js'
+import { deepQuery, disposeAll, mountReference, openTryIt, type Harness } from './helpers.js'
 
 afterEach(() => {
   disposeAll()
@@ -83,6 +83,24 @@ describe('accessibility', () => {
     expectClean(await audit(harness))
   })
 
+  it('has no violations with the try-it panel and a response on screen', async () => {
+    const harness = await mountReference({ path: '/tags/accounts/getAccount' })
+    const frameWindow = harness.frame.contentWindow as Window & { fetch: typeof fetch }
+    frameWindow.fetch = (async () =>
+      new Response('{"id":"acct_1"}', { headers: { 'content-type': 'application/json' } })) as typeof fetch
+
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    await harness.settle()
+
+    const panel = await openTryIt(harness)
+    const send = [...panel.shadowRoot!.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Send')!
+    send.click()
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    await harness.settle()
+
+    expectClean(await audit(harness))
+  })
+
   it('has no violations with the navigation stacked into its disclosure', async () => {
     const harness = await mountReference({ path: '/tags/accounts', layout: 'classic' })
     harness.element.shadowRoot!.querySelector<HTMLButtonElement>('.menu')!.click()
@@ -96,6 +114,9 @@ describe('accessibility', () => {
     harness.frame.contentDocument!.documentElement.classList.add('jh-theme-dark')
     await new Promise((resolve) => setTimeout(resolve, 200))
     await harness.settle()
+
+    /* Including the client, whose dense rows are the hardest thing on the page to keep legible. */
+    await openTryIt(harness)
 
     expectClean(await audit(harness))
   })

@@ -1,8 +1,8 @@
-import { htmlFromMarkdown, type Node } from '@scalar/code-highlight/markdown'
 import { LitElement, html, css, nothing, type TemplateResult } from 'lit'
-import { customElement, property } from 'lit/decorators.js'
+import { customElement, property, state } from 'lit/decorators.js'
 import { unsafeHTML } from 'lit/directives/unsafe-html.js'
 
+import { loadMarkdown, markdownNow, type Node } from '../render/highlight.js'
 import { baseStyles, highlightStyles } from '../styles/shared.js'
 
 /**
@@ -137,6 +137,16 @@ export class OpenishMarkdown extends LitElement {
   @property({ attribute: false })
   headingIds: readonly string[] = []
 
+  /**
+   * Bumped once the pipeline arrives, purely to ask for another render.
+   *
+   * The load is a module-level cache shared by every instance, so this is not "the module" - it is
+   * this element's record that it is worth trying again. The alternative, a `Task` keyed on the
+   * markdown, would re-await on every property change for a module that is already in memory.
+   */
+  @state()
+  private loaded = 0
+
   /** Scrolls to a stamped heading. Returns whether one was found. */
   scrollToHeading(id: string): boolean {
     const target = this.renderRoot.querySelector(`[id="${CSS.escape(id)}"]`)
@@ -149,11 +159,26 @@ export class OpenishMarkdown extends LitElement {
       return nothing
     }
 
+    /*
+     * Nothing until the pipeline is here, rather than the raw source.
+     *
+     * Showing unrendered markdown would put literal `##` and `[text](url)` on the page for a frame,
+     * which reads as a broken document rather than as a loading one. An empty block for the same
+     * frame reads as prose that has not arrived, which is what it is.
+     */
+    const pipeline = markdownNow()
+    if (!pipeline) {
+      void loadMarkdown().then(() => {
+        this.loaded += 1
+      })
+      return nothing
+    }
+
     const offset = this.headingOffset
     const ids = this.headingIds
     let index = 0
 
-    const rendered = htmlFromMarkdown(this.markdown, {
+    const rendered = pipeline.htmlFromMarkdown(this.markdown, {
       transformType: 'heading',
       transform: (node: Node) => {
         if ('depth' in node && typeof node.depth === 'number') {

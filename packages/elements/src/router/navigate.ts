@@ -1,20 +1,36 @@
-import type { Router } from '@lit-labs/router'
+import { hrefForId, type RoutingState } from './urls.js'
 
 /**
- * Programmatic navigation.
+ * Programmatic navigation to a navigation node id.
  *
- * `Router.goto()` re-renders the matched route but does not touch the URL bar - that is documented
- * library behaviour, not a bug, and leaving them out of sync is what breaks the back button later.
- * The two always travel together, so they live in one function rather than at each call site.
+ * Ids are the currency everywhere else - `store.bySlug` is keyed by them, `openish-navigate` carries
+ * one - so this takes an id rather than a URL and lets {@link hrefFor} keep sole responsibility for
+ * what a mode's URLs look like.
  *
- * Clicks on an `<a href>` need none of this: the router's own listener handles `pushState` for
- * those, and it reads `composedPath()`, so anchors inside a shadow root are intercepted too.
+ * Clicks on an `<a href>` need none of this. In `hash` mode a fragment link is navigation the
+ * browser performs by itself; in `history` mode `<openish-api-reference>` intercepts the click in
+ * its own template. This is only for a host that wants to move the reference without a click.
  */
-export const navigate = (router: Router, path: string): void => {
-  if (path === window.location.pathname + window.location.hash) {
+export const navigate = (routing: RoutingState, id: string): void => {
+  /* Through `hrefForId`, so a navigation and a link cannot disagree about whether the URL names the
+   * document - there is one answer to that and it lives in `urls.ts`. */
+  const target = hrefForId(id, routing)
+
+  if (routing.routing === 'history') {
+    if (window.location.pathname === target) {
+      return
+    }
+    window.history.pushState({}, '', target)
+    /*
+     * `pushState` deliberately does not fire `popstate` - the browser only announces navigations it
+     * performed itself. `LocationController` is the one subscriber to that announcement, so a
+     * navigation openish performs has to make the same one, rather than every caller learning to
+     * poke a particular element afterwards.
+     */
+    window.dispatchEvent(new PopStateEvent('popstate'))
     return
   }
 
-  window.history.pushState({}, '', path)
-  void router.goto(new URL(path, window.location.origin).pathname)
+  /* Assigning the fragment fires `hashchange` on its own, and is a no-op when it has not changed. */
+  window.location.hash = target
 }

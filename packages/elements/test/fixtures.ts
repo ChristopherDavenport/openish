@@ -13,7 +13,10 @@ export const SHELL_SPEC = {
     version: '2.3.0',
     description: '# Getting started\n\nSome prose.\n\n## Authentication\n\nMore prose.',
   },
-  servers: [{ url: 'https://api.example.com/v1', description: 'Production' }],
+  servers: [
+    { url: 'https://api.example.com/v1', description: 'Production' },
+    { url: 'https://sandbox.example.com/v1', description: 'Sandbox' },
+  ],
   /* A document-level requirement, so a generated sample shows where the credential goes. */
   security: [{ bearerAuth: [] }],
   tags: [
@@ -227,6 +230,275 @@ export const COMPOSITION_SPEC = {
           payload: { $ref: '#/components/schemas/Pet' },
           meta: { type: 'object', properties: { version: { type: 'string' } } },
         },
+      },
+    },
+  },
+} as const
+
+/**
+ * An OpenID Connect scheme with nothing but a discovery URL, which is what real documents declare -
+ * the reference document in this repo has three of them. There is no token to paste until someone
+ * has completed a flow, which is why the flow is part of the element and not of the host.
+ */
+export const OAUTH_SPEC = {
+  openapi: '3.1.0',
+  info: { title: 'Secured API', version: '1.0.0' },
+  servers: [{ url: 'https://api.example.com/v1' }],
+  security: [{ consumer: ['openid'] }],
+  paths: {
+    '/accounts': {
+      get: {
+        summary: 'List accounts',
+        operationId: 'listAccounts',
+        tags: ['accounts'],
+        responses: { '200': { description: 'OK' } },
+      },
+    },
+  },
+  components: {
+    securitySchemes: {
+      consumer: {
+        type: 'openIdConnect',
+        openIdConnectUrl: 'https://issuer.example.com/.well-known/openid-configuration',
+      },
+    },
+  },
+} as const
+
+/**
+ * One operation, two ways to authenticate it.
+ *
+ * The shape `securityIndex` exists for: a reader holding the API key must not have the bearer header
+ * sent on their behalf, which is what happened for as long as nothing passed the index through.
+ */
+export const EITHER_AUTH_SPEC = {
+  openapi: '3.1.0',
+  info: { title: 'Either', version: '1.0.0' },
+  servers: [{ url: 'https://api.example.com' }],
+  paths: {
+    '/accounts': {
+      get: {
+        summary: 'List accounts',
+        operationId: 'listAccounts',
+        tags: ['accounts'],
+        security: [{ bearerAuth: [] }, { apiKeyAuth: [] }],
+        responses: { '200': { description: 'OK' } },
+      },
+    },
+  },
+  components: {
+    securitySchemes: {
+      bearerAuth: { type: 'http', scheme: 'bearer' },
+      apiKeyAuth: { type: 'apiKey', name: 'X-Api-Key', in: 'header' },
+    },
+  },
+} as const
+
+/**
+ * The constraint keywords a reference has to be able to say out loud, plus the three extensions that
+ * explain an enum and name a map key.
+ */
+export const CONSTRAINTS_SPEC = {
+  openapi: '3.1.0',
+  info: { title: 'Constraints', version: '1.0.0' },
+  paths: {
+    '/things': {
+      get: {
+        summary: 'List things',
+        operationId: 'listThings',
+        tags: ['things'],
+        responses: { '200': { description: 'OK' } },
+      },
+    },
+  },
+  components: {
+    schemas: {
+      Bounded: {
+        type: 'object',
+        required: ['count'],
+        properties: {
+          zulu: { type: 'string' },
+          count: { type: 'integer', exclusiveMinimum: 0, exclusiveMaximum: 100, multipleOf: 5 },
+          alpha: { type: 'string' },
+          tags: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 8, uniqueItems: true },
+          bag: { type: 'object', minProperties: 1, maxProperties: 4 },
+          kind: { const: 'bounded' },
+        },
+      },
+      Status: {
+        type: 'string',
+        enum: ['PENDING', 'SETTLED', 'REVERSED'],
+        'x-enumDescriptions': {
+          PENDING: 'Authorised, not yet captured.',
+          SETTLED: 'Money has moved.',
+        },
+      },
+      Codes: {
+        type: 'string',
+        enum: ['a', 'b'],
+        'x-enum-varnames': ['ALPHA', 'BRAVO'],
+      },
+      Balances: {
+        type: 'object',
+        'x-additionalPropertiesName': 'currency',
+        additionalProperties: { type: 'integer' },
+      },
+    },
+  },
+} as const
+
+/** An operation whose author wrote the SDK call, in two spellings that must not both be read. */
+export const CODE_SAMPLES_SPEC = {
+  openapi: '3.1.0',
+  info: { title: 'Samples', version: '1.0.0' },
+  servers: [{ url: 'https://api.example.com' }],
+  paths: {
+    '/accounts': {
+      get: {
+        summary: 'List accounts',
+        operationId: 'listAccounts',
+        tags: ['accounts'],
+        'x-codeSamples': [
+          { lang: 'node', label: 'Node.js SDK', source: 'await client.accounts.list()' },
+          { lang: 'python', source: 'client.accounts.list()' },
+        ],
+        'x-stainless-snippets': {
+          node: { source: 'GENERATED_AND_SHOULD_NOT_WIN' },
+        },
+        responses: { '200': { description: 'OK' } },
+      },
+    },
+    '/plain': {
+      get: {
+        summary: 'Plain',
+        operationId: 'plain',
+        tags: ['accounts'],
+        responses: { '200': { description: 'OK' } },
+      },
+    },
+  },
+} as const
+
+/** Operation annotations: stability, arbitrary badges, and the duplicate a document can create. */
+export const BADGES_SPEC = {
+  openapi: '3.1.0',
+  info: { title: 'Badged API', version: '1.0.0' },
+  paths: {
+    '/beta': {
+      get: {
+        summary: 'Beta thing',
+        operationId: 'betaThing',
+        tags: ['things'],
+        'x-scalar-stability': 'experimental',
+        'x-badges': [{ name: 'Beta', color: 'info' }, 'Rate limited'],
+        responses: { '200': { description: 'OK' } },
+      },
+    },
+    '/old': {
+      get: {
+        summary: 'Old thing',
+        operationId: 'oldThing',
+        tags: ['things'],
+        deprecated: true,
+        'x-scalar-stability': 'deprecated',
+        responses: { '200': { description: 'OK' } },
+      },
+    },
+  },
+} as const
+
+/** Prose and field names that only a deeper index can find. */
+export const SEARCHABLE_SPEC = {
+  openapi: '3.1.0',
+  info: { title: 'Searchable', version: '1.0.0' },
+  paths: {
+    '/transfers': {
+      post: {
+        summary: 'Move money',
+        operationId: 'createTransfer',
+        tags: ['transfers'],
+        description: 'Requests are idempotent when you supply a key.',
+        parameters: [{ name: 'X-Correlation-Id', in: 'header', schema: { type: 'string' } }],
+        requestBody: {
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: { destinationAccount: { type: 'string' }, amountMinor: { type: 'integer' } },
+              },
+            },
+          },
+        },
+        responses: { '200': { description: 'The transfer was accepted.' } },
+      },
+    },
+    '/unrelated': {
+      get: {
+        summary: 'Something else',
+        operationId: 'unrelated',
+        tags: ['transfers'],
+        responses: { '200': { description: 'OK' } },
+      },
+    },
+  },
+  components: {
+    schemas: {
+      Ledger: {
+        type: 'object',
+        description: 'A double-entry record.',
+        properties: { postingDate: { type: 'string' } },
+      },
+    },
+  },
+} as const
+
+/** One scheme per OAuth grant, so the form can be asked what it does with each. */
+export const GRANTS_SPEC = {
+  openapi: '3.1.0',
+  info: { title: 'Grants', version: '1.0.0' },
+  servers: [{ url: 'https://api.example.com' }],
+  paths: {
+    '/machine': {
+      get: {
+        summary: 'Machine',
+        operationId: 'machine',
+        tags: ['grants'],
+        security: [{ machine: ['read'] }],
+        responses: { '200': { description: 'OK' } },
+      },
+    },
+    '/person': {
+      get: {
+        summary: 'Person',
+        operationId: 'person',
+        tags: ['grants'],
+        security: [{ person: [] }],
+        responses: { '200': { description: 'OK' } },
+      },
+    },
+    '/legacy': {
+      get: {
+        summary: 'Legacy',
+        operationId: 'legacy',
+        tags: ['grants'],
+        security: [{ legacy: [] }],
+        responses: { '200': { description: 'OK' } },
+      },
+    },
+  },
+  components: {
+    securitySchemes: {
+      machine: {
+        type: 'oauth2',
+        flows: { clientCredentials: { tokenUrl: 'https://issuer.example.com/token', scopes: { read: 'Read' } } },
+      },
+      person: {
+        type: 'oauth2',
+        flows: { password: { tokenUrl: 'https://issuer.example.com/token', scopes: {} } },
+      },
+      legacy: {
+        type: 'oauth2',
+        flows: { implicit: { authorizationUrl: 'https://issuer.example.com/authorize', scopes: {} } },
       },
     },
   },

@@ -1,0 +1,23 @@
+/*
+ * The Jack Henry entry: JH fonts, both JH themes, and the openish hooks bound to JH alias tokens.
+ *
+ *   <link rel="stylesheet" href="@openish/theme/jh.css" />
+ *
+ * Use this *instead of* `index.css`, not alongside it. Both declare every hook at the same
+ * specificity, so loading both would leave the winner decided by import order - which is exactly
+ * the kind of thing that works until someone reorders two lines.
+ *
+ * Switching schemes is a class toggle, not a stylesheet swap - the JH light theme declares its
+ * tokens on `:root` while the dark theme scopes them to `.jh-theme-dark`, so both can be loaded at
+ * once and dark wins when the class is present:
+ *
+ *   document.documentElement.classList.toggle('jh-theme-dark', scheme === 'dark')
+ *
+ * Order matters. `:root` and `.jh-theme-dark` have equal specificity, so dark.css has to come after
+ * light.css, and the binding files after both.
+ */
+@import './fonts.css';
+@import './light.css';
+@import './dark.css';
+@import './jh/tokens.css';
+@import './jh/highlight.css';

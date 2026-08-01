@@ -1,24 +1,32 @@
 {
   "name": "@openish/theme",
   "version": "0.0.0",
-  "description": "Jack Henry Design System token bridge for openish elements",
+  "description": "The --openish-* style-hook layer: a self-contained default palette, plus a Jack Henry Design System binding.",
   "license": "MIT",
   "type": "module",
   "exports": {
     ".": "./css/index.css",
     "./index.css": "./css/index.css",
     "./tokens.css": "./css/tokens.css",
+    "./highlight.css": "./css/highlight.css",
+    "./jh.css": "./css/jh.css",
+    "./jh/tokens.css": "./css/jh/tokens.css",
+    "./jh/highlight.css": "./css/jh/highlight.css",
     "./light.css": "./css/light.css",
     "./dark.css": "./css/dark.css",
-    "./fonts.css": "./css/fonts.css",
-    "./highlight.css": "./css/highlight.css"
+    "./fonts.css": "./css/fonts.css"
   },
   "files": [
     "css",
     "README.md"
   ],
   "scripts": {},
-  "dependencies": {
+  "peerDependencies": {
     "@jack-henry/jh-core": "^1.6.1"
+  },
+  "peerDependenciesMeta": {
+    "@jack-henry/jh-core": {
+      "optional": true
+    }
   }
 }

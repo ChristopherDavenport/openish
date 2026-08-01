@@ -58,6 +58,12 @@ export const mediaTypeExample = (media: MediaType | undefined): unknown => {
   return isPlainObject(first) ? first['value'] : undefined
 }
 
+/** How to render a `content` map. */
+export type MediaTypesOptions = {
+  /** Show the schema only. For a body the reader can already see filled in and edit. */
+  noExample?: boolean
+}
+
 /**
  * A `content` map, rendered as one schema per media type.
  *
@@ -65,7 +71,7 @@ export const mediaTypeExample = (media: MediaType | undefined): unknown => {
  * of nearly the same schema - buries the response that follows. A single media type is just shown,
  * labelled, since a one-tab tablist is a control that cannot do anything.
  */
-export const renderMediaTypes = (content: unknown, label: string): unknown => {
+export const renderMediaTypes = (content: unknown, label: string, options: MediaTypesOptions = {}): unknown => {
   if (!isPlainObject(content)) {
     return nothing
   }
@@ -79,6 +85,7 @@ export const renderMediaTypes = (content: unknown, label: string): unknown => {
     const media = getResolvedRef(raw) as MediaType | undefined
     return html`
       <openish-schema-preview
+        ?no-example=${options.noExample === true}
         label=${ifDefined(showLabel ? mediaType : undefined)}
         language=${languageForMediaType(mediaType)}
         .schema=${media?.schema}

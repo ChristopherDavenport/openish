@@ -1,19 +1,23 @@
 /*
- * The default entry: fonts, both JH themes, and the openish style-hook layer - including the
- * syntax-colour hooks, which are hooks like any other. Leaving them to a second import made a host
- * that followed the README render every code block in body colour, with nothing to suggest why.
+ * The default entry: the openish style-hook layer, with values of its own and no dependencies.
  *
- * Switching schemes is a class toggle, not a stylesheet swap - the JH light theme declares its
- * tokens on `:root` while the dark theme scopes them to `.jh-theme-dark`, so both can be loaded at
- * once and dark wins when the class is present:
+ *   <link rel="stylesheet" href="@openish/theme/index.css" />
  *
- *   document.documentElement.classList.toggle('jh-theme-dark', scheme === 'dark')
+ * That is the whole styling requirement. Fonts are the platform's own stacks, so nothing is fetched
+ * and nothing has to be self-hosted.
  *
- * Order matters. `:root` and `.jh-theme-dark` have equal specificity, so dark.css has to come after
- * light.css, and tokens.css after both.
+ * The syntax-colour hooks are included rather than left to a second import, because they are hooks
+ * like any other and leaving them out made a host that followed the README render every code block
+ * in body colour, with nothing to suggest why.
+ *
+ * Dark follows the reader's system preference by default. To decide it yourself, put a class on
+ * `<html>` - both beat the media query, so either one is final:
+ *
+ *   document.documentElement.classList.toggle('openish-dark', scheme === 'dark')
+ *   document.documentElement.classList.add('openish-light')   // never dark, whatever the OS says
+ *
+ * For a page that already has the Jack Henry Design System on it, import `@openish/theme/jh.css`
+ * instead of this file - the same hooks, bound to JH alias tokens.
  */
-@import './fonts.css';
-@import './light.css';
-@import './dark.css';
 @import './tokens.css';
 @import './highlight.css';

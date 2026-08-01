@@ -4,7 +4,7 @@ import { createRequire } from 'node:module'
 import { describe, expect, it } from 'vitest'
 
 import { createDocumentStore } from '../src/store/create-document-store.js'
-import { flatten } from './helpers.js'
+import { flatten, relativeIdsOf } from './helpers.js'
 
 /**
  * `@scalar/galaxy` is Scalar's own example document: a complete, realistic 3.1 definition with tags,
@@ -52,7 +52,7 @@ describe('@scalar/galaxy', () => {
 
   it('finds the models and webhooks sections', async () => {
     const store = await createDocumentStore(galaxy)
-    const ids = store.navigation.map((node) => node.id)
+    const ids = relativeIdsOf(store, store.navigation)
 
     expect(ids).toContain('models')
     expect(ids).toContain('webhooks')

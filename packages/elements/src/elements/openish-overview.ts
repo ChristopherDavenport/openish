@@ -1,12 +1,14 @@
 import { consume } from '@lit/context'
-import { getResolvedRef, type NavNode, type DocumentStore } from '@openish/core'
+import { describeSecurityScheme, getResolvedRef, type NavNode, type DocumentStore } from '@openish/core'
 import { LitElement, html, css, nothing, type PropertyValues, type TemplateResult } from 'lit'
 import { customElement, property, query } from 'lit/decorators.js'
 import { repeat } from 'lit/directives/repeat.js'
 
-import { documentContext } from '../context/contexts.js'
+import { documentContext, uiContext, type OpenishUiState } from '../context/contexts.js'
+import { stripFirstSegment } from '../router/urls.js'
 import { baseStyles } from '../styles/shared.js'
 import { OpenishMarkdown } from './openish-markdown.js'
+import './openish-download.js'
 
 type SecurityScheme = {
   type?: string
@@ -99,12 +101,17 @@ export class OpenishOverview extends LitElement {
   @consume({ context: documentContext, subscribe: true })
   store: DocumentStore | undefined
 
+  /** Presentation state. Provided by `<openish-api-reference>` through context. */
+  @consume({ context: uiContext, subscribe: true })
+  ui: OpenishUiState | undefined
+
   /**
    * Fragment to scroll to, passed down rather than read from `location` here.
    *
-   * The router calls `preventDefault()` on link clicks, so the browser never performs its own
-   * fragment scroll and `hashchange` never fires. Something has to do it, and the element that owns
-   * the headings is the only one that can.
+   * A heading from `info.description` is a navigation node, so arriving at one is a normal
+   * navigation and the target lives inside `<openish-markdown>`'s shadow root - out of reach of the
+   * browser's own fragment scrolling, which only looks at ids in the document. The element that owns
+   * the headings is the only one that can do it.
    */
   @property({ type: String })
   hash = ''
@@ -140,13 +147,20 @@ export class OpenishOverview extends LitElement {
     })
   }
 
-  /** Heading ids come straight from the navigation nodes, so links and targets cannot drift apart. */
+  /**
+   * Heading ids come straight from the navigation nodes, so links and targets cannot drift apart.
+   *
+   * In the form the *URL* has them, because that is what these are: a heading is not its own page,
+   * so `hrefFor` puts its id in the fragment, and the fragment is what gets matched against these
+   * when the browser - or `scrollToHeading` - goes looking for the target.
+   */
   #headingIds(): string[] {
+    const prefix = this.ui?.slugPrefix ?? ''
     const ids: string[] = []
     const visit = (nodes: readonly NavNode[]) => {
       for (const node of nodes) {
         if (node.type === 'text') {
-          ids.push(node.id)
+          ids.push(prefix ? stripFirstSegment(node.id) : node.id)
           if (node.children) {
             visit(node.children)
           }
@@ -158,7 +172,13 @@ export class OpenishOverview extends LitElement {
   }
 
   #renderServers(): TemplateResult | typeof nothing {
-    const servers = this.store?.document.servers
+    /*
+     * The host's list replaces the document's, and this page has to agree with the try-it panel
+     * about which one is in force - a reference that documents one server and calls another is
+     * worse than one that documents neither.
+     */
+    const configured = this.ui?.config.servers ?? []
+    const servers = configured.length > 0 ? configured : this.store?.document.servers
     if (!servers || servers.length === 0) {
       return nothing
     }
@@ -194,26 +214,6 @@ export class OpenishOverview extends LitElement {
     `
   }
 
-  /** A one-line summary of how a scheme is supplied, since `type` alone rarely answers it. */
-  #describeScheme(scheme: SecurityScheme): string {
-    if (scheme.type === 'http') {
-      return `HTTP ${scheme.scheme ?? 'authentication'}`
-    }
-    if (scheme.type === 'apiKey') {
-      return `API key in ${scheme.in ?? 'request'}${scheme.name ? ` as ${scheme.name}` : ''}`
-    }
-    if (scheme.type === 'oauth2') {
-      return 'OAuth 2.0'
-    }
-    if (scheme.type === 'openIdConnect') {
-      return `OpenID Connect${scheme.openIdConnectUrl ? ` — ${scheme.openIdConnectUrl}` : ''}`
-    }
-    if (scheme.type === 'mutualTLS') {
-      return 'Mutual TLS'
-    }
-    return scheme.type ?? 'Unknown scheme'
-  }
-
   #renderSecurity(): TemplateResult | typeof nothing {
     const schemes = this.store?.document.components?.securitySchemes
     if (!schemes || Object.keys(schemes).length === 0) {
@@ -229,7 +229,7 @@ export class OpenishOverview extends LitElement {
             return html`
               <dt>${name}</dt>
               <dd>
-                <div>${this.#describeScheme(scheme)}</div>
+                <div>${describeSecurityScheme(scheme, { showUrl: true })}</div>
                 ${scheme.description
                   ? html`<openish-markdown .markdown=${scheme.description} .headingOffset=${2}></openish-markdown>`
                   : nothing}
@@ -260,6 +260,7 @@ export class OpenishOverview extends LitElement {
           `
         : nothing}
       ${this.#renderServers()} ${this.#renderSecurity()}
+      <section><openish-download></openish-download></section>
     `
   }
 }

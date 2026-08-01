@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { extractHeadings } from '../src/navigation/traverse-description.js'
 import type { NavGroupNode, NavTagNode } from '../src/types.js'
-import { findNode, flatten, idsOf, storeFromFixture } from './helpers.js'
+import { findNode, flatten, idsOf, relativeId, relativeIdsOf, storeFromFixture } from './helpers.js'
 
 const tagsOf = (store: Awaited<ReturnType<typeof storeFromFixture>>): NavTagNode[] =>
   store.navigation.filter((node): node is NavTagNode => node.type === 'tag')
@@ -25,7 +25,7 @@ describe('navigation', () => {
     const alpha = tagsOf(store).find((tag) => tag.name === 'alpha')
 
     expect(alpha?.title).toBe('Alpha (renamed)')
-    expect(alpha?.id).toBe('tags/alpha-renamed')
+    expect(relativeId(store, alpha?.id)).toBe('tags/alpha-renamed')
   })
 
   it('puts the untagged bucket last and labels it from config', async () => {
@@ -52,7 +52,7 @@ describe('navigation', () => {
     const collisions = zebra?.children.filter((node) => node.title === 'List zebra') ?? []
 
     expect(collisions).toHaveLength(2)
-    expect(idsOf(collisions)).toEqual(['tags/zebra/get-zebra', 'tags/zebra/post-zebra'])
+    expect(relativeIdsOf(store, collisions)).toEqual(['tags/zebra/get-zebra', 'tags/zebra/post-zebra'])
   })
 
   it('mints globally unique ids', async () => {
@@ -88,7 +88,7 @@ describe('navigation', () => {
 
   it('slugifies prose but leaves identifiers as the author wrote them', async () => {
     const store = await storeFromFixture('navigation.yaml')
-    const ids = flatten(store.navigation).map((node) => node.id)
+    const ids = relativeIdsOf(store, flatten(store.navigation))
 
     /* `listAlpha` is an operationId; `List zebra` is a summary. */
     expect(ids).toContain('tags/alpha-renamed/listAlpha')
@@ -105,7 +105,7 @@ describe('navigation', () => {
 
   it('builds a webhooks group', async () => {
     const store = await storeFromFixture('navigation.yaml')
-    const webhooks = store.navigation.find((node): node is NavGroupNode => node.id === 'webhooks')
+    const webhooks = findNode(store, 'webhooks') as NavGroupNode
 
     expect(webhooks?.children.map((node) => node.title)).toEqual(['A thing was created'])
     expect(webhooks?.children[0]?.type).toBe('webhook')
@@ -115,11 +115,11 @@ describe('navigation', () => {
     const shown = await storeFromFixture('navigation.yaml')
     const hidden = await storeFromFixture('navigation.yaml', { config: { hideModels: true } })
 
-    const models = shown.navigation.find((node): node is NavGroupNode => node.id === 'models')
+    const models = findNode(shown, 'models') as NavGroupNode
     expect(models?.children.map((node) => node.title)).toEqual(['Alpha', 'Beta'])
     /* Schema names are identifiers, so their case survives into the URL. */
-    expect(idsOf(models?.children ?? [])).toEqual(['models/Alpha', 'models/Beta'])
-    expect(hidden.navigation.find((node) => node.id === 'models')).toBeUndefined()
+    expect(relativeIdsOf(shown, models?.children ?? [])).toEqual(['models/Alpha', 'models/Beta'])
+    expect(hidden.bySlug.get(`${hidden.source.slug}/models`)).toBeUndefined()
   })
 
   it('sorts tags and operations alphabetically on request', async () => {
@@ -151,11 +151,10 @@ describe('description headings', () => {
     const store = await storeFromFixture('navigation.yaml')
     const [gettingStarted, concepts] = store.navigation
 
-    expect(gettingStarted?.id).toBe('overview/getting-started')
-    expect(gettingStarted?.type === 'text' && gettingStarted.children?.map((n) => n.id)).toEqual([
-      'overview/getting-started/authentication',
-      'overview/getting-started/rate-limits',
-    ])
-    expect(concepts?.id).toBe('overview/concepts')
+    expect(relativeId(store, gettingStarted?.id)).toBe('overview/getting-started')
+    expect(
+      gettingStarted?.type === 'text' && relativeIdsOf(store, gettingStarted.children ?? []),
+    ).toEqual(['overview/getting-started/authentication', 'overview/getting-started/rate-limits'])
+    expect(relativeId(store, concepts?.id)).toBe('overview/concepts')
   })
 })

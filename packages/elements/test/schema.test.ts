@@ -52,7 +52,7 @@ describe('recursion', () => {
     const parent = schemaFor(schema, 'parent')!
 
     expect(deepTextOf(parent.shadowRoot!)).toContain('Recursive')
-    expect(parent.shadowRoot!.querySelector('a')?.getAttribute('href')).toBe('/models/Node')
+    expect(parent.shadowRoot!.querySelector('a')?.getAttribute('href')).toBe('#/models/Node')
     /* A link, not a disclosure: there is nothing to open that is not already on that page. */
     expect(parent.shadowRoot!.querySelector('openish-disclosure')).toBeNull()
   })
@@ -61,7 +61,7 @@ describe('recursion', () => {
     const { schema } = await modelSchema(CYCLIC_SPEC, 'Node')
     const children = schemaFor(schema, 'children')!
 
-    expect(children.shadowRoot!.querySelector('a')?.getAttribute('href')).toBe('/models/Node')
+    expect(children.shadowRoot!.querySelector('a')?.getAttribute('href')).toBe('#/models/Node')
   })
 
   it('terminates on mutual recursion, one level further down', async () => {
@@ -77,7 +77,7 @@ describe('recursion', () => {
 
     /* Other -> Pair is, so it stops. */
     const back = schemaFor(left, 'back')!
-    expect(back.shadowRoot!.querySelector('a')?.getAttribute('href')).toBe('/models/Pair')
+    expect(back.shadowRoot!.querySelector('a')?.getAttribute('href')).toBe('#/models/Pair')
   })
 
   it('renders nothing inside a disclosure until it is opened', async () => {

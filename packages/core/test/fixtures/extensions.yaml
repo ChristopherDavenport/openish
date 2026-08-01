@@ -1,0 +1,91 @@
+openapi: 3.1.0
+info:
+  title: Extensions
+  version: 1.0.0
+servers:
+  - url: https://api.example.com
+x-tagGroups:
+  - name: Money
+    tags: [payments, refunds]
+  - name: Internal tooling
+    x-internal: true
+    tags: [admin]
+tags:
+  - name: payments
+    description: Taking money.
+  - name: refunds
+    description: Giving it back.
+  - name: admin
+    description: Not for customers.
+  - name: legacy
+    x-internal: true
+    description: Every operation here goes with the tag.
+  - name: loose
+    description: Declared, but named by no group.
+paths:
+  /payments:
+    get:
+      operationId: listPayments
+      tags: [payments]
+      responses:
+        '200': { description: OK }
+    post:
+      operationId: createPayment
+      tags: [payments]
+      x-internal: true
+      responses:
+        '200': { description: OK }
+  /refunds:
+    get:
+      operationId: listRefunds
+      tags: [refunds]
+      responses:
+        '200': { description: OK }
+  /admin/users:
+    get:
+      operationId: listUsers
+      tags: [admin]
+      responses:
+        '200': { description: OK }
+  /legacy:
+    get:
+      operationId: legacyThing
+      tags: [legacy]
+      responses:
+        '200': { description: OK }
+  /loose:
+    get:
+      operationId: looseThing
+      tags: [loose]
+      responses:
+        '200': { description: OK }
+  /ignored:
+    get:
+      operationId: ignoredThing
+      tags: [payments]
+      x-scalar-ignore: true
+      responses:
+        '200': { description: OK }
+webhooks:
+  paymentSettled:
+    post:
+      operationId: paymentSettled
+      responses:
+        '200': { description: OK }
+  internalPing:
+    post:
+      operationId: internalPing
+      x-internal: true
+      responses:
+        '200': { description: OK }
+components:
+  schemas:
+    Payment:
+      type: object
+      properties:
+        id: { type: string }
+    InternalLedgerEntry:
+      x-internal: true
+      type: object
+      properties:
+        id: { type: string }
