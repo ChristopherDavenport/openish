@@ -133,3 +133,52 @@ describe('the virtualised sidebar', () => {
     expect(rows(harness).length).toBeLessThan(before)
   })
 })
+
+describe('row width', () => {
+  /**
+   * The virtualiser positions rows absolutely, and an absolutely positioned block with no width is
+   * shrink-to-fit - so without a width of their own, rows are as wide as their own text. Nothing
+   * functional breaks, which is why this went unnoticed: the highlight on the active row just ends
+   * wherever its title does, and a long title overflows the sidebar instead of ellipsising.
+   */
+  const linkOf = (item: Element) => item.shadowRoot!.querySelector('a.link') as HTMLAnchorElement
+
+  it('gives every row the full width of the list, so highlights line up', async () => {
+    const harness = await wide(20)
+    const list = deepQuery(harness.element.shadowRoot!, 'lit-virtualizer')!
+    const right = Math.round(list.getBoundingClientRect().right)
+
+    const edges = rows(harness).map((item) => Math.round(linkOf(item).getBoundingClientRect().right))
+
+    expect(edges.length).toBeGreaterThan(1)
+    /* One right edge for the whole list: the highlight box ends in the same place on every row. */
+    expect(new Set(edges).size).toBe(1)
+    expect(edges[0]).toBeLessThanOrEqual(right)
+  })
+
+  it('keeps a title longer than the sidebar inside it', async () => {
+    const harness = await mountReference({
+      path: '/models',
+      spec: {
+        openapi: '3.1.0',
+        info: { title: 'Long', version: '1.0.0' },
+        components: {
+          schemas: {
+            AVeryLongSchemaNameThatCannotPossiblyFitInsideTheSidebarColumnAtAnyReasonableWidth: {
+              type: 'object',
+            },
+          },
+        },
+      },
+    })
+    await harness.settle()
+
+    const list = deepQuery(harness.element.shadowRoot!, 'lit-virtualizer')!
+    const item = rows(harness).find((row) => row.shadowRoot!.querySelector('.label')?.textContent?.includes('AVeryLong'))
+
+    expect(item).toBeDefined()
+    expect(Math.round(linkOf(item!).getBoundingClientRect().right)).toBeLessThanOrEqual(
+      Math.round(list.getBoundingClientRect().right),
+    )
+  })
+})

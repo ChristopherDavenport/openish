@@ -65,6 +65,20 @@ export class OpenishSidebar extends LitElement {
         outline: none;
       }
 
+      /*
+       * The virtualiser positions every row absolutely, and an absolutely positioned block with no
+       * width is shrink-to-fit - so each row was only as wide as its own text. The active row's
+       * highlight then ended wherever its title did, which made a list of rows look ragged, and a
+       * title longer than the sidebar overflowed to the right instead of ellipsising, because there
+       * was no width for the label's min-width: 0 to shrink against.
+       *
+       * Rows are a layout decision of the list, not of the item, so the width belongs here.
+       */
+      lit-virtualizer > [role='treeitem'] {
+        width: 100%;
+        box-sizing: border-box;
+      }
+
       lit-virtualizer:focus-visible {
         border-radius: var(--openish-radius-md);
         box-shadow: var(--openish-focus-ring);
