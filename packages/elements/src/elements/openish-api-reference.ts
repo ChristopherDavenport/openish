@@ -127,16 +127,17 @@ export class OpenishApiReference extends LitElement {
       }
 
       /*
-       * The page decides its own measure, not this wrapper.
+       * No ceiling and no centring: the page fills the window.
        *
-       * The wide value is a ceiling rather than a width: the overview, tag and model pages cap
-       * themselves at the prose measure, and only the operation page - which puts two columns side
-       * by side - uses the room. Capping here instead meant the operation page could never be wider
-       * than one column's worth, so its container query could never fire.
+       * There used to be an 82rem cap here, which on a wide screen left a band of empty page down
+       * both sides and was a large part of why this did not read like the references it is measured
+       * against. The measure a reader actually needs is the one prose is set at, and that is now a
+       * *track* - --openish-docs-column - so documentation stops growing at the reading measure
+       * while the examples beside it take the surplus. Capping the wrapper as well would only put
+       * the empty band back outside it.
        */
       .content {
-        max-width: var(--openish-content-max-width-wide);
-        margin: 0 auto;
+        min-width: 0;
       }
 
       /*

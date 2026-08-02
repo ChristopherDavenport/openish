@@ -74,8 +74,9 @@ describe('routing', () => {
     const operation = deepQuery(element.shadowRoot!, 'openish-operation')!
 
     expect(textOf(operation.shadowRoot!.querySelector('h1'))).toBe('List accounts')
-    expect(textOf(operation.shadowRoot!.querySelector('.method'))).toBe('get')
-    expect(textOf(operation.shadowRoot!.querySelector('.path'))).toBe('/accounts')
+    /* The call itself is the title of the request card now, a column to the right of the prose. */
+    expect(textOf(deepQuery(operation.shadowRoot!, '.method'))).toBe('get')
+    expect(textOf(deepQuery(operation.shadowRoot!, '.path'))).toBe('/accounts')
     expect(deepTextOf(operation.shadowRoot!)).toContain('Returns every account')
   })
 

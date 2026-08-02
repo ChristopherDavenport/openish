@@ -44,6 +44,22 @@ export default defineConfig({
       },
       {
         resolve: { alias, dedupe: ['lit', 'lit-html', 'lit-element', '@lit/reactive-element'] },
+        /*
+         * Named up front rather than discovered.
+         *
+         * Vite optimises a dependency the first time something imports it and then reloads the page,
+         * which mid-run means a test file is torn down and re-imported - and the failure that comes
+         * out is not "the dependency is missing", it is a dozen unrelated assertions failing in
+         * whichever files happened to be in flight. The virtualiser's entry points are the ones that
+         * appear late, because only the plane and one spike reach for them.
+         */
+        optimizeDeps: {
+          include: [
+            '@lit-labs/virtualizer',
+            '@lit-labs/virtualizer/virtualize.js',
+            '@lit-labs/virtualizer/layouts/flow.js',
+          ],
+        },
         test: {
           name: 'elements',
           include: ['packages/elements/test/**/*.test.ts', 'packages/client/test/**/*.browser.test.ts'],

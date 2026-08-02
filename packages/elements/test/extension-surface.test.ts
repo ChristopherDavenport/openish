@@ -53,7 +53,7 @@ describe('CSS parts', () => {
   it('exposes the operation header', async () => {
     const harness = await at('/tags/accounts/listAccounts', { hideTryIt: true })
 
-    expect(styleReaches(harness, 'openish-api-reference::part(operation-header)', '.header')).toBe(true)
+    expect(styleReaches(harness, 'openish-api-reference::part(operation-header)', '.title-row')).toBe(true)
   })
 
   it('exposes a code block through the whole nesting chain', async () => {

@@ -9,7 +9,7 @@ import { uiContext, type OpenishUiState } from '../context/contexts.js'
 import { externalDocsStyles, renderExternalDocs } from '../render/external-docs.js'
 import { heading } from '../render/heading.js'
 import { hrefFor } from '../router/urls.js'
-import { baseStyles, methodStyles, titleRowStyles } from '../styles/shared.js'
+import { baseStyles, methodStyles, planeColumnStyles, titleRowStyles } from '../styles/shared.js'
 import './openish-copy-markdown.js'
 import './openish-markdown.js'
 
@@ -24,13 +24,8 @@ export class OpenishTagSection extends LitElement {
     methodStyles,
     externalDocsStyles,
     titleRowStyles,
+    planeColumnStyles,
     css`
-      :host {
-        display: block;
-        /* Prose, so it caps itself at the reading measure however wide the page around it is. */
-        max-width: var(--openish-content-max-width);
-      }
-
       /* Weight from the class, not the tag - see the note in render/heading.ts. */
       .title {
         font: var(--openish-font-heading-1);
@@ -110,21 +105,23 @@ export class OpenishTagSection extends LitElement {
     const externalDocs = this.node.type === 'tag' ? this.node.externalDocs : undefined
 
     return html`
-      <div class="title-row">
-        ${heading(this.level, this.node.title, { title: true })}
-        <openish-copy-markdown exportparts="copy" .node=${this.node}></openish-copy-markdown>
+      <div class="columns">
+        <div class="title-row">
+          ${heading(this.level, this.node.title, { title: true })}
+          <openish-copy-markdown exportparts="copy" .node=${this.node}></openish-copy-markdown>
+        </div>
+        ${description
+          ? html`<openish-markdown .markdown=${description} .headingOffset=${this.level}></openish-markdown>`
+          : nothing}
+        ${renderExternalDocs(externalDocs, `More about ${this.node.title}`)}
+        <ul>
+          ${repeat(
+            this.node.children,
+            (child) => child.id,
+            (child) => this.#renderChild(child),
+          )}
+        </ul>
       </div>
-      ${description
-        ? html`<openish-markdown .markdown=${description} .headingOffset=${this.level}></openish-markdown>`
-        : nothing}
-      ${renderExternalDocs(externalDocs, `More about ${this.node.title}`)}
-      <ul>
-        ${repeat(
-          this.node.children,
-          (child) => child.id,
-          (child) => this.#renderChild(child),
-        )}
-      </ul>
     `
   }
 }

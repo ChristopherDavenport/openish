@@ -91,12 +91,14 @@ describe('parameters', () => {
 
     expect(deepQuery(operation, 'openish-parameters')).toBeNull()
     /*
-     * Authorization is present because the document declares `security`, which this operation
-     * inherits. The order is documentation pane then examples pane, which is source order - the two
-     * only sit side by side once the page is wide enough for the container query.
+     * The order is documentation pane then examples pane, which is source order - the two only sit
+     * side by side once the page is wide enough for the container query.
+     *
+     * Authorization is not among them. The document declares `security` and this operation inherits
+     * it, so it is still said - but it is one line beside the call rather than a section of the
+     * documentation column, which is a disclosure and not a heading.
      */
     expect([...operation.querySelectorAll('h2')].map((heading) => textOf(heading))).toEqual([
-      'Authorization',
       'Responses',
       'Request',
       'Response examples',

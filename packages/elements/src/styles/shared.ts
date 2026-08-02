@@ -344,6 +344,55 @@ export const highlightStyles = css`
 `
 
 /**
+ * The two content columns, declared identically by every page element.
+ *
+ * Column geometry used to live inside `<openish-operation>` alone, so an operation split itself in
+ * two while the overview, tag and model pages were a single centred measure - and the layout moved
+ * under the reader every time they navigated. Stacked into one scroller that is worse: the examples
+ * would start at a different x on every second section instead of reading as a band down the page.
+ *
+ * So it is one fragment, imported by all four. Every section is the same width, so identical track
+ * definitions put the tracks in identical places; there is no cross-boundary layout and no element
+ * has to be told how wide the page is.
+ *
+ * A container query, not a media query, and on a wrapper rather than on `:host`: how wide *this
+ * section* is depends on whether the sidebar is showing, which a media query cannot see - and an
+ * element is never its own container, so the query has to be answered by a descendant. The 74rem is
+ * a literal because a container condition cannot take a `var()`; it is deliberately not a token, and
+ * trying to make it one will silently do nothing.
+ */
+export const planeColumnStyles = css`
+  :host {
+    display: block;
+    container-type: inline-size;
+    container-name: section;
+  }
+
+  .columns {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    column-gap: var(--openish-space-xl);
+    align-items: start;
+  }
+
+  /*
+   * Everything is one column of prose unless it says otherwise, which is what keeps a page that has
+   * no examples - the overview, a tag, a model - from having its content dealt alternately into two.
+   */
+  .columns > * {
+    grid-column: 1;
+    min-width: 0;
+    max-width: var(--openish-content-max-width);
+  }
+
+  @container section (min-width: 74rem) {
+    .columns {
+      grid-template-columns: var(--openish-docs-column) var(--openish-examples-column);
+    }
+  }
+`
+
+/**
  * A section's own title, with the controls that act on the whole section beside it.
  *
  * Shared because all four page elements have one and they have to line up: on the plane they are

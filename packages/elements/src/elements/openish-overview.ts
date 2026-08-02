@@ -15,7 +15,7 @@ import { documentContext, uiContext, type OpenishUiState } from '../context/cont
 import { externalDocsStyles, renderExternalDocs } from '../render/external-docs.js'
 import { heading } from '../render/heading.js'
 import { stripFirstSegment } from '../router/urls.js'
-import { baseStyles, titleRowStyles } from '../styles/shared.js'
+import { baseStyles, planeColumnStyles, titleRowStyles } from '../styles/shared.js'
 import './openish-copy-markdown.js'
 import { OpenishMarkdown } from './openish-markdown.js'
 import './openish-download.js'
@@ -42,13 +42,8 @@ export class OpenishOverview extends LitElement {
     baseStyles,
     externalDocsStyles,
     titleRowStyles,
+    planeColumnStyles,
     css`
-      :host {
-        display: block;
-        /* Prose, so it caps itself at the reading measure however wide the page around it is. */
-        max-width: var(--openish-content-max-width);
-      }
-
       /* Weight from the class, not the tag - see the note in render/heading.ts. */
       .title {
         font: var(--openish-font-heading-1);
@@ -416,24 +411,26 @@ export class OpenishOverview extends LitElement {
     const summary = typeof fields['summary'] === 'string' ? fields['summary'] : undefined
 
     return html`
-      <div class="title-row">
-        ${heading(this.level, info.title, { title: true })}
-        <openish-copy-markdown exportparts="copy"></openish-copy-markdown>
+      <div class="columns">
+        <div class="title-row">
+          ${heading(this.level, info.title, { title: true })}
+          <openish-copy-markdown exportparts="copy"></openish-copy-markdown>
+        </div>
+        ${info.version ? html`<div class="version">${info.version}</div>` : nothing}
+        ${summary ? html`<p class="summary">${summary}</p>` : nothing}
+        ${info.description
+          ? html`
+              <openish-markdown
+                .markdown=${info.description}
+                .headingOffset=${this.level}
+                .headingIds=${this.#headingIds()}
+              ></openish-markdown>
+            `
+          : nothing}
+        ${renderExternalDocs(this.store?.document.externalDocs, `More about ${info.title}`)}
+        ${this.#renderServers()} ${this.#renderSecurity()} ${this.#renderAbout(fields)}
+        <section><openish-download></openish-download></section>
       </div>
-      ${info.version ? html`<div class="version">${info.version}</div>` : nothing}
-      ${summary ? html`<p class="summary">${summary}</p>` : nothing}
-      ${info.description
-        ? html`
-            <openish-markdown
-              .markdown=${info.description}
-              .headingOffset=${this.level}
-              .headingIds=${this.#headingIds()}
-            ></openish-markdown>
-          `
-        : nothing}
-      ${renderExternalDocs(this.store?.document.externalDocs, `More about ${info.title}`)}
-      ${this.#renderServers()} ${this.#renderSecurity()} ${this.#renderAbout(fields)}
-      <section><openish-download></openish-download></section>
     `
   }
 }

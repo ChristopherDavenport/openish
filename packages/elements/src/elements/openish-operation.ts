@@ -20,9 +20,10 @@ import { repeat } from 'lit/directives/repeat.js'
 import { documentContext, uiContext, type OpenishUiState } from '../context/contexts.js'
 import { externalDocsStyles, renderExternalDocs } from '../render/external-docs.js'
 import { heading } from '../render/heading.js'
-import { baseStyles, methodStyles, titleRowStyles } from '../styles/shared.js'
+import { baseStyles, planeColumnStyles, titleRowStyles } from '../styles/shared.js'
 import './openish-callbacks.js'
 import './openish-code-sample.js'
+import './openish-disclosure.js'
 import './openish-copy-markdown.js'
 import './openish-markdown.js'
 import './openish-try-it.js'
@@ -44,54 +45,10 @@ import './openish-response-list.js'
 export class OpenishOperation extends LitElement {
   static override styles = [
     baseStyles,
-    methodStyles,
     externalDocsStyles,
+    planeColumnStyles,
     titleRowStyles,
     css`
-      :host {
-        display: block;
-        /*
-         * A container query, not a media query.
-         *
-         * The question is how wide *this page* is, and that depends on whether the sidebar is
-         * showing - which a media query on the viewport cannot see. The navigation switch upstairs
-         * stays a media query because it changes the element tree; this only changes placement.
-         */
-        container-type: inline-size;
-        container-name: operation;
-      }
-
-      /*
-       * An explicit zero minimum on the track, rather than a bare 1fr.
-       *
-       * A grid track sizes to its content by default, and a wide child - a long code line, a table -
-       * makes the track wider than the page and the whole reference scrolls sideways. The explicit
-       * zero minimum lets the track shrink and hands the overflow back to the elements that already
-       * know how to handle it: the table has its own scroller and the code block its own wrapping.
-       */
-      .panes {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr);
-        gap: 0 var(--openish-space-xl);
-      }
-
-      .docs,
-      .examples {
-        min-width: 0;
-      }
-
-      .intro {
-        grid-column: 1 / -1;
-        /* Prose spanning both columns still wants one column's worth of measure. */
-        max-width: var(--openish-content-max-width);
-      }
-
-      /* A pane starts at the top of its column, so the first section needs no gap above it. */
-      .docs > section:first-child,
-      .examples > section:first-child {
-        margin-top: var(--openish-space-lg);
-      }
-
       /*
        * Stacked, the worked example comes second - directly under the description and above the
        * parameter tables, which is where a reader copying a call looks first. Source order puts the
@@ -105,15 +62,30 @@ export class OpenishOperation extends LitElement {
         order: 2;
       }
 
-      @container operation (min-width: 56rem) {
-        .panes {
-          grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-          align-items: start;
-        }
+      /* A pane starts at the top of its column, so the first section needs no gap above it. */
+      .docs > section:first-child,
+      .examples > section:first-child {
+        margin-top: var(--openish-space-lg);
+      }
 
+      @container section (min-width: 74rem) {
         .docs,
         .examples {
           order: 0;
+        }
+
+        /*
+         * The intro takes the first row of the documentation column and the examples take both, so
+         * the request card's top edge meets the title's rather than starting a screen below it. The
+         * intro used to span both columns, which put a paragraph of prose across the width of the
+         * page and pushed the sample it was describing out of sight.
+         */
+        .intro {
+          grid-row: 1;
+        }
+
+        .docs {
+          grid-row: 2;
         }
 
         /*
@@ -123,6 +95,9 @@ export class OpenishOperation extends LitElement {
          * the page instead, which is what it did before this existed.
          */
         .examples {
+          grid-column: 2;
+          grid-row: 1 / span 2;
+          max-width: none;
           position: sticky;
           top: 0;
           max-height: 100vh;
@@ -130,7 +105,7 @@ export class OpenishOperation extends LitElement {
         }
       }
 
-      .header {
+      .badges {
         display: flex;
         align-items: center;
         gap: var(--openish-space-xs);
@@ -138,10 +113,19 @@ export class OpenishOperation extends LitElement {
         margin-bottom: var(--openish-space-sm);
       }
 
-      .path {
-        font-family: var(--openish-font-family-mono);
-        color: var(--openish-color-text-muted);
-        word-break: break-all;
+      /*
+       * Authorization, said once and quietly.
+       *
+       * It is a fact about the call rather than about the interface, so it belongs beside the call -
+       * and it is one line nine times out of ten, which is not worth the weight of a section heading
+       * and a list in the documentation column. The detail is still all there, behind the disclosure.
+       */
+      .authorization {
+        margin-bottom: var(--openish-space-md);
+        padding: var(--openish-space-2xs) var(--openish-space-sm);
+        border: 1px solid var(--openish-color-border);
+        border-radius: var(--openish-radius-md);
+        background: var(--openish-color-surface);
       }
 
       /*
@@ -331,16 +315,31 @@ export class OpenishOperation extends LitElement {
       return nothing
     }
 
+    /*
+     * The first alternative on the line, and a count for the rest.
+     *
+     * Nine operations in ten want one credential and the answer is its name, which is the whole
+     * point of putting it on the line: the common case needs no interaction at all. Joining every
+     * alternative was the first cut and the galaxy document answered it - eight ways to authorize,
+     * three lines of prose, and a summary longer than the thing it was summarising.
+     */
+    const describe = (requirement: SecurityRequirement): string =>
+      requirement.anonymous ? 'none' : requirement.entries.map((entry) => entry.name).join(' and ')
+
+    const [first, ...rest] = requirements
+    const hint = rest.length === 0 ? describe(first!) : `${describe(first!)} + ${rest.length} more`
+
     return html`
-      <section part="security-section">
-        ${heading(this.level + 1, 'Authorization', { 'section-title': true })}
-        ${requirements.length > 1 ? html`<p class="hint">Any one of these is enough.</p>` : nothing}
-        ${repeat(
-          requirements,
-          (_, index) => index,
-          (requirement) => this.#renderRequirement(requirement),
-        )}
-      </section>
+      <div class="authorization" part="security-section">
+        <openish-disclosure summary="Authorization" .hint=${hint}>
+          ${requirements.length > 1 ? html`<p class="hint">Any one of these is enough.</p>` : nothing}
+          ${repeat(
+            requirements,
+            (_, index) => index,
+            (requirement) => this.#renderRequirement(requirement),
+          )}
+        </openish-disclosure>
+      </div>
     `
   }
 
@@ -369,23 +368,27 @@ export class OpenishOperation extends LitElement {
      * Which arrangement is used is decided in CSS by a container query, because both panes are the
      * same DOM either way. Only their placement changes, so nothing here needs to know the width.
      */
+    const badges = operationBadges(operation, { deprecated })
+
     return html`
-      <div class="panes">
+      <div class="columns">
         <div class="intro">
-          <div class="header" part="operation-header">
-            <span class="method" data-method=${node.method}>${node.method}</span>
-            <code class="path">${node.type === 'webhook' ? node.name : node.path}</code>
-            ${deprecated ? html`<span class="badge" data-tone="danger">Deprecated</span>` : nothing}
-            ${repeat(
-              operationBadges(operation, { deprecated }),
-              (badge) => `${badge.tone}:${badge.label}`,
-              (badge) => html`<span class="badge" data-tone=${badge.tone}>${badge.label}</span>`,
-            )}
-          </div>
-          <div class="title-row">
+          <div class="title-row" part="operation-header">
             ${heading(this.level, node.title, { title: true, deprecated })}
             <openish-copy-markdown exportparts="copy" .node=${node}></openish-copy-markdown>
           </div>
+          ${deprecated || badges.length > 0
+            ? html`
+                <div class="badges">
+                  ${deprecated ? html`<span class="badge" data-tone="danger">Deprecated</span>` : nothing}
+                  ${repeat(
+                    badges,
+                    (badge) => `${badge.tone}:${badge.label}`,
+                    (badge) => html`<span class="badge" data-tone=${badge.tone}>${badge.label}</span>`,
+                  )}
+                </div>
+              `
+            : nothing}
           ${operation?.operationId
             ? html`<div class="operation-id">${operation.operationId}</div>`
             : nothing}
@@ -396,7 +399,6 @@ export class OpenishOperation extends LitElement {
         </div>
 
         <div class="docs" part="operation-docs">
-          ${this.#renderSecurity(operation)}
           ${parameters.length > 0
             ? html`
                 <section part="parameters-section">
@@ -437,6 +439,7 @@ export class OpenishOperation extends LitElement {
         </div>
 
         <div class="examples" part="operation-examples">
+          ${this.#renderSecurity(operation)}
           ${node.type === 'operation'
             ? html`
                 <section part="request-section">

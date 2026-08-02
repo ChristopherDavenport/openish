@@ -19,8 +19,20 @@
   --openish-code-max-height: 24rem;
   /* The measure for prose: how wide a paragraph gets before it is tiring to read. */
   --openish-content-max-width: 48rem;
-  /* The measure for a page that puts two columns side by side, which is only the operation page. */
-  --openish-content-max-width-wide: 82rem;
+
+  /*
+   * The two content columns, which every section of the document shares.
+   *
+   * They are tracks rather than widths because the page fills the window: the sidebar is a fixed
+   * measure and these divide what is left. Documentation stops growing at the reading measure and
+   * the examples take the surplus, which is the difference between filling a wide screen and leaving
+   * a two-hundred-pixel hole between the two columns where neither of them wanted to be.
+   *
+   * A host that would rather have them share evenly says so by re-pointing these two, and nothing
+   * else has to change - every section reads the same pair.
+   */
+  --openish-docs-column: minmax(0, var(--openish-content-max-width));
+  --openish-examples-column: minmax(0, 1fr);
 
   /*
    * The smallest a control is allowed to be, on both axes. 24px is the WCAG 2.2 target-size floor

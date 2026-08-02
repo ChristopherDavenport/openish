@@ -5,7 +5,7 @@ import { customElement, property } from 'lit/decorators.js'
 
 import { documentContext } from '../context/contexts.js'
 import { heading } from '../render/heading.js'
-import { baseStyles, titleRowStyles } from '../styles/shared.js'
+import { baseStyles, planeColumnStyles, titleRowStyles } from '../styles/shared.js'
 import './openish-code-block.js'
 import './openish-copy-markdown.js'
 import './openish-markdown.js'
@@ -24,13 +24,8 @@ export class OpenishModel extends LitElement {
   static override styles = [
     baseStyles,
     titleRowStyles,
+    planeColumnStyles,
     css`
-      :host {
-        display: block;
-        /* Prose, so it caps itself at the reading measure however wide the page around it is. */
-        max-width: var(--openish-content-max-width);
-      }
-
       /* Weight from the class, not the tag - see the note in render/heading.ts. */
       .title {
         font: var(--openish-font-heading-1);
@@ -66,17 +61,19 @@ export class OpenishModel extends LitElement {
     const schema = this.store?.document.components?.schemas?.[node.name]
 
     return html`
-      <div class="title-row">
-        ${heading(this.level, node.title, { title: true })}
-        <openish-copy-markdown exportparts="copy" .node=${node}></openish-copy-markdown>
+      <div class="columns">
+        <div class="title-row">
+          ${heading(this.level, node.title, { title: true })}
+          <openish-copy-markdown exportparts="copy" .node=${node}></openish-copy-markdown>
+        </div>
+        <openish-schema .schema=${schema} pointer=${node.pointer}></openish-schema>
+        ${heading(this.level + 1, 'Example', { 'section-title': true })}
+        <openish-code-block
+          language="json"
+          label="json"
+          .code=${JSON.stringify(schemaExample(schema), null, 2)}
+        ></openish-code-block>
       </div>
-      <openish-schema .schema=${schema} pointer=${node.pointer}></openish-schema>
-      ${heading(this.level + 1, 'Example', { 'section-title': true })}
-      <openish-code-block
-        language="json"
-        label="json"
-        .code=${JSON.stringify(schemaExample(schema), null, 2)}
-      ></openish-code-block>
     `
   }
 }
