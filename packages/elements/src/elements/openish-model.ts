@@ -36,9 +36,14 @@ export class OpenishModel extends LitElement {
         margin: 0 0 var(--openish-space-md);
       }
 
-      .section-title {
-        font: var(--openish-font-heading-2);
-        margin: var(--openish-space-xl) 0 var(--openish-space-sm);
+      /*
+       * The space the heading used to bring, moved onto the block it used to sit over.
+       *
+       * Stacked, it is what separates the example from the tree above it - the column follows the
+       * schema down the page with no row gap between them, so without it the two run together.
+       */
+      .examples > openish-code-block {
+        margin-top: var(--openish-space-xl);
       }
 
       /*
@@ -50,9 +55,8 @@ export class OpenishModel extends LitElement {
        * ran down the page and then stopped dead at the Models group, which is where six hundred
        * examples are.
        *
-       * The top margin is dropped only in the two-column arrangement, where the heading has to start
-       * level with the title beside it. Stacked, it is the space that separates the example from the
-       * tree above it, and zeroing it there would run the two together.
+       * The top margin is dropped only in the two-column arrangement, where the example has to start
+       * level with the title beside it.
        */
       @container section (min-width: 56rem) {
         .examples {
@@ -97,15 +101,20 @@ export class OpenishModel extends LitElement {
           <openish-schema .schema=${schema} pointer=${node.pointer}></openish-schema>
         </div>
 
-        <div class="examples" part="model-examples">
-          ${heading(this.level + 1, 'Example', { 'section-title': true })}
+        <!--
+          Named, not titled. See the note in <openish-operation>: the column says what is in it, so
+          the heading over the one block in it was saying it twice. The name is still there for a
+          reader who has only the landmark list, and carries the model's own name because a document
+          is six hundred of these and "Example" six hundred times is not a list.
+        -->
+        <section class="examples" part="model-examples" aria-label=${`${node.title} example`}>
           <openish-code-block
             exportparts="code, code-toolbar, copy"
             language="json"
             label="json"
             .code=${JSON.stringify(schemaExample(schema), null, 2)}
           ></openish-code-block>
-        </div>
+        </section>
       </div>
     `
   }

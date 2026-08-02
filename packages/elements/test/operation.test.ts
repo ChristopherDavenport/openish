@@ -92,23 +92,45 @@ describe('parameters', () => {
 
     expect(deepQuery(operation, 'openish-parameters')).toBeNull()
     /*
-     * The order is documentation pane then examples pane, which is source order - the two only sit
-     * side by side once the page is wide enough for the container query.
+     * Every heading an operation writes is in the documentation column, and this one writes one.
      *
      * Authorization is not among them. The document declares `security` and this operation inherits
      * it, so it is still said - but it is one line beside the call rather than a section of the
      * documentation column, which is a disclosure and not a heading.
      *
-     * `h3`, because on the plane an operation sits under its tag: the tag's heading is the level two
+     * `h4`, because on the plane an operation sits under its tag: the tag's heading is the level two
      * and these are one below the operation's own level three.
      *
-     * There is no "Response examples" either: this operation answers `200 OK` with no body, so the
-     * examples column has nothing to put under that heading and does not write it.
+     * The examples column is named rather than titled - see the case below - so "Request" is not
+     * here. Nor is anything for the responses: this operation answers `200 OK` with no body, so the
+     * examples column has nothing to show and writes no region at all.
      */
     expect([...operation.querySelectorAll('h4')].map((heading) => textOf(heading))).toEqual([
       'Responses',
-      'Request',
     ])
+  })
+
+  /*
+   * The right-hand column carries its names in the accessibility tree rather than on the page.
+   *
+   * Both halves are the contract. No heading, because the column and the blocks in it already say
+   * what they are - a sample headed by the client it is written in, a row of status tabs. And a
+   * name, because that leaves a screen reader's heading list with nothing where the column was.
+   *
+   * The names are qualified by the operation, which is not decoration: a named `<section>` is a
+   * landmark, and a plane is many operations at once. Forty regions called "Request" is what
+   * `landmark-unique` exists to prevent, and the a11y suite runs that rule.
+   */
+  it('names the examples column instead of heading it', async () => {
+    const { element } = await operationOf('getAccount')
+    const operation = shadowOf(sectionOf(element), 'openish-operation')
+
+    for (const part of ['request-section', 'examples-section']) {
+      const section = operation.querySelector(`[part~="${part}"]`)
+      expect(section, part).not.toBeNull()
+      expect(section!.querySelectorAll('h1, h2, h3, h4, h5, h6')).toHaveLength(0)
+      expect(section!.getAttribute('aria-label')).toContain('Get an account')
+    }
   })
 })
 
