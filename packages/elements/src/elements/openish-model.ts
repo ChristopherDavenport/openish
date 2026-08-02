@@ -4,6 +4,7 @@ import { LitElement, html, css, nothing, type TemplateResult } from 'lit'
 import { customElement, property } from 'lit/decorators.js'
 
 import { documentContext } from '../context/contexts.js'
+import { heading } from '../render/heading.js'
 import { baseStyles } from '../styles/shared.js'
 import './openish-code-block.js'
 import './openish-markdown.js'
@@ -28,13 +29,14 @@ export class OpenishModel extends LitElement {
         max-width: var(--openish-content-max-width);
       }
 
-      h1 {
+      /* Weight from the class, not the tag - see the note in render/heading.ts. */
+      .title {
         font: var(--openish-font-heading-1);
         font-family: var(--openish-font-family-mono);
         margin: 0 0 var(--openish-space-md);
       }
 
-      h2 {
+      .section-title {
         font: var(--openish-font-heading-2);
         margin: var(--openish-space-xl) 0 var(--openish-space-sm);
       }
@@ -49,6 +51,10 @@ export class OpenishModel extends LitElement {
   @property({ attribute: false })
   node!: NavModelNode
 
+  /** The heading level this section's own title takes. See `<openish-operation>`'s. */
+  @property({ type: Number })
+  level = 1
+
   override render(): TemplateResult | typeof nothing {
     const node = this.node
     if (!node) {
@@ -58,9 +64,9 @@ export class OpenishModel extends LitElement {
     const schema = this.store?.document.components?.schemas?.[node.name]
 
     return html`
-      <h1>${node.title}</h1>
+      ${heading(this.level, node.title, { title: true })}
       <openish-schema .schema=${schema} pointer=${node.pointer}></openish-schema>
-      <h2>Example</h2>
+      ${heading(this.level + 1, 'Example', { 'section-title': true })}
       <openish-code-block
         language="json"
         label="json"

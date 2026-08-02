@@ -7,6 +7,7 @@ import { repeat } from 'lit/directives/repeat.js'
 
 import { uiContext, type OpenishUiState } from '../context/contexts.js'
 import { externalDocsStyles, renderExternalDocs } from '../render/external-docs.js'
+import { heading } from '../render/heading.js'
 import { hrefFor } from '../router/urls.js'
 import { baseStyles, methodStyles } from '../styles/shared.js'
 import './openish-markdown.js'
@@ -28,7 +29,8 @@ export class OpenishTagSection extends LitElement {
         max-width: var(--openish-content-max-width);
       }
 
-      h1 {
+      /* Weight from the class, not the tag - see the note in render/heading.ts. */
+      .title {
         font: var(--openish-font-heading-1);
         margin: 0 0 var(--openish-space-md);
       }
@@ -77,6 +79,10 @@ export class OpenishTagSection extends LitElement {
   @property({ attribute: false })
   node!: NavTagNode | NavGroupNode
 
+  /** The heading level this section's own title takes. See `<openish-operation>`'s. */
+  @property({ type: Number })
+  level = 1
+
   #renderChild(child: NavNode): TemplateResult {
     const deprecated = child.type === 'operation' && child.deprecated === true
 
@@ -102,9 +108,9 @@ export class OpenishTagSection extends LitElement {
     const externalDocs = this.node.type === 'tag' ? this.node.externalDocs : undefined
 
     return html`
-      <h1>${this.node.title}</h1>
+      ${heading(this.level, this.node.title, { title: true })}
       ${description
-        ? html`<openish-markdown .markdown=${description} .headingOffset=${1}></openish-markdown>`
+        ? html`<openish-markdown .markdown=${description} .headingOffset=${this.level}></openish-markdown>`
         : nothing}
       ${renderExternalDocs(externalDocs, `More about ${this.node.title}`)}
       <ul>

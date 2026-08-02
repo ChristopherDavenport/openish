@@ -14,12 +14,12 @@ import {
 } from '@openish/core'
 import { LitElement, html, css, nothing, type TemplateResult } from 'lit'
 import { customElement, property } from 'lit/decorators.js'
-import { classMap } from 'lit/directives/class-map.js'
 import { keyed } from 'lit/directives/keyed.js'
 import { repeat } from 'lit/directives/repeat.js'
 
 import { documentContext, uiContext, type OpenishUiState } from '../context/contexts.js'
 import { externalDocsStyles, renderExternalDocs } from '../render/external-docs.js'
+import { heading } from '../render/heading.js'
 import { baseStyles, methodStyles } from '../styles/shared.js'
 import './openish-callbacks.js'
 import './openish-code-sample.js'
@@ -142,17 +142,24 @@ export class OpenishOperation extends LitElement {
         word-break: break-all;
       }
 
-      h1 {
+      /*
+       * Weight comes from the class, not from the tag.
+       *
+       * On the plane an operation's own heading is a level-three one under its tag rather than the
+       * level-one it was when it had the page to itself, and it should look the same either way - the
+       * level says where it sits in the document, not how loud it is.
+       */
+      .title {
         font: var(--openish-font-heading-1);
         margin: 0 0 var(--openish-space-md);
       }
 
-      h1.deprecated {
+      .title.deprecated {
         text-decoration: line-through;
         color: var(--openish-color-text-muted);
       }
 
-      h2 {
+      .section-title {
         font: var(--openish-font-heading-2);
         margin: 0 0 var(--openish-space-sm);
       }
@@ -257,6 +264,16 @@ export class OpenishOperation extends LitElement {
   node!: NavOperationNode | NavWebhookNode
 
   /**
+   * The heading level this section's own title takes.
+   *
+   * One when the operation is the page, which is what it was before the plane and what a host
+   * embedding a single node still gets. On the plane it is however deep the document puts it, so a
+   * tag's operations sit under the tag rather than beside it.
+   */
+  @property({ type: Number })
+  level = 1
+
+  /**
    * One way to satisfy the operation: every scheme in it applies together.
    *
    * A scheme the document requires but never declares is said out loud rather than skipped. Real
@@ -314,7 +331,7 @@ export class OpenishOperation extends LitElement {
 
     return html`
       <section part="security-section">
-        <h2>Authorization</h2>
+        ${heading(this.level + 1, 'Authorization', { 'section-title': true })}
         ${requirements.length > 1 ? html`<p class="hint">Any one of these is enough.</p>` : nothing}
         ${repeat(
           requirements,
@@ -363,12 +380,12 @@ export class OpenishOperation extends LitElement {
               (badge) => html`<span class="badge" data-tone=${badge.tone}>${badge.label}</span>`,
             )}
           </div>
-          <h1 class=${classMap({ deprecated })}>${node.title}</h1>
+          ${heading(this.level, node.title, { title: true, deprecated })}
           ${operation?.operationId
             ? html`<div class="operation-id">${operation.operationId}</div>`
             : nothing}
           ${operation?.description
-            ? html`<openish-markdown .markdown=${operation.description} .headingOffset=${1}></openish-markdown>`
+            ? html`<openish-markdown .markdown=${operation.description} .headingOffset=${this.level}></openish-markdown>`
             : nothing}
           ${renderExternalDocs(operation?.externalDocs, `More about ${node.title}`)}
         </div>
@@ -378,7 +395,7 @@ export class OpenishOperation extends LitElement {
           ${parameters.length > 0
             ? html`
                 <section part="parameters-section">
-                  <h2>Parameters</h2>
+                  ${heading(this.level + 1, 'Parameters', { 'section-title': true })}
                   <openish-parameters .parameters=${parameters}></openish-parameters>
                 </section>
               `
@@ -386,7 +403,7 @@ export class OpenishOperation extends LitElement {
           ${operation?.requestBody
             ? html`
                 <section part="body-section">
-                  <h2>Request body</h2>
+                  ${heading(this.level + 1, 'Request body', { 'section-title': true })}
                   <openish-request-body
                     ?no-example=${tryIt}
                     .requestBody=${operation.requestBody}
@@ -397,7 +414,7 @@ export class OpenishOperation extends LitElement {
           ${operation?.responses
             ? html`
                 <section part="response-section">
-                  <h2>Responses</h2>
+                  ${heading(this.level + 1, 'Responses', { 'section-title': true })}
                   <slot name="response-start"></slot>
                   <openish-response-list no-example .responses=${operation.responses}></openish-response-list>
                   <slot name="response-end"></slot>
@@ -407,7 +424,7 @@ export class OpenishOperation extends LitElement {
           ${operation?.callbacks
             ? html`
                 <section part="callbacks-section">
-                  <h2>Callbacks</h2>
+                  ${heading(this.level + 1, 'Callbacks', { 'section-title': true })}
                   <openish-callbacks .callbacks=${operation.callbacks}></openish-callbacks>
                 </section>
               `
@@ -418,7 +435,7 @@ export class OpenishOperation extends LitElement {
           ${node.type === 'operation'
             ? html`
                 <section part="request-section">
-                  <h2>Request</h2>
+                  ${heading(this.level + 1, 'Request', { 'section-title': true })}
                   <slot name="request-start"></slot>
                   ${tryIt
                     ? /*
@@ -437,7 +454,7 @@ export class OpenishOperation extends LitElement {
           ${operation?.responses
             ? html`
                 <section part="examples-section">
-                  <h2>Response examples</h2>
+                  ${heading(this.level + 1, 'Response examples', { 'section-title': true })}
                   <openish-response-list examples-only .responses=${operation.responses}></openish-response-list>
                 </section>
               `

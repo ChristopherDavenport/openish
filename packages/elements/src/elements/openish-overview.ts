@@ -13,6 +13,7 @@ import { repeat } from 'lit/directives/repeat.js'
 
 import { documentContext, uiContext, type OpenishUiState } from '../context/contexts.js'
 import { externalDocsStyles, renderExternalDocs } from '../render/external-docs.js'
+import { heading } from '../render/heading.js'
 import { stripFirstSegment } from '../router/urls.js'
 import { baseStyles } from '../styles/shared.js'
 import { OpenishMarkdown } from './openish-markdown.js'
@@ -46,7 +47,8 @@ export class OpenishOverview extends LitElement {
         max-width: var(--openish-content-max-width);
       }
 
-      h1 {
+      /* Weight from the class, not the tag - see the note in render/heading.ts. */
+      .title {
         font: var(--openish-font-heading-1);
         margin: 0 0 var(--openish-space-2xs);
       }
@@ -66,7 +68,7 @@ export class OpenishOverview extends LitElement {
         margin-top: var(--openish-space-xl);
       }
 
-      h2 {
+      .section-title {
         font: var(--openish-font-heading-2);
         margin: 0 0 var(--openish-space-sm);
       }
@@ -165,6 +167,10 @@ export class OpenishOverview extends LitElement {
   @property({ type: String })
   hash = ''
 
+  /** The heading level this section's own title takes. See `<openish-operation>`'s. */
+  @property({ type: Number })
+  level = 1
+
   /**
    * The prose block, kept by `@query` rather than looked up by selector at call time.
    *
@@ -234,7 +240,7 @@ export class OpenishOverview extends LitElement {
 
     return html`
       <section>
-        <h2>Servers</h2>
+        ${heading(this.level + 1, 'Servers', { 'section-title': true })}
         <ul class="servers">
           ${repeat(
             servers,
@@ -317,7 +323,7 @@ export class OpenishOverview extends LitElement {
 
     return html`
       <section>
-        <h2>About</h2>
+        ${heading(this.level + 1, 'About', { 'section-title': true })}
         <dl>${rows}</dl>
       </section>
     `
@@ -378,7 +384,7 @@ export class OpenishOverview extends LitElement {
 
     return html`
       <section>
-        <h2>Authentication</h2>
+        ${heading(this.level + 1, 'Authentication', { 'section-title': true })}
         <dl>
           ${Object.entries(schemes).map(([name, raw]) => {
             const scheme = getResolvedRef(raw) as SecurityScheme
@@ -387,7 +393,7 @@ export class OpenishOverview extends LitElement {
               <dd>
                 <div>${describeSecurityScheme(scheme, { showUrl: true })}</div>
                 ${scheme.description
-                  ? html`<openish-markdown .markdown=${scheme.description} .headingOffset=${2}></openish-markdown>`
+                  ? html`<openish-markdown .markdown=${scheme.description} .headingOffset=${this.level + 1}></openish-markdown>`
                   : nothing}
                 ${this.#renderFlows(securitySchemeFlows(scheme))}
               </dd>
@@ -408,14 +414,14 @@ export class OpenishOverview extends LitElement {
     const summary = typeof fields['summary'] === 'string' ? fields['summary'] : undefined
 
     return html`
-      <h1>${info.title}</h1>
+      ${heading(this.level, info.title, { title: true })}
       ${info.version ? html`<div class="version">${info.version}</div>` : nothing}
       ${summary ? html`<p class="summary">${summary}</p>` : nothing}
       ${info.description
         ? html`
             <openish-markdown
               .markdown=${info.description}
-              .headingOffset=${1}
+              .headingOffset=${this.level}
               .headingIds=${this.#headingIds()}
             ></openish-markdown>
           `
