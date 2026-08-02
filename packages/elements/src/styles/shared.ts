@@ -376,13 +376,16 @@ export const planeColumnStyles = css`
   }
 
   /*
-   * Everything is one column of prose unless it says otherwise, which is what keeps a page that has
-   * no examples - the overview, a tag, a model - from having its content dealt alternately into two.
+   * Everything is one column unless it says otherwise, which is what keeps a page that has no
+   * examples - the overview, a tag, a model - from having its content dealt alternately into two.
+   *
+   * No measure of its own: the column *is* the measure. Capping the content inside a track that is
+   * already half the page put a band of nothing between the two columns on a wide screen, which
+   * reads as a layout fault rather than as breathing room.
    */
   .columns > * {
     grid-column: 1;
     min-width: 0;
-    max-width: var(--openish-content-max-width);
   }
 
   @container section (min-width: 74rem) {

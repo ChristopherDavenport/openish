@@ -23,15 +23,15 @@
   /*
    * The two content columns, which every section of the document shares.
    *
-   * They are tracks rather than widths because the page fills the window: the sidebar is a fixed
-   * measure and these divide what is left. Documentation stops growing at the reading measure and
-   * the examples take the surplus, which is the difference between filling a wide screen and leaving
-   * a two-hundred-pixel hole between the two columns where neither of them wanted to be.
+   * Tracks rather than widths, because the page fills the window: the sidebar is a fixed measure and
+   * these divide what is left, evenly. Even is what makes the plane read as a plane - the examples
+   * begin at the same x on every section, and collapsing to one column at a narrow width changes how
+   * many columns there are without changing how wide the content is.
    *
-   * A host that would rather have them share evenly says so by re-pointing these two, and nothing
-   * else has to change - every section reads the same pair.
+   * A host that wants them weighted says so by re-pointing these two, and nothing else changes:
+   * every section reads the same pair.
    */
-  --openish-docs-column: minmax(0, var(--openish-content-max-width));
+  --openish-docs-column: minmax(0, 1fr);
   --openish-examples-column: minmax(0, 1fr);
 
   /*

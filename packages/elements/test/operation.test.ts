@@ -98,8 +98,11 @@ describe('parameters', () => {
      * Authorization is not among them. The document declares `security` and this operation inherits
      * it, so it is still said - but it is one line beside the call rather than a section of the
      * documentation column, which is a disclosure and not a heading.
+     *
+     * `h3`, because on the plane an operation sits under its tag: the tag's heading is the level two
+     * and these are one below the operation's own level three.
      */
-    expect([...operation.querySelectorAll('h2')].map((heading) => textOf(heading))).toEqual([
+    expect([...operation.querySelectorAll('h4')].map((heading) => textOf(heading))).toEqual([
       'Responses',
       'Request',
       'Response examples',
@@ -219,7 +222,7 @@ describe('request body', () => {
     const harness = await operationOf('replaceAccount')
     await openTryIt(harness)
     const body = shadowOf(sectionOf(harness), 'openish-request-body')
-    const editor = deepQuery<HTMLTextAreaElement>(harness.element.shadowRoot!, 'textarea')!
+    const editor = deepQuery<HTMLTextAreaElement>(sectionOf(harness), 'textarea')!
 
     expect(deepQuery(body, 'openish-code-block')).toBeNull()
     expect(editor.value).toContain('"balance"')

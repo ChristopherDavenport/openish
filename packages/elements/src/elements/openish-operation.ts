@@ -50,54 +50,50 @@ export class OpenishOperation extends LitElement {
     titleRowStyles,
     css`
       /*
-       * Stacked, the worked example comes second - directly under the description and above the
-       * parameter tables, which is where a reader copying a call looks first. Source order puts the
-       * documentation first because that is the order it should be read in when the two are columns.
+       * Two columns and two elements, in that order.
+       *
+       * The title and the description belong to the documentation, not to a band above it: they say
+       * what this operation is, which is the same question the parameter tables under them answer in
+       * more detail. They were a third element spanning both columns and then, briefly, a first grid
+       * row of their own - both of which were the same mistake in different arrangements, because
+       * either way the reader's eye had to cross the page to get from the title to the sample.
+       *
+       * One consequence worth stating: stacked, the whole left column comes before the whole right
+       * one, with no ordering rules at all. What a reader gets on a narrow screen is the operation described
+       * and then the operation demonstrated, which is the order the two were written in.
        */
-      .examples {
-        order: 1;
-      }
-
-      .docs {
-        order: 2;
-      }
-
-      /* A pane starts at the top of its column, so the first section needs no gap above it. */
-      .docs > section:first-child,
-      .examples > section:first-child {
-        margin-top: var(--openish-space-lg);
+      /*
+       * Each column starts at the top of its row.
+       *
+       * A column has no padding or border of its own, so the top margin on whatever is first inside
+       * it collapses out through it and moves the column itself - which put the examples a hundred
+       * and forty pixels below the title they are supposed to start level with, from a rule about
+       * the space between sections.
+       */
+      .docs > :first-child,
+      .examples .pinned > :first-child {
+        margin-top: 0;
       }
 
       @container section (min-width: 74rem) {
-        .docs,
-        .examples {
-          order: 0;
-        }
-
-        /*
-         * The intro takes the first row of the documentation column and the examples take both, so
-         * the request card's top edge meets the title's rather than starting a screen below it. The
-         * intro used to span both columns, which put a paragraph of prose across the width of the
-         * page and pushed the sample it was describing out of sight.
-         */
-        .intro {
-          grid-row: 1;
-        }
-
-        .docs {
-          grid-row: 2;
-        }
-
         /*
          * Sticky inside the page's own scroller, so the sample stays beside whichever part of a long
          * schema the reader has scrolled to. The main element is what scrolls - see the height chain
          * the README insists on - and a host that breaks that chain gets a column that scrolls with
          * the page instead, which is what it did before this existed.
+         *
+         * Two elements, because a sticky item is bounded by its own containing block and a grid item
+         * under a start alignment is only as tall as its contents. Sticking the column itself
+         * therefore pinned it to the bottom of a box the height of the sample - it started level with
+         * the title, then hung four hundred pixels down as soon as anything scrolled. The column
+         * stretches to the row and the thing inside it does the sticking.
          */
         .examples {
           grid-column: 2;
-          grid-row: 1 / span 2;
-          max-width: none;
+          align-self: stretch;
+        }
+
+        .examples > .pinned {
           position: sticky;
           top: 0;
           max-height: 100vh;
@@ -372,7 +368,7 @@ export class OpenishOperation extends LitElement {
 
     return html`
       <div class="columns">
-        <div class="intro">
+        <div class="docs" part="operation-docs">
           <div class="title-row" part="operation-header">
             ${heading(this.level, node.title, { title: true, deprecated })}
             <openish-copy-markdown exportparts="copy" .node=${node}></openish-copy-markdown>
@@ -396,9 +392,6 @@ export class OpenishOperation extends LitElement {
             ? html`<openish-markdown .markdown=${operation.description} .headingOffset=${this.level}></openish-markdown>`
             : nothing}
           ${renderExternalDocs(operation?.externalDocs, `More about ${node.title}`)}
-        </div>
-
-        <div class="docs" part="operation-docs">
           ${parameters.length > 0
             ? html`
                 <section part="parameters-section">
@@ -439,6 +432,7 @@ export class OpenishOperation extends LitElement {
         </div>
 
         <div class="examples" part="operation-examples">
+          <div class="pinned">
           ${this.#renderSecurity(operation)}
           ${node.type === 'operation'
             ? html`
@@ -467,6 +461,7 @@ export class OpenishOperation extends LitElement {
                 </section>
               `
             : nothing}
+          </div>
         </div>
       </div>
     `

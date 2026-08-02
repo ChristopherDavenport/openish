@@ -69,7 +69,7 @@ export const renderOverview = (hash = ''): TemplateResult =>
  * answer is looked up the same way. A prefixed answer is accepted too, because a multi-document
  * host redirecting *between* documents has no other way to say which one it means.
  */
-const redirected = (store: DocumentStore, id: string, slugPrefix: string): NavNode | undefined => {
+export const redirectedNode = (store: DocumentStore, id: string, slugPrefix: string): NavNode | undefined => {
   const target = store.config.redirect?.(slugPrefix ? stripFirstSegment(id) : id)
   if (!target) {
     return undefined
@@ -105,7 +105,7 @@ export const renderNodeById = (
     return renderOverview(hash)
   }
 
-  const node = store.bySlug.get(id) ?? redirected(store, id, slugPrefix)
+  const node = store.bySlug.get(id) ?? redirectedNode(store, id, slugPrefix)
   if (!node) {
     /* Named the way the reader's URL named it, or the message points at a string they never typed. */
     const shown = slugPrefix ? stripFirstSegment(id) : id

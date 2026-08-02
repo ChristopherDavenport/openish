@@ -80,6 +80,17 @@ export class OpenishTagSection extends LitElement {
   @property({ type: Number })
   level = 1
 
+  /**
+   * Render the prose and not the index of what is inside.
+   *
+   * Set by the plane, where the things a tag contains follow it down the page - so the list would be
+   * the same links twice, and for the Models group six hundred of them between the reader and the
+   * first model. A host embedding a single node still gets the index, because there it is the only
+   * way to reach anything.
+   */
+  @property({ type: Boolean, attribute: 'no-index' })
+  noIndex = false
+
   #renderChild(child: NavNode): TemplateResult {
     const deprecated = child.type === 'operation' && child.deprecated === true
 
@@ -114,13 +125,17 @@ export class OpenishTagSection extends LitElement {
           ? html`<openish-markdown .markdown=${description} .headingOffset=${this.level}></openish-markdown>`
           : nothing}
         ${renderExternalDocs(externalDocs, `More about ${this.node.title}`)}
-        <ul>
-          ${repeat(
-            this.node.children,
-            (child) => child.id,
-            (child) => this.#renderChild(child),
-          )}
-        </ul>
+        ${this.noIndex
+          ? nothing
+          : html`
+              <ul>
+                ${repeat(
+                  this.node.children,
+                  (child) => child.id,
+                  (child) => this.#renderChild(child),
+                )}
+              </ul>
+            `}
       </div>
     `
   }

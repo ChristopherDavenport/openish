@@ -11,9 +11,11 @@ import {
   type ResolvedSource,
   type SourceConfig,
 } from '@openish/core'
+import { virtualize } from '@lit-labs/virtualizer/virtualize.js'
 import { LitElement, html, css, nothing, type PropertyValues, type TemplateResult } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
 import { classMap } from 'lit/directives/class-map.js'
+import { keyed } from 'lit/directives/keyed.js'
 import { createRef, ref } from 'lit/directives/ref.js'
 
 import {
@@ -39,10 +41,13 @@ import {
 } from '../context/contexts.js'
 import { LocationController } from '../controllers/location.js'
 import { MediaQueryController } from '../controllers/media-query.js'
+import { SectionsController } from '../controllers/sections.js'
 import { SourcePrefetchController } from '../controllers/source-prefetch.js'
 import { readStoredClient, writeStoredClient } from '../storage/client-choice.js'
 import { dispatch } from '../events.js'
-import { renderNodeById } from '../render/render-node.js'
+import { redirectedNode } from '../render/render-node.js'
+import { renderSection } from '../render/render-section.js'
+import { documentSections, overviewAnchors, type Section } from '../render/sections.js'
 import { navigate } from '../router/navigate.js'
 import {
   applySlugPrefix,
@@ -123,7 +128,11 @@ export class OpenishApiReference extends LitElement {
 
       main {
         overflow-y: auto;
-        padding: var(--openish-space-xl) var(--openish-space-lg);
+        /*
+         * Explicit, so a host's own smooth-scroll rule cannot turn every correction the virtualiser
+         * makes while it converges on a deep link into an animation it then chases.
+         */
+        scroll-behavior: auto;
       }
 
       /*
@@ -138,6 +147,26 @@ export class OpenishApiReference extends LitElement {
        */
       .content {
         min-width: 0;
+      }
+
+      /*
+       * A section, and the width it has to be told.
+       *
+       * The virtualiser positions every item absolutely, and an absolutely positioned block with no
+       * width is shrink-to-fit - so each section would be as wide as its longest line rather than as
+       * wide as the plane, and the shared column tracks would land somewhere different on every one
+       * of them. The sidebar paid for this once already; see the same rule on its rows.
+       */
+      .section {
+        width: 100%;
+        box-sizing: border-box;
+        padding: var(--openish-space-xl) var(--openish-space-lg);
+        scroll-margin-top: var(--openish-space-lg);
+      }
+
+      /* One rule between sections, so a continuous page still reads as a sequence of them. */
+      .section + .section {
+        border-top: 1px solid var(--openish-color-border);
       }
 
       /*
@@ -467,6 +496,21 @@ export class OpenishApiReference extends LitElement {
    * says whether it is open.
    */
   readonly #narrow = new MediaQueryController(this, '(max-width: 48rem)')
+
+  /**
+   * Where the reader is on the plane, and how to put them somewhere else.
+   *
+   * The only thing it is told is the section list; it reads no store and holds no copy of the active
+   * id. What it reports comes back through the URL, which stays the single authority - see
+   * `#onSpyActive`.
+   */
+  readonly #sectionsController = new SectionsController(this, { onActive: (id) => this.#onSpyActive(id) })
+
+  /** The id the spy last wrote into the URL, so `updated` can tell a follow from a navigation. */
+  #writtenId: string | undefined
+
+  /** The section the reader has already been taken to, so arriving there twice does nothing. */
+  #scrolledId: string | undefined
 
   /** Whether the stacked navigation is showing. Meaningless in the two-column layout. */
   @state()
@@ -908,6 +952,8 @@ export class OpenishApiReference extends LitElement {
       session: this.#session,
     }
 
+    this.#sectionsController.observe(documentSections(this.store))
+
     this.ui = {
       config,
       colorScheme: this.colorScheme,
@@ -965,7 +1011,7 @@ export class OpenishApiReference extends LitElement {
    * anchors inside a nested shadow root - which is all of them - are seen.
    */
   readonly #onClick = (event: MouseEvent): void => {
-    if (this.routing === 'hash' || event.defaultPrevented || event.button !== 0) {
+    if (event.defaultPrevented || event.button !== 0) {
       return
     }
     /* A modified click is the reader asking for a new tab or a download. Leave it to the browser. */
@@ -975,6 +1021,25 @@ export class OpenishApiReference extends LitElement {
 
     const anchor = event.composedPath().find((target): target is HTMLAnchorElement => target instanceof HTMLAnchorElement)
     if (!anchor || anchor.target !== '' || anchor.hasAttribute('download') || anchor.origin !== window.location.origin) {
+      return
+    }
+
+    /*
+     * Clicking the section you are already on, which the browser has nothing to say about.
+     *
+     * The URL does not change, so no `hashchange` fires and nothing would move - but a reader who
+     * has scrolled away and clicked the current sidebar row means "take me back to it", and before
+     * the plane that request was answered by the page being rebuilt. Now it has to be answered here.
+     */
+    const clicked = applySlugPrefix(idFromHash(anchor.hash) || idFromPathname(anchor.pathname, normalizeBasePath(this.basePath)), this.#slugPrefix)
+    if (this.routing !== 'none' && clicked === this.ui.activeId) {
+      event.preventDefault()
+      this.#sectionsController.scrollTo(this.#resolvedId)
+      return
+    }
+
+    /* A fragment link is navigation the browser performs itself; `hashchange` is already an input. */
+    if (this.routing === 'hash') {
       return
     }
 
@@ -1029,17 +1094,146 @@ export class OpenishApiReference extends LitElement {
     return this.store ? undefined : html`<p class="status" role="status">No document loaded.</p>`
   }
 
+  /** Every section of the active document, in reading order. Memoised on the store. */
+  get #sections(): readonly Section[] {
+    return documentSections(this.store)
+  }
+
   /**
-   * The page, from the active id.
+   * The section the URL names, after a `redirect` has had its one chance.
    *
-   * One call, in every mode. The modes differ in where the id came from and in what has to happen
-   * for it to change; none of them differ in what an id means.
+   * Separate from `ui.activeId`, which is what the URL *says*: a redirected id has to scroll
+   * somewhere while the URL keeps what the reader typed, and the two are only the same string when
+   * nothing was redirected.
    */
-  #renderContent(): unknown {
-    return (
-      this.#renderLoadState() ??
-      renderNodeById(this.store, this.ui.activeId, this.ui.hash, this.ui.slugPrefix)
-    )
+  get #resolvedId(): string {
+    const store = this.store
+    const id = this.ui.activeId
+    if (!store || id === '' || id === store.source.slug) {
+      return store?.source.slug ?? ''
+    }
+    if (store.bySlug.has(id)) {
+      return id
+    }
+    return redirectedNode(store, id, this.ui.slugPrefix)?.id ?? id
+  }
+
+  /** Whether the id names a heading inside `info.description` rather than a section of its own. */
+  get #atOverviewAnchor(): boolean {
+    return overviewAnchors(this.store).has(this.ui.activeId)
+  }
+
+  /**
+   * The whole document, as one scroller.
+   *
+   * `virtualize` rather than `<lit-virtualizer>`: `main` has to stay the scroller - the sticky
+   * examples column and the sticky navigation disclosure both hang off that, and so does the height
+   * chain the README insists on - and the directive finds its clipping ancestor rather than owning a
+   * scroller of its own.
+   *
+   * `keyed` on the store, so switching documents builds a new plane rather than handing the reader
+   * the last one with new items in it. That also drops the previous document's try-it panels, which
+   * is right: credentials are per document.
+   */
+  #renderPlane(): unknown {
+    const loading = this.#renderLoadState()
+    if (loading) {
+      return loading
+    }
+
+    /* The overview is a section and not a node, so `bySlug` is the wrong place to look for it. */
+    const resolved = this.#resolvedId
+    const missing =
+      this.store !== undefined && resolved !== this.store.source.slug && !this.store.bySlug.has(resolved)
+    const overviewHash = this.#atOverviewAnchor
+      ? (this.ui.slugPrefix ? stripFirstSegment(this.ui.activeId) : this.ui.activeId)
+      : this.ui.hash
+
+    return html`
+      ${missing ? this.#renderNotFound() : nothing}
+      <div
+        class="content"
+        part="content"
+        ${ref(this.#onPlaneRef)}
+        @visibilityChanged=${this.#sectionsController.onVisibilityChanged}
+      >
+        ${keyed(
+          this.store,
+          virtualize({
+            items: [...this.#sections],
+            keyFunction: (section) => (section as Section).id,
+            renderItem: (section) => html`
+              <div class="section" data-id=${(section as Section).id} data-kind=${(section as Section).kind}>
+                ${renderSection(section as Section, {
+                  overviewHash,
+                  active: (section as Section).id === this.#resolvedId,
+                })}
+              </div>
+            `,
+          }),
+        )}
+      </div>
+    `
+  }
+
+  /**
+   * An id the document has no section for.
+   *
+   * Above the plane rather than instead of it. The document is on screen and the reader is not lost
+   * - which is the whole difference a continuous page makes to this case - so the banner says which
+   * id failed and leaves them somewhere they can read.
+   */
+  #renderNotFound(): TemplateResult {
+    const shown = this.ui.slugPrefix ? stripFirstSegment(this.ui.activeId) : this.ui.activeId
+    return html`
+      <div class="status">
+        <h1>Not found</h1>
+        <p>Nothing in this document matches <code>${shown}</code>.</p>
+      </div>
+    `
+  }
+
+  readonly #onPlaneRef = (element: Element | undefined): void => {
+    this.#sectionsController.plane = element
+  }
+
+  /**
+   * The spy has decided the reader is somewhere else.
+   *
+   * It writes the URL and asks for an update; it does not set a second copy of the active id. The
+   * URL stays the one authority and `willUpdate` re-reads it, which is the same trick `#onClick`
+   * uses after a `pushState`.
+   *
+   * `replaceState`, and not the alternatives. `pushState` would make every section the reader passes
+   * a history entry, so Back would walk them back up the document and never leave the reference.
+   * Assigning `location.hash` *is* a navigation - it pushes an entry and fires `hashchange`, which
+   * re-renders, which scrolls: the feedback loop written out. `replaceState` fires nothing, which is
+   * exactly what is wanted, because the URL is being made to describe the position rather than to
+   * cause it.
+   */
+  #onSpyActive(id: string): void {
+    if (typeof window === 'undefined' || id === this.ui.activeId) {
+      return
+    }
+
+    const urlId = this.#slugPrefix ? stripFirstSegment(id) : id
+
+    if (this.routing === 'none') {
+      /* The host is the one navigating; this is the request, in the channel that mode already has. */
+      dispatch(this, 'openish-navigate', urlId)
+      return
+    }
+
+    const url = new URL(window.location.href)
+    if (this.routing === 'history') {
+      url.pathname = `${normalizeBasePath(this.basePath)}/${urlId}`
+    } else {
+      url.hash = `#/${urlId}`
+    }
+
+    this.#writtenId = id
+    window.history.replaceState(window.history.state, '', url.toString())
+    this.requestUpdate()
   }
 
   /**
@@ -1108,12 +1302,38 @@ export class OpenishApiReference extends LitElement {
       dispatch(this, 'openish-server-change', { url: this.request.server, variables: this.request.serverVariables })
     }
 
+    const previous = changed.get('ui') as OpenishUiState | undefined
+    const moved = changed.has('ui') && previous?.activeId !== this.ui.activeId
+
+    /*
+     * Scrolling follows the *resolved* target, not the active id.
+     *
+     * A deep link asks for its section before the document has arrived, so the id in the URL is
+     * final several updates before it resolves to anything - and watching the id alone meant the one
+     * update that could have scrolled was the one where nothing had changed. Watching what the id
+     * resolves to covers both: a navigation, and a document turning up under a URL that was already
+     * pointing into it.
+     *
+     * A navigation moves the reader; the URL following them does not. The spy writes the URL and
+     * asks for an update, which arrives here looking exactly like a navigation - and scrolling then
+     * would put the reader back where they had just scrolled away from. One one-shot field is the
+     * whole of the feedback-loop defence.
+     */
+    const resolved = this.#resolvedId
+    if (resolved !== '' && resolved !== this.#scrolledId) {
+      this.#scrolledId = resolved
+      if (this.#writtenId === this.ui.activeId) {
+        this.#writtenId = undefined
+      } else {
+        this.#sectionsController.scrollTo(resolved)
+      }
+    }
+
     /*
      * In `none` mode the host is the one navigating, so `#onClick` has already sent the request and
      * this would be announcing the host's own decision back to it.
      */
-    const previous = changed.get('ui') as OpenishUiState | undefined
-    if (this.routing !== 'none' && changed.has('ui') && previous?.activeId !== this.ui.activeId) {
+    if (this.routing !== 'none' && moved) {
       /*
        * The id as the URL has it, which is the same shape `selected` takes and the same shape the
        * `none`-mode request carries. A host that echoes what it hears back into `selected` has to
@@ -1122,8 +1342,12 @@ export class OpenishApiReference extends LitElement {
       dispatch(this, 'openish-navigate', this.#slugPrefix ? stripFirstSegment(this.ui.activeId) : this.ui.activeId)
     }
 
-    /* Picking a page is the end of using the navigation, so the disclosure closes behind it. */
-    if (previous !== undefined && previous.activeId !== this.ui.activeId && this.navOpen) {
+    /*
+     * Picking a page is the end of using the navigation, so the disclosure closes behind it - but
+     * scrolling is not picking, and the URL now changes while the reader scrolls. Closing on that
+     * would shut a panel they had just opened.
+     */
+    if (previous !== undefined && moved && this.#writtenId === undefined && this.navOpen) {
       this.navOpen = false
     }
   }
@@ -1194,11 +1418,9 @@ export class OpenishApiReference extends LitElement {
       >
         ${showSidebar ? this.#renderNavigation() : nothing}
         <main part="main">
-          <div class="content" part="content">
-            <slot name="content-start"></slot>
-            ${this.#renderContent()}
-            <slot name="content-end"></slot>
-          </div>
+          <slot name="content-start"></slot>
+          ${this.#renderPlane()}
+          <slot name="content-end"></slot>
         </main>
       </div>
     `

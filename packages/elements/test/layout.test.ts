@@ -148,11 +148,19 @@ describe('the stacked navigation, which a narrow viewport gets', () => {
  */
 describe('the examples column', () => {
   const panesOf = (harness: Harness) => {
-    const operation = shadowOf(sectionOf(harness), 'openish-operation')
-    const intro = operation.querySelector('.intro')!
+    /*
+     * Named, not "whichever section is active". Resizing the window re-lays the plane out and the
+     * spy reports wherever that leaves the reader, so a test that widens the frame and then asks for
+     * the current section is asking a question whose answer it just changed.
+     */
+    const operation = shadowOf(sectionOf(harness, 'tags/accounts/getAccount'), 'openish-operation')
     const docs = operation.querySelector('[part~="operation-docs"]')!
     const examples = operation.querySelector('[part~="operation-examples"]')!
-    return { intro, docs, examples }
+    /* The title lives at the top of the documentation column now, which is most of what these assert. */
+    const title = operation.querySelector('[part~="operation-header"]')!
+    /* The column stretches to the row; the thing inside it is what sticks. */
+    const pinned = operation.querySelector('.examples .pinned')!
+    return { title, docs, examples, pinned }
   }
 
   const widen = async (harness: Harness, width: string): Promise<void> => {
@@ -164,35 +172,34 @@ describe('the examples column', () => {
   it('sits beside the documentation when the page is wide enough', async () => {
     const harness = await mountReference({ path: '/tags/accounts/getAccount' })
     await widen(harness, '1600px')
-    const { intro, docs, examples } = panesOf(harness)
+    const { title, docs, examples, pinned } = panesOf(harness)
 
     /* Side by side: the examples pane starts to the right of where the docs pane starts. */
     expect(examples.getBoundingClientRect().left).toBeGreaterThan(docs.getBoundingClientRect().left)
-    expect(harness.frame.contentWindow!.getComputedStyle(examples).position).toBe('sticky')
+    expect(harness.frame.contentWindow!.getComputedStyle(pinned).position).toBe('sticky')
 
     /*
-     * The example starts level with the *title*, not with the first documentation section below it.
-     * The intro used to span both columns, so a paragraph of prose ran the width of the page and the
-     * sample it was describing began a screen further down.
+     * The example starts level with the title, because the title is the top of the documentation
+     * column rather than a band above both. It used to span the two, so a paragraph of prose ran the
+     * width of the page and the sample it described began a screen further down.
      */
-    expect(Math.round(examples.getBoundingClientRect().top)).toBe(Math.round(intro.getBoundingClientRect().top))
-    expect(intro.getBoundingClientRect().right).toBeLessThanOrEqual(examples.getBoundingClientRect().left)
+    expect(Math.round(examples.getBoundingClientRect().top)).toBe(Math.round(docs.getBoundingClientRect().top))
+    expect(title.getBoundingClientRect().right).toBeLessThanOrEqual(examples.getBoundingClientRect().left)
   })
 
-  it('stacks under the description when the page is not, with the sample above the tables', async () => {
+  it('stacks the whole of the left column above the whole of the right when it is not', async () => {
     const harness = await mountReference({ path: '/tags/accounts/getAccount' })
     await widen(harness, '820px')
     const { docs, examples } = panesOf(harness)
 
-    /* One column, and the worked example comes first - which is where a reader copying a call looks. */
+    /*
+     * The operation described, then the operation demonstrated. There is no ordering rule involved -
+     * that is simply what two elements in a single column do, which is the point of there being two
+     * of them rather than three.
+     */
     expect(Math.round(examples.getBoundingClientRect().left)).toBe(Math.round(docs.getBoundingClientRect().left))
-    expect(examples.getBoundingClientRect().top).toBeLessThan(docs.getBoundingClientRect().top)
-    expect(harness.frame.contentWindow!.getComputedStyle(examples).position).toBe('static')
-
-    /* Still under the description, though: stacked, the reading order is what it always was. */
-    expect(panesOf(harness).intro.getBoundingClientRect().top).toBeLessThan(
-      examples.getBoundingClientRect().top,
-    )
+    expect(docs.getBoundingClientRect().bottom).toBeLessThanOrEqual(examples.getBoundingClientRect().top + 1)
+    expect(harness.frame.contentWindow!.getComputedStyle(panesOf(harness).pinned).position).toBe('static')
   })
 
   it('follows the window across the threshold, both ways', async () => {

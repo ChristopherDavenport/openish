@@ -1,5 +1,7 @@
 import type { OpenishConfig } from '@openish/core'
 
+import { virtualizerRef, type VirtualizerHostElement } from '@lit-labs/virtualizer/virtualize.js'
+
 import type { OpenishApiReference } from '../src/elements/openish-api-reference.js'
 import { loadCode, loadMarkdown } from '../src/render/highlight.js'
 import { idFromHash, idFromPathname, type RoutingMode } from '../src/router/urls.js'
@@ -113,6 +115,35 @@ const deepSignature = (root: Element | ShadowRoot): string => {
  */
 const STABLE_PASSES = 3
 
+/** The virtualiser's own "I have stopped moving", if there is a plane on the page yet. */
+const planeLayoutComplete = async (element: Element): Promise<void> => {
+  const plane = element.shadowRoot?.querySelector('.content') as VirtualizerHostElement | null
+  await plane?.[virtualizerRef]?.layoutComplete.catch(() => undefined)
+}
+
+/**
+ * Waits for the plane to stop scrolling itself.
+ *
+ * A deep link is not one scroll. The reference jumps to an estimated position and then corrects,
+ * frame by frame, as the sections above the target are measured for the first time - so `settle`,
+ * which watches the *markup*, can return in the middle of that with the right section found and the
+ * wrong one under it. Watching the scroller instead is the only thing that describes the whole of it.
+ */
+const planeQuiet = async (element: Element, frames = 60): Promise<void> => {
+  const main = element.shadowRoot?.querySelector('main')
+  if (!main) {
+    return
+  }
+
+  let last = -1
+  let still = 0
+  for (let frame = 0; frame < frames && still < 3; frame += 1) {
+    await new Promise((resolve) => requestAnimationFrame(resolve))
+    still = main.scrollTop === last ? still + 1 : 0
+    last = main.scrollTop
+  }
+}
+
 const settleTree = async (element: Element, rounds = 12): Promise<void> => {
   /*
    * The markdown and highlight pipelines are loaded on demand, so an element that renders prose
@@ -129,6 +160,14 @@ const settleTree = async (element: Element, rounds = 12): Promise<void> => {
 
     const updatable = element as Element & { updateComplete?: Promise<unknown> }
     await updatable.updateComplete
+    /*
+     * The plane measures its children and reflows, which is a frame away and never a microtask - so
+     * a loop that only drained promises could return with the rendered window still moving. This is
+     * the signal the virtualiser publishes for exactly that, and folding it in here rather than into
+     * a second helper means every existing test gets it without saying so.
+     */
+    await planeLayoutComplete(element)
+    await planeQuiet(element)
     await Promise.all(
       collectUpdatables(element.shadowRoot ?? element).map(
         (child) => (child as Element & { updateComplete?: Promise<unknown> }).updateComplete,
@@ -362,8 +401,37 @@ export const mountReference = async (
  *
  * Takes the harness or the element, because tests hold whichever of the two they needed.
  */
-export const sectionOf = (target: Harness | OpenishApiReference, _id?: string): Element | ShadowRoot =>
-  'element' in target ? target.element.shadowRoot! : target.shadowRoot!
+export const sectionOf = (target: Harness | OpenishApiReference, id?: string): Element | ShadowRoot => {
+  const root = ('element' in target ? target.element : target).shadowRoot!
+  const wanted = id ?? activeSectionId(target)
+
+  /*
+   * Ids carry the document's slug and a test names a page the way the URL does, so an exact match is
+   * tried first and a suffix match second - which is the same two spellings `stripFirstSegment` and
+   * `applySlugPrefix` exist to move between.
+   */
+  const section = wanted
+    ? (root.querySelector(`.section[data-id="${wanted}"]`) ??
+       root.querySelector(`.section[data-id$="/${wanted}"]`))
+    : /* The root URL names no section, and the front of the document is always the first one. */
+      root.querySelector('.section')
+
+  if (!section) {
+    const rendered = [...root.querySelectorAll('.section')].map((one) => one.getAttribute('data-id'))
+    throw new Error(`No section "${wanted}" on the plane. Rendered: ${rendered.join(', ') || '(none)'}`)
+  }
+  return section
+}
+
+/** The id of the section the reference currently says the reader is at, as the URL spells it. */
+export const activeSectionId = (target: Harness | OpenishApiReference): string => {
+  const element = 'element' in target ? target.element : target
+  const ui = (element as unknown as { ui?: { activeId?: string; slugPrefix?: string } }).ui
+  const id = ui?.activeId ?? ''
+  return ui?.slugPrefix ? id.slice(ui.slugPrefix.length + 1) : id
+}
+
+
 
 /** Every href the reference currently renders, for readable failure messages. */
 export const listHrefs = (element: Element): string[] =>
@@ -474,8 +542,9 @@ export const deepTextOf = (root: Element | ShadowRoot | null): string => {
  * press it first - and pressing the real button rather than setting `open` means every test that
  * needs the panel also proves the button opens it.
  */
-export const openTryIt = async (harness: Harness): Promise<Element> => {
-  const panel = deepQuery(harness.element.shadowRoot!, 'openish-try-it')
+export const openTryIt = async (harness: Harness, id?: string): Promise<Element> => {
+  /* The section the reader is on, not the first panel on the plane - there are many now. */
+  const panel = deepQuery(sectionOf(harness, id), 'openish-try-it')
   if (!panel?.shadowRoot) {
     throw new Error('No try-it panel on the page.')
   }
