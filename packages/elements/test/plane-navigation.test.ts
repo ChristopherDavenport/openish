@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
 import '../src/index.js'
-import { deepQuery, disposeAll, mountReference, type Harness } from './helpers.js'
+import { deepQuery, disposeAll, mountReference, settleScroll, type Harness } from './helpers.js'
 
 afterEach(() => {
   disposeAll()
@@ -53,7 +53,15 @@ const sectionTop = (harness: Harness, id: string): number =>
 describe('navigating a long way up the plane', () => {
   it('arrives, rather than running out of frames somewhere in the middle', async () => {
     const harness = await mountReference({ path: '/models/Model0299', spec: withProse(300) })
-    await harness.settle()
+    /*
+     * Settled before the test starts, not merely rendered.
+     *
+     * The deep link is itself a jump corrected over several frames, and asking for a second one
+     * while the first is still converging leaves two loops correcting towards different sections -
+     * whichever lands last wins. That is a real thing a reader can do and it is not what this test
+     * is about, so the plane is quiet before the question is asked.
+     */
+    await settleScroll(harness, 'models/Model0299', 40)
 
     expect(scroller(harness).scrollTop).toBeGreaterThan(0)
 
@@ -63,6 +71,8 @@ describe('navigating a long way up the plane', () => {
      * a row for it while the reader is down here - which is a bug of its own if it is one.
      */
     await harness.goto('/tags/things/listThings')
+    /* The jump is corrected over several frames, and this is a test about where it ends up. */
+    await settleScroll(harness, 'tags/things/listThings', 40)
 
     expect(Math.abs(sectionTop(harness, 'tags/things/listThings'))).toBeLessThan(40)
   })

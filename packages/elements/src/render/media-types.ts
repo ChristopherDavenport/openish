@@ -55,6 +55,22 @@ export const languageForMediaType = (mediaType: string): string => {
 export const mediaTypeExample = (media: MediaType | undefined): unknown =>
   mediaTypeExamples(media).find((example) => example.value !== undefined)?.value
 
+/**
+ * Whether a body has anything for an examples column to show.
+ *
+ * Asked before a heading is written, not after: `renderMediaTypes` on an empty `content` renders
+ * nothing, so a section that assumed otherwise printed "Response examples" over a blank half-page.
+ * A `204` is the usual reason and a complete answer in the documentation column, and a webhook whose
+ * payload is described in prose alone is the other.
+ *
+ * Takes the containing object - a Response Object, a Request Body Object, either possibly a `$ref` -
+ * because `content` is the key both of them hold it under.
+ */
+export const hasRenderableContent = (container: unknown): boolean => {
+  const content = (getResolvedRef(container) as { content?: unknown } | undefined)?.content
+  return isPlainObject(content) && Object.keys(content).length > 0
+}
+
 /** How to render a `content` map. */
 export type MediaTypesOptions = {
   /** Show the schema only. For a body the reader can already see filled in and edit. */

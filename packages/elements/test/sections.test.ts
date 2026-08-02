@@ -120,9 +120,10 @@ describe('the section list', () => {
     const examples = new Map(documentSections(store).map((section) => [section.id, section.hasExample]))
 
     expect(examples.get('api-1/tags/accounts/listAccounts')).toBe(true)
-    /* A webhook has no request sample, because nobody calls it - but it does have responses. */
+    /* A webhook has no request sample, because nobody calls it - but it does have a payload. */
     expect(examples.get('api-1/webhooks/post-accountcreated')).toBe(true)
-    expect(examples.get('api-1/models/Account')).toBe(false)
+    /* A model shows one instance of the type it describes, in the same column as the rest. */
+    expect(examples.get('api-1/models/Account')).toBe(true)
     expect(examples.get('api-1/tags/accounts')).toBe(false)
     expect(examples.get('api-1')).toBe(false)
   })

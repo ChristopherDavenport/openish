@@ -6,7 +6,7 @@ import { ifDefined } from 'lit/directives/if-defined.js'
 import { repeat } from 'lit/directives/repeat.js'
 
 import { uiContext, type OpenishUiState } from '../context/contexts.js'
-import { renderMediaTypes } from '../render/media-types.js'
+import { hasRenderableContent, renderMediaTypes } from '../render/media-types.js'
 import { schemaConstraints, schemaTypeLabel } from '../schema/summary.js'
 import { baseStyles } from '../styles/shared.js'
 import type { OpenishTableRow } from './openish-table.js'
@@ -165,13 +165,9 @@ export class OpenishResponseList extends LitElement {
      * actually carry a body - the reader is not missing anything, because the status is still on a
      * tab beside the description.
      */
-    const entries = Object.entries(responses as Record<string, unknown>).filter(([, raw]) => {
-      if (!this.examplesOnly) {
-        return true
-      }
-      const content = (getResolvedRef(raw) as Response | undefined)?.content
-      return typeof content === 'object' && content !== null && Object.keys(content).length > 0
-    })
+    const entries = Object.entries(responses as Record<string, unknown>).filter(
+      ([, raw]) => !this.examplesOnly || hasRenderableContent(raw),
+    )
 
     return [
       ...entries.filter(([status]) => status !== 'default'),

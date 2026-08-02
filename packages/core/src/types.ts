@@ -80,6 +80,15 @@ export type NavModelNode = {
   /** The key under `components.schemas`. */
   name: string
   pointer: string
+  /**
+   * The tags the schema claims membership of, from `x-tags`.
+   *
+   * A Schema Object is JSON Schema and has no `tags` keyword, so there is nothing standard to read
+   * here; `x-tags` is Redoc's convention and the one every tool that groups models by tag uses. The
+   * model keeps its place in the Models section either way - this says which tags may *also* list
+   * it, not where it lives.
+   */
+  tags?: readonly string[]
 }
 
 export type NavWebhookNode = {
@@ -89,6 +98,14 @@ export type NavWebhookNode = {
   name: string
   method: HttpMethod
   pointer: string
+  /**
+   * The tags the webhook's operation declares.
+   *
+   * Ordinary `tags` on an ordinary Operation Object: a webhook entry is a Path Item, so this is the
+   * standard field and not an extension. The webhook still lives under Webhooks - one home, one URL -
+   * and this is what lets a tag list the events that belong to it.
+   */
+  tags?: readonly string[]
 }
 
 export type ColorScheme = 'light' | 'dark'

@@ -36,36 +36,59 @@ export type SectionContext = {
 export const renderSection = (section: Section, context: SectionContext): TemplateResult => {
   switch (section.kind) {
     case 'overview':
+      /*
+       * The one slot on the plane that needs no scoping.
+       *
+       * Every other per-section slot has the problem M17 hit: one name, many sections, one shadow
+       * root, and only the first in tree order is assigned the host's nodes. A document has exactly
+       * one introduction, so `overview-aside` is unambiguous by construction - there is no second
+       * section it could land on.
+       */
       return html`
-        <openish-overview .hash=${context.overviewHash} .level=${section.level}></openish-overview>
+        <openish-overview
+          .hash=${context.overviewHash}
+          .level=${section.level}
+          exportparts="overview-header, overview-docs, overview-aside, aside, code, code-toolbar, copy"
+        >
+          <slot name="overview-aside" slot="aside"></slot>
+        </openish-overview>
       `
 
     case 'header':
       /*
-       * A header, not an index.
+       * A header, with its index beside it rather than under it.
        *
-       * On its own page a tag listed what was inside it, because that was the only way to get there.
-       * Here the things it contains follow it down the page, so the list is the same links twice -
-       * and for the Models group it is six hundred of them between the reader and the first model.
+       * On its own page a tag listed what was inside it above the page fold, because that was the
+       * only way to get there. On the plane those things follow it down the page, so the list in
+       * that position was the same links twice - and for the Models group, six hundred of them
+       * between the reader and the first model. In the examples column it is a table of contents:
+       * out of the way of the reading order, and the only place the events and models that name this
+       * tag from elsewhere in the document can be reached from.
        */
       return html`
         <openish-tag-section
-          no-index
           .node=${section.node as never}
           .level=${section.level}
+          exportparts="section-header, section-docs, section-index"
         ></openish-tag-section>
       `
 
     case 'page':
       if (section.node?.type === 'model') {
-        return html`<openish-model .node=${section.node} .level=${section.level}></openish-model>`
+        return html`
+          <openish-model
+            .node=${section.node}
+            .level=${section.level}
+            exportparts="model-header, model-docs, model-examples, code, code-toolbar, copy"
+          ></openish-model>
+        `
       }
 
       return html`
         <openish-operation
           .node=${section.node as never}
           .level=${section.level}
-          exportparts="operation-header, operation-docs, operation-examples, request-section, parameters-section, body-section, response-section, examples-section, security-section, callbacks-section, code, code-toolbar, copy, dialog, dialog-toolbar"
+          exportparts="operation-header, operation-docs, operation-examples, request-section, payload-section, parameters-section, body-section, response-section, examples-section, security-section, callbacks-section, code, code-toolbar, copy, dialog, dialog-toolbar"
         >
           ${context.active ? renderOperationSlots() : nothing}
         </openish-operation>

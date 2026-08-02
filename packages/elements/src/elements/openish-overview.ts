@@ -12,6 +12,7 @@ import { customElement, property, query } from 'lit/decorators.js'
 import { repeat } from 'lit/directives/repeat.js'
 
 import { documentContext, uiContext, type OpenishUiState } from '../context/contexts.js'
+import { asideStyles, renderAside } from '../render/aside.js'
 import { externalDocsStyles, renderExternalDocs } from '../render/external-docs.js'
 import { heading } from '../render/heading.js'
 import { stripFirstSegment } from '../router/urls.js'
@@ -40,6 +41,7 @@ type SecurityScheme = {
 export class OpenishOverview extends LitElement {
   static override styles = [
     baseStyles,
+    asideStyles,
     externalDocsStyles,
     titleRowStyles,
     planeColumnStyles,
@@ -48,6 +50,40 @@ export class OpenishOverview extends LitElement {
       .title {
         font: var(--openish-font-heading-1);
         margin: 0 0 var(--openish-space-2xs);
+      }
+
+      /*
+       * Stacked, the facts follow the prose and need air above them; side by side they are a column
+       * of their own, starting level with the title. Which way round it goes is not a rule anyone
+       * wrote here: two elements in one grid column are read in the order they were written, and
+       * that order is the introduction and then what to do about it.
+       *
+       * A grid with a gap rather than margins on the blocks inside, because the first block in this
+       * column is a slot - display: contents, so a rule about "the first child" lands on something
+       * that is not there, and a margin on whatever follows it collapses out through the column and
+       * moves the column instead. Grid items' margins do not collapse and an unfilled slot
+       * contributes no item, so the spacing is the same whether a host slotted anything in or not.
+       */
+      .facts {
+        display: grid;
+        align-content: start;
+        gap: var(--openish-space-xl);
+        margin-top: var(--openish-space-lg);
+      }
+
+      .facts > section {
+        margin-top: 0;
+      }
+
+      @container section (min-width: 56rem) {
+        .facts {
+          grid-column: 2;
+          margin-top: 0;
+        }
+
+        .docs > :first-child {
+          margin-top: 0;
+        }
       }
 
       .version {
@@ -173,8 +209,12 @@ export class OpenishOverview extends LitElement {
    *
    * Declared, never initialised: `@query` installs a getter on the prototype, and with
    * `useDefineForClassFields: false` a field initialiser would try to assign through it.
+   *
+   * Scoped to the documentation column, because there are two markdown blocks on this section now
+   * and only one of them holds the headings the navigation links at. A bare tag selector happens to
+   * find the right one while `info` has a description, and finds the aside the moment it does not.
    */
-  @query('openish-markdown')
+  @query('.docs > openish-markdown')
   private prose!: OpenishMarkdown | null
 
   protected override updated(changed: PropertyValues<this>): void {
@@ -410,26 +450,44 @@ export class OpenishOverview extends LitElement {
     const fields = info as unknown as Record<string, unknown>
     const summary = typeof fields['summary'] === 'string' ? fields['summary'] : undefined
 
+    /*
+     * The introduction reads like every other section: what this is on the left, and on the right
+     * the concrete things a reader acts on.
+     *
+     * Servers, authentication and the document itself were always the second kind and were stacked
+     * under the prose because there was nowhere else to put them - so the band that runs down the
+     * right of the whole document started one section late. What an author adds through
+     * `x-openish-aside` and what a host slots in join them there, in that order: the host's context
+     * is the most specific thing on the page, the author's is next, and the facts the document
+     * states are last because they are the ones a reader can always find again.
+     */
     return html`
       <div class="columns">
-        <div class="title-row">
-          ${heading(this.level, info.title, { title: true })}
-          <openish-copy-markdown exportparts="copy"></openish-copy-markdown>
+        <div class="docs" part="overview-docs">
+          <div class="title-row" part="overview-header">
+            ${heading(this.level, info.title, { title: true })}
+            <openish-copy-markdown exportparts="copy"></openish-copy-markdown>
+          </div>
+          ${info.version ? html`<div class="version">${info.version}</div>` : nothing}
+          ${summary ? html`<p class="summary">${summary}</p>` : nothing}
+          ${info.description
+            ? html`
+                <openish-markdown
+                  .markdown=${info.description}
+                  .headingOffset=${this.level}
+                  .headingIds=${this.#headingIds()}
+                ></openish-markdown>
+              `
+            : nothing}
+          ${renderExternalDocs(this.store?.document.externalDocs, `More about ${info.title}`)}
         </div>
-        ${info.version ? html`<div class="version">${info.version}</div>` : nothing}
-        ${summary ? html`<p class="summary">${summary}</p>` : nothing}
-        ${info.description
-          ? html`
-              <openish-markdown
-                .markdown=${info.description}
-                .headingOffset=${this.level}
-                .headingIds=${this.#headingIds()}
-              ></openish-markdown>
-            `
-          : nothing}
-        ${renderExternalDocs(this.store?.document.externalDocs, `More about ${info.title}`)}
-        ${this.#renderServers()} ${this.#renderSecurity()} ${this.#renderAbout(fields)}
-        <section><openish-download></openish-download></section>
+
+        <div class="facts" part="overview-aside">
+          <slot name="aside"></slot>
+          ${renderAside(info, this.level)} ${this.#renderServers()} ${this.#renderSecurity()}
+          ${this.#renderAbout(fields)}
+          <section><openish-download></openish-download></section>
+        </div>
       </div>
     `
   }

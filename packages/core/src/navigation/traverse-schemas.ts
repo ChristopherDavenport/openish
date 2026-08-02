@@ -5,6 +5,7 @@ import { getResolvedRef } from '../ref.js'
 import type { NavGroupNode, NavModelNode, SlugOverrides } from '../types.js'
 import { isHidden } from './hidden.js'
 import { asIdentifier, asProse, joinId, type SlugRegistry } from './ids.js'
+import { declaredTags } from './tags.js'
 
 /**
  * Builds the Models section from `components.schemas`.
@@ -36,13 +37,28 @@ export const traverseSchemas = (
     return undefined
   }
 
-  const children: NavModelNode[] = names.map((name) => ({
-    type: 'model',
-    id: registry.claim(joinId(prefix, 'models'), asIdentifier(name), 'model', slugs.model?.({ name })),
-    title: name,
-    name,
-    pointer: `#/components/schemas/${escapeJsonPointer(name)}`,
-  }))
+  const children: NavModelNode[] = names.map((name) => {
+    const node: NavModelNode = {
+      type: 'model',
+      id: registry.claim(joinId(prefix, 'models'), asIdentifier(name), 'model', slugs.model?.({ name })),
+      title: name,
+      name,
+      pointer: `#/components/schemas/${escapeJsonPointer(name)}`,
+    }
+
+    /*
+     * `x-tags`, read but not obeyed as a move.
+     *
+     * The dictionary is still the dictionary: a model tagged `Planets` is listed under the Planets
+     * tag *and* stays in Models, because a reader who wants the type by name looks where the types
+     * are. Moving it would also break its id, which is the one thing an extension should never do.
+     */
+    const tags = declaredTags(getResolvedRef(schemas[name]), 'x-tags')
+    if (tags) {
+      node.tags = tags
+    }
+    return node
+  })
 
   return {
     type: 'group',

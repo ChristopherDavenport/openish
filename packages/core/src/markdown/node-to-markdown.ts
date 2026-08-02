@@ -1,6 +1,9 @@
 import type { Document as OpenApiDocument, OperationObject } from '@scalar/openapi-types/3.1'
 
+import { authorAside } from '../aside.js'
+import { authorSamples } from '../har/author-samples.js'
 import { operationToHar, resolveServerUrl } from '../har/operation-to-har.js'
+import { declarationFor } from '../navigation/declaration.js'
 import { resolveOperationNode } from '../navigation/resolve.js'
 import { mediaTypeExamples } from '../operation/examples.js'
 import { collectParameters, type ParameterEntry } from '../operation/parameters.js'
@@ -108,6 +111,27 @@ const asJson = (value: unknown): string =>
  * what the API *is* - a host's server override is a fact about one deployment of the reference, not
  * about the interface being described.
  */
+/**
+ * What an author wrote for a section's examples column, in the copy of it a reader takes away.
+ *
+ * It goes in because it is the document talking: `x-openish-aside` is prose about this section and
+ * `x-codeSamples` is an example of it, and a copy that dropped both would be missing the part the
+ * author added by hand. Where it *cannot* go is a host's slotted DOM - openish has no way to
+ * serialise someone else's components, and guessing at their text would be worse than the omission.
+ *
+ * Under the prose rather than above it, which is where the column puts it relative to the reading
+ * order: the section says what it is, and then what to do about it.
+ */
+const asideMarkdown = (source: unknown, level: number): string | undefined => {
+  const aside = authorAside(source)
+  const samples = authorSamples(source as object | undefined)
+
+  return blocks(
+    aside ? demoteHeadings(aside, level) : undefined,
+    ...samples.map((sample) => blocks(`**${sample.label}**`, fence(sample.language, sample.source))),
+  )
+}
+
 const infoMarkdown = (document: OpenApiDocument, level: number): string => {
   const info = document.info
   const servers = (document.servers ?? []).map((raw) => {
@@ -126,6 +150,7 @@ const infoMarkdown = (document: OpenApiDocument, level: number): string => {
     info?.version ? `Version ${info.version}` : undefined,
     info?.summary,
     info?.description ? demoteHeadings(info.description, level) : undefined,
+    asideMarkdown(info, level),
     servers.length > 0 ? blocks(heading(level + 1, 'Servers'), servers.join('\n')) : undefined,
     schemes.length > 0 ? blocks(heading(level + 1, 'Authentication'), schemes.join('\n')) : undefined,
   )
@@ -386,6 +411,7 @@ export const nodeToMarkdown = (
       return blocks(
         heading(level, node.title),
         node.type === 'tag' && node.description ? demoteHeadings(node.description, level) : undefined,
+        asideMarkdown(declarationFor(store.document, node), level),
         ...node.children.map((child) => nodeToMarkdown(store, child, { ...options, depth: level + 1 })),
       )
 

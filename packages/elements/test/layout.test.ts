@@ -217,6 +217,76 @@ describe('the examples column', () => {
     )
   })
 
+  /**
+   * The two sections that are not an operation and still have an instance to show.
+   *
+   * A model has one - what the type looks like filled in - and a webhook has its payload, which is
+   * the whole of what it sends. Both used to render below their own schema, in the documentation
+   * column, so the right-hand band ran down the page and then stopped at Webhooks and Models.
+   */
+  const columnsOf = (harness: Harness, id: string, tag: 'openish-model' | 'openish-operation') => {
+    const section = shadowOf(sectionOf(harness, id), tag)
+    const kind = tag.replace('openish-', '')
+    return {
+      docs: section.querySelector(`[part~="${kind}-docs"]`)!,
+      examples: section.querySelector(`[part~="${kind}-examples"]`)!,
+    }
+  }
+
+  it("puts a model's example beside the tree it is an instance of", async () => {
+    const harness = await mountReference({ path: '/models/Account' })
+    await widen(harness, '1600px')
+    const { docs, examples } = columnsOf(harness, 'models/Account', 'openish-model')
+
+    expect(examples.getBoundingClientRect().left).toBeGreaterThan(docs.getBoundingClientRect().left)
+    expect(Math.round(examples.getBoundingClientRect().top)).toBe(Math.round(docs.getBoundingClientRect().top))
+
+    /* The contract on the left, one instance of it on the right, and neither of them twice. */
+    expect(deepQuery(docs, 'openish-schema')).not.toBeNull()
+    expect(deepQuery(docs, 'openish-code-block')).toBeNull()
+    expect(deepQuery(examples, 'openish-code-block')).not.toBeNull()
+  })
+
+  it("stacks a model's example under its tree when there is no room beside it", async () => {
+    const harness = await mountReference({ path: '/models/Account' })
+    await widen(harness, '820px')
+    const { docs, examples } = columnsOf(harness, 'models/Account', 'openish-model')
+
+    expect(Math.round(examples.getBoundingClientRect().left)).toBe(Math.round(docs.getBoundingClientRect().left))
+    expect(docs.getBoundingClientRect().bottom).toBeLessThanOrEqual(examples.getBoundingClientRect().top + 1)
+  })
+
+  it("puts a section's index beside its prose rather than under it", async () => {
+    const harness = await mountReference({ path: '/tags/accounts' })
+    await widen(harness, '1600px')
+    const section = shadowOf(sectionOf(harness, 'tags/accounts'), 'openish-tag-section')
+    const docs = section.querySelector('[part~="section-docs"]')!
+    const index = section.querySelector('[part~="section-index"]')!
+
+    expect(index.getBoundingClientRect().left).toBeGreaterThan(docs.getBoundingClientRect().left)
+    expect(Math.round(index.getBoundingClientRect().top)).toBe(Math.round(docs.getBoundingClientRect().top))
+  })
+
+  it("puts a webhook's payload in the examples column, where a request sample would be", async () => {
+    const harness = await mountReference({ path: '/webhooks/post-accountcreated' })
+    await widen(harness, '1600px')
+    const { docs, examples } = columnsOf(harness, 'webhooks/post-accountcreated', 'openish-operation')
+
+    expect(examples.getBoundingClientRect().left).toBeGreaterThan(docs.getBoundingClientRect().left)
+
+    /*
+     * Asked of the body element itself rather than of the column, because the responses on either
+     * side render code blocks and schemas of their own.
+     */
+    const documented = deepQuery(docs, 'openish-request-body')!.shadowRoot!
+    expect(deepQuery(documented, 'openish-schema')).not.toBeNull()
+    expect(deepQuery(documented, 'openish-code-block')).toBeNull()
+
+    const shown = deepQuery(examples, 'openish-request-body')!.shadowRoot!
+    expect(deepQuery(shown, 'openish-code-block')).not.toBeNull()
+    expect(deepQuery(shown, 'openish-schema')).toBeNull()
+  })
+
   it('documents the schema on one side and shows the example on the other, never both', async () => {
     const harness = await mountReference({ path: '/tags/accounts/getAccount' })
     await widen(harness, '1600px')

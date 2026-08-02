@@ -12,6 +12,10 @@ export const SHELL_SPEC = {
     title: 'Shell API',
     version: '2.3.0',
     description: '# Getting started\n\nSome prose.\n\n## Authentication\n\nMore prose.',
+    /* Content for a column the introduction cannot generate one for. openish's own extension. */
+    'x-openish-aside': '### Before you start\n\nEvery call needs an institution id.',
+    /* And the spelling operations already use, read from `info` rather than from an operation. */
+    'x-codeSamples': [{ lang: 'bash', label: 'Get a token', source: 'curl -X POST /token' }],
   },
   servers: [
     { url: 'https://api.example.com/v1', description: 'Production' },
@@ -20,7 +24,15 @@ export const SHELL_SPEC = {
   /* A document-level requirement, so a generated sample shows where the credential goes. */
   security: [{ bearerAuth: [] }],
   tags: [
-    { name: 'accounts', description: 'Everything about accounts.' },
+    {
+      name: 'accounts',
+      description: 'Everything about accounts.',
+      'x-openish-aside': 'Balances are in minor units.',
+      'x-codeSamples': [
+        { lang: 'bash', label: 'Shell', source: 'curl /accounts' },
+        { lang: 'javascript', label: 'JavaScript', source: "fetch('/accounts')" },
+      ],
+    },
     { name: 'admin', 'x-displayName': 'Administration' },
   ],
   paths: {
@@ -115,13 +127,25 @@ export const SHELL_SPEC = {
   },
   webhooks: {
     accountCreated: {
-      post: { summary: 'An account was created', responses: { '200': { description: 'OK' } } },
+      post: {
+        summary: 'An account was created',
+        /* Standard `tags` on a standard Operation Object: the accounts tag lists this as an event. */
+        tags: ['accounts'],
+        /* The payload the API sends: a webhook's only instance, since nobody calls it. */
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/Account' } } },
+        },
+        responses: { '200': { description: 'OK' } },
+      },
     },
   },
   components: {
     schemas: {
       Account: {
         type: 'object',
+        /* Redoc's convention, and the only way a schema can name a tag - JSON Schema has no `tags`. */
+        'x-tags': ['accounts'],
         description: 'A bank account.',
         required: ['id'],
         properties: {

@@ -1,27 +1,34 @@
 import { consume } from '@lit/context'
-import type { NavGroupNode, NavNode, NavTagNode } from '@openish/core'
+import { declarationFor, type DocumentStore } from '@openish/core'
 import { LitElement, html, css, nothing, type TemplateResult } from 'lit'
 import { customElement, property } from 'lit/decorators.js'
-import { classMap } from 'lit/directives/class-map.js'
-import { repeat } from 'lit/directives/repeat.js'
 
-import { uiContext, type OpenishUiState } from '../context/contexts.js'
+import { documentContext } from '../context/contexts.js'
+import { asideStyles, renderAside } from '../render/aside.js'
 import { externalDocsStyles, renderExternalDocs } from '../render/external-docs.js'
 import { heading } from '../render/heading.js'
-import { hrefFor } from '../router/urls.js'
-import { baseStyles, methodStyles, planeColumnStyles, titleRowStyles } from '../styles/shared.js'
+import type { SectionParent } from '../render/section-links.js'
+import { baseStyles, planeColumnStyles, titleRowStyles } from '../styles/shared.js'
 import './openish-copy-markdown.js'
 import './openish-markdown.js'
+import './openish-section-index.js'
 
 /**
- * The landing page for a tag, a group, or any other node that has children: its prose, then an
- * index of what is inside it.
+ * The landing for a tag, a group, or any other node that has children: its prose on one side, and
+ * an index of what is inside it on the other.
+ *
+ * The index sits in the examples column, which is where it belongs on a plane: the things a tag
+ * contains follow it down the page, so a list *above* them was the same links twice - and for the
+ * Models dictionary, six hundred of them between the reader and the first model. Beside the prose it
+ * is a table of contents for the section rather than a wall to climb, and it can carry the two
+ * things the page below it cannot show in one place: the events and models that name this tag from
+ * elsewhere in the document.
  */
 @customElement('openish-tag-section')
 export class OpenishTagSection extends LitElement {
   static override styles = [
     baseStyles,
-    methodStyles,
+    asideStyles,
     externalDocsStyles,
     titleRowStyles,
     planeColumnStyles,
@@ -32,79 +39,54 @@ export class OpenishTagSection extends LitElement {
         margin: 0 0 var(--openish-space-md);
       }
 
-      ul {
-        margin: var(--openish-space-lg) 0 0;
-        padding: 0;
-        list-style: none;
+      /*
+       * Stacked, the index is what follows the prose, and it needs air above it. Side by side it is
+       * a column of its own, starting level with the title - see the note in openish-operation.
+       *
+       * A grid rather than margins, for the same reason the overview's facts column is one: what an
+       * author wrote goes above the index, and a margin between them would collapse out through a
+       * column that has no padding of its own and move the column instead.
+       */
+      .index {
         display: grid;
-        gap: var(--openish-space-2xs);
+        align-content: start;
+        gap: var(--openish-space-lg);
+        margin-top: var(--openish-space-lg);
       }
 
-      a {
-        display: flex;
-        align-items: baseline;
-        gap: var(--openish-space-xs);
-        padding: var(--openish-space-xs);
-        border-radius: var(--openish-radius-md);
-        color: var(--openish-color-text);
-      }
+      @container section (min-width: 56rem) {
+        .index {
+          grid-column: 2;
+          margin-top: 0;
+        }
 
-      a:hover {
-        background: var(--openish-color-surface-hover);
-        text-decoration: none;
-      }
-
-      .path {
-        margin-left: auto;
-        font-family: var(--openish-font-family-mono);
-        font-size: 0.9em;
-        color: var(--openish-color-text-muted);
-      }
-
-      .deprecated {
-        text-decoration: line-through;
-        color: var(--openish-color-text-muted);
+        .docs > :first-child {
+          margin-top: 0;
+        }
       }
     `,
   ]
 
-  /** Presentation state. Provided by `<openish-api-reference>` through context. */
-  @consume({ context: uiContext, subscribe: true })
-  ui: OpenishUiState | undefined
+  /** The parsed document. Provided by `<openish-api-reference>` through context. */
+  @consume({ context: documentContext, subscribe: true })
+  store: DocumentStore | undefined
 
-  /** The tag or group whose children this page indexes. */
+  /** The tag or group whose children this indexes. */
   @property({ attribute: false })
-  node!: NavTagNode | NavGroupNode
+  node!: SectionParent
 
   /** The heading level this section's own title takes. See `<openish-operation>`'s. */
   @property({ type: Number })
   level = 1
 
   /**
-   * Render the prose and not the index of what is inside.
+   * The object in the document this section was built from, if the document declares one.
    *
-   * Set by the plane, where the things a tag contains follow it down the page - so the list would be
-   * the same links twice, and for the Models group six hundred of them between the reader and the
-   * first model. A host embedding a single node still gets the index, because there it is the only
-   * way to reach anything.
+   * `declarationFor` rather than a lookup here, because the markdown export asks the same question
+   * of the same node and two answers to "which Tag Object is this" is one too many.
    */
-  @property({ type: Boolean, attribute: 'no-index' })
-  noIndex = false
-
-  #renderChild(child: NavNode): TemplateResult {
-    const deprecated = child.type === 'operation' && child.deprecated === true
-
-    return html`
-      <li>
-        <a href=${hrefFor(child, this.ui)}>
-          ${child.type === 'operation' || child.type === 'webhook'
-            ? html`<span class="method" data-method=${child.method}>${child.method}</span>`
-            : nothing}
-          <span class=${classMap({ deprecated })}>${child.title}</span>
-          ${child.type === 'operation' ? html`<code class="path">${child.path}</code>` : nothing}
-        </a>
-      </li>
-    `
+  get #declaration(): object | undefined {
+    return declarationFor(this.store?.document, this.node)
   }
 
   override render(): TemplateResult | typeof nothing {
@@ -117,25 +99,21 @@ export class OpenishTagSection extends LitElement {
 
     return html`
       <div class="columns">
-        <div class="title-row">
-          ${heading(this.level, this.node.title, { title: true })}
-          <openish-copy-markdown exportparts="copy" .node=${this.node}></openish-copy-markdown>
+        <div class="docs" part="section-docs">
+          <div class="title-row" part="section-header">
+            ${heading(this.level, this.node.title, { title: true })}
+            <openish-copy-markdown exportparts="copy" .node=${this.node}></openish-copy-markdown>
+          </div>
+          ${description
+            ? html`<openish-markdown .markdown=${description} .headingOffset=${this.level}></openish-markdown>`
+            : nothing}
+          ${renderExternalDocs(externalDocs, `More about ${this.node.title}`)}
         </div>
-        ${description
-          ? html`<openish-markdown .markdown=${description} .headingOffset=${this.level}></openish-markdown>`
-          : nothing}
-        ${renderExternalDocs(externalDocs, `More about ${this.node.title}`)}
-        ${this.noIndex
-          ? nothing
-          : html`
-              <ul>
-                ${repeat(
-                  this.node.children,
-                  (child) => child.id,
-                  (child) => this.#renderChild(child),
-                )}
-              </ul>
-            `}
+
+        <div class="index" part="section-index">
+          ${renderAside(this.#declaration, this.level)}
+          <openish-section-index .node=${this.node}></openish-section-index>
+        </div>
       </div>
     `
   }

@@ -53,6 +53,8 @@ export { OpenishRequestForm, type ParameterChange } from './elements/openish-req
 export { OpenishResponseList } from './elements/openish-response-list.js'
 export { OpenishResponseView } from './elements/openish-response-view.js'
 export { OpenishSchema } from './elements/openish-schema.js'
+export { OpenishSectionIndex } from './elements/openish-section-index.js'
+export { OpenishSectionList } from './elements/openish-section-list.js'
 export { OpenishSchemaPreview } from './elements/openish-schema-preview.js'
 export { OpenishSearch } from './elements/openish-search.js'
 export { OpenishServerSelect } from './elements/openish-server-select.js'
@@ -78,6 +80,7 @@ export {
   type Section,
   type SectionKind,
 } from './render/sections.js'
+export { sectionLinks, type SectionLinkGroup, type SectionParent } from './render/section-links.js'
 export {
   additionalPropertiesName,
   asSchema,

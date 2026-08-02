@@ -27,9 +27,26 @@ const REACH_TRIES = 20
  * first time: its prose and its highlighting arrive on their own schedule, and each of them changes
  * a height somewhere above the target. Three was enough to catch the walk and not the settling, and
  * the reference ended up one operation past the one it was asked for.
+ *
+ * Three hundred frames rather than ninety, because ninety was a budget measured against short header
+ * sections. M18 gave every header an index, which made some of them seven hundred pixels tall, and a
+ * walk of one step per frame through taller sections spends more of them - on a loaded machine the
+ * jump ran out mid-correction and stopped fourteen hundred pixels short, which is indistinguishable
+ * to a reader from the plane ignoring them. The cap costs nothing in the ordinary case: the loop
+ * ends on eight quiet frames, which a settled document reaches in a dozen or so. It is a bound on
+ * chasing a document whose prose never stops arriving, not a schedule.
  */
-const CONVERGE_FRAMES = 90
+const CONVERGE_FRAMES = 300
 const STABLE_FRAMES = 8
+
+/**
+ * How long to wait for a frame that may never come.
+ *
+ * Roughly two frames' worth: long enough that a page being painted normally always wins the race
+ * with its own animation frame, short enough that a page which is not being painted still converges
+ * in the same handful of steps rather than in a visible crawl.
+ */
+const TICK_MS = 32
 
 export type SectionsOptions = {
   /** The reader is at this section. Never called for a section a programmatic scroll passed over. */
@@ -100,6 +117,7 @@ export class SectionsController implements ReactiveController {
   #anchor: string | undefined
   #reattached: VirtualizerHostElement | undefined
   #frame: number | undefined
+  #tick: ReturnType<typeof setTimeout> | undefined
   #settle: ReturnType<typeof setTimeout> | undefined
   #quiet: ReturnType<typeof setTimeout> | undefined
   #reported: string | undefined
@@ -129,7 +147,36 @@ export class SectionsController implements ReactiveController {
     if (this.#frame !== undefined && typeof cancelAnimationFrame === 'function') {
       cancelAnimationFrame(this.#frame)
     }
+    clearTimeout(this.#tick)
     this.#frame = undefined
+    this.#tick = undefined
+  }
+
+  /**
+   * The next chance to look: a frame if the page is being painted, a timer if it is not.
+   *
+   * Frames alone were the whole mechanism, and they are the right clock - a correction is only worth
+   * making once the layout it measures has happened. But a page that is not being rendered gets no
+   * frames at all, and openish is a component a host embeds wherever it likes: a reference resolving
+   * a deep link in a tab the reader has not switched to yet, or in an offscreen frame, had its
+   * correction loop suspended mid-jump and stayed wherever the estimate had left it - fourteen
+   * hundred pixels short, in this repo's own suite, whenever the browser had something better to do.
+   *
+   * So the two race and the first to fire wins, with the loser cancelled: sixty times a second while
+   * anyone is looking, thirty-odd times a second when nobody is, and the same answer either way.
+   */
+  #schedule(run: () => void): void {
+    this.#stopFrames()
+
+    const fire = () => {
+      this.#stopFrames()
+      run()
+    }
+
+    if (typeof requestAnimationFrame === 'function') {
+      this.#frame = requestAnimationFrame(fire)
+    }
+    this.#tick = setTimeout(fire, TICK_MS)
   }
 
   /** The section list, handed over on each update so nothing here reads the store. */
@@ -251,8 +298,8 @@ export class SectionsController implements ReactiveController {
   #reach(index: number, tries: number): void {
     const virtualizer = this.#plane?.[virtualizerRef]
     if (!virtualizer) {
-      if (tries < REACH_TRIES && typeof requestAnimationFrame === 'function' && this.#alive) {
-        this.#frame = requestAnimationFrame(() => this.#reach(index, tries + 1))
+      if (tries < REACH_TRIES && this.#alive) {
+        this.#schedule(() => this.#reach(index, tries + 1))
       }
       return
     }
@@ -294,6 +341,24 @@ export class SectionsController implements ReactiveController {
       .then(() => {
         if (this.#alive && this.#target !== undefined && sectionIndex(this.#sections).get(this.#target) === index) {
           virtualizer.element(index)?.scrollIntoView({ block: 'start' })
+          /*
+           * And correct *after* it, which is the half that was missing.
+           *
+           * The pin is built from the same estimates the jump was, so it lands accurately only when
+           * the sections above the target happen to be the average height. It resolves on its own
+           * schedule - `layoutComplete` is a promise, and on a long jump it settles after the loop
+           * below has already run out of corrections to make. What the reader got then was a plane
+           * that moved *once more* after everything watching it had stopped, and stayed there: on
+           * this repo's own test document, fourteen hundred pixels above the section they asked for,
+           * frozen, with the right URL.
+           *
+           * So the loop is started again behind the pin. The frames of whichever run is still going
+           * are cancelled first - two loops correcting the same scroll would each undo the other's
+           * last move - and the second run costs nothing when the pin was accurate, because it ends
+           * on eight quiet frames like any other.
+           */
+          this.#stopFrames()
+          this.#converge(index, 0, 0)
         }
       })
       .catch(() => undefined)
@@ -324,17 +389,12 @@ export class SectionsController implements ReactiveController {
    * document whose prose keeps arriving could otherwise be chased for the life of the page.
    */
   #converge(index: number, tries: number, stable: number): void {
-    if (
-      tries >= CONVERGE_FRAMES ||
-      stable >= STABLE_FRAMES ||
-      typeof requestAnimationFrame !== 'function' ||
-      !this.#alive
-    ) {
+    if (tries >= CONVERGE_FRAMES || stable >= STABLE_FRAMES || !this.#alive) {
       this.#arrived()
       return
     }
 
-    this.#frame = requestAnimationFrame(() => {
+    this.#schedule(() => {
       const plane = this.#plane
       const scroller = this.#scroller
       const id = this.#target

@@ -125,17 +125,22 @@ const readEntry = (value: unknown, index: number): AuthorSample | undefined => {
 }
 
 /**
- * The samples an operation's author supplied, or an empty list.
+ * The samples an author supplied on this object, or an empty list.
  *
  * A map-shaped extension (`{ python: {...}, node: {...} }`, which is how `x-stainless-snippets` and
  * `x-readme` are written) is read as its entries, with the key standing in for a missing `lang`.
+ *
+ * Takes any object the document has rather than an operation, which is what it always did in fact -
+ * every read below is against a bag of keys. What changed is that a *section* can carry samples now:
+ * `info` and a Tag Object have no request to generate one from, so a curated sample is the only kind
+ * they can show, and there is no reason for an author to learn a second spelling to write one.
  */
-export const authorSamples = (operation: OperationObject | undefined): AuthorSample[] => {
-  if (!operation) {
+export const authorSamples = (source: OperationObject | object | undefined): AuthorSample[] => {
+  if (!source) {
     return []
   }
 
-  const record = operation as unknown as Record<string, unknown>
+  const record = source as unknown as Record<string, unknown>
 
   for (const key of SOURCES) {
     const nested = NESTED_UNDER[key]

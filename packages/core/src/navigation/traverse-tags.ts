@@ -12,6 +12,7 @@ import {
 import { isHidden } from './hidden.js'
 import { asProse, joinId, SlugRegistry } from './ids.js'
 import { collectOperations, operationSlugSource, operationTitle, type OperationEntry } from './operations.js'
+import { declaredTags } from './tags.js'
 
 /**
  * `x-displayName` is a widely used extension for giving a tag a human title while keeping its
@@ -86,8 +87,8 @@ export const traverseTags = (
     if (isHidden(entry.operation)) {
       continue
     }
-    const tags = entry.operation.tags?.filter((tag) => typeof tag === 'string' && tag.length > 0)
-    if (!tags || tags.length === 0) {
+    const tags = declaredTags(entry.operation, 'tags')
+    if (!tags) {
       push(UNTAGGED, entry)
       continue
     }

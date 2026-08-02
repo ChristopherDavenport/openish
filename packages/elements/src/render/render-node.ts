@@ -31,7 +31,7 @@ export const renderNode = (node: NavNode, hash = '', slugPrefix = ''): TemplateR
       return html`
         <openish-operation
           .node=${node}
-          exportparts="operation-header, operation-docs, operation-examples, request-section, parameters-section, body-section, response-section, examples-section, security-section, callbacks-section, code, code-toolbar, copy, dialog, dialog-toolbar"
+          exportparts="operation-header, operation-docs, operation-examples, request-section, payload-section, parameters-section, body-section, response-section, examples-section, security-section, callbacks-section, code, code-toolbar, copy, dialog, dialog-toolbar"
         >
           <slot name="request-start" slot="request-start"></slot>
           <slot name="request-end" slot="request-end"></slot>
@@ -40,10 +40,20 @@ export const renderNode = (node: NavNode, hash = '', slugPrefix = ''): TemplateR
         </openish-operation>
       `
     case 'model':
-      return html`<openish-model .node=${node}></openish-model>`
+      return html`
+        <openish-model
+          .node=${node}
+          exportparts="model-header, model-docs, model-examples, code, code-toolbar, copy"
+        ></openish-model>
+      `
     case 'tag':
     case 'group':
-      return html`<openish-tag-section .node=${node}></openish-tag-section>`
+      return html`
+        <openish-tag-section
+          .node=${node}
+          exportparts="section-header, section-docs, section-index"
+        ></openish-tag-section>
+      `
     case 'text':
       /*
        * Headings lifted out of `info.description` are anchors on the overview, not pages - and the
@@ -54,7 +64,14 @@ export const renderNode = (node: NavNode, hash = '', slugPrefix = ''): TemplateR
 }
 
 export const renderOverview = (hash = ''): TemplateResult =>
-  html`<openish-overview .hash=${hash}></openish-overview>`
+  html`
+    <openish-overview
+      .hash=${hash}
+      exportparts="overview-header, overview-docs, overview-aside, aside, code, code-toolbar, copy"
+    >
+      <slot name="overview-aside" slot="aside"></slot>
+    </openish-overview>
+  `
 
 /**
  * A second chance for an id the document has no node for.

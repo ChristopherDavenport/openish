@@ -271,6 +271,19 @@ export const mountReference = async (
   frame.style.width = '1024px'
   frame.style.height = '768px'
   /*
+   * Pinned to the viewport, because a frame that is off it does not get animation frames.
+   *
+   * Browsers throttle `requestAnimationFrame` for content that is not being rendered, and a suite
+   * appends a frame per test into one long page - so the second one down is offscreen and its rAF
+   * callbacks stop, while its timers keep running. Everything openish does on frames stops with it:
+   * the convergence loop that corrects a jump sat frozen fourteen hundred pixels short of the
+   * section it was asked for, in one full-suite run out of three, and never in a run of the file on
+   * its own. Nothing was wrong with the plane - it was not being given a chance to move.
+   */
+  frame.style.position = 'fixed'
+  frame.style.top = '0'
+  frame.style.left = '0'
+  /*
    * A real served document, not `about:blank` or `srcdoc`: `history.pushState` refuses to set an
    * http URL on a document whose own URL is not one, and both of those fail that test.
    */
@@ -394,6 +407,62 @@ export const mountReference = async (
     hrefFor: (path: string) => hrefInMode(attributes.routing ?? 'hash', path, attributes.basePath ?? ''),
     dispose: () => frame.remove(),
   }
+}
+
+/**
+ * Waits for a section to arrive where it was asked to be, or for the plane to stop moving.
+ *
+ * A jump into a document the virtualiser has not measured is *corrected* over several frames - the
+ * sections above the target mount, turn out to be a different height than the estimate, and the
+ * target slides. `SectionsController` is built around exactly that; what it does not do is finish
+ * inside the single render `settle` waits for.
+ *
+ * Three things are deliberate, and each of them is a run that failed. It watches **the section**
+ * rather than the scroller, because a correction that has not happened yet and one that has just
+ * happened leave `scrollTop` identical between samples. It waits on `setTimeout` rather than
+ * `requestAnimationFrame`, because frames are what the loop it is waiting for needs: on a machine
+ * running all three projects at once they arrive in bursts, and a waiter built on the same starved
+ * clock declares a plane settled that has not started moving. And when a caller says how close is
+ * close enough, arriving ends the wait - so a slow correction costs the time it takes rather than a
+ * failure, while a plane that lands somewhere else still fails, at the cap.
+ */
+export const settleScroll = async (harness: Harness, id?: string, within?: number): Promise<void> => {
+  /*
+   * Five seconds, which is a long time and still comfortably inside the runner's own timeout - a
+   * wait that outlives the test reports as a timeout rather than as the thing it was waiting for.
+   */
+  const capMs = 5000
+  const tick = () => new Promise((resolve) => setTimeout(resolve, 50))
+  const position = (): number => {
+    const scroller = harness.element.shadowRoot!.querySelector('main')
+    const section = id
+      ? harness.element.shadowRoot!.querySelector(`.section[data-id$="${id}"]`)
+      : harness.element.shadowRoot!.querySelector('.section')
+    if (!scroller || !section) {
+      return Number.NaN
+    }
+    return Math.round(section.getBoundingClientRect().top - scroller.getBoundingClientRect().top)
+  }
+
+  let last = Number.NaN
+  let stable = 0
+  for (let waited = 0; waited < capMs; waited += 50) {
+    await tick()
+    const now = position()
+
+    /* Arrived is arrived: no reason to keep watching a plane that is already where it was asked. */
+    if (within !== undefined && Math.abs(now) <= within) {
+      break
+    }
+
+    stable = now === last ? stable + 1 : 0
+    last = now
+    if (within === undefined && stable >= 10) {
+      break
+    }
+  }
+
+  await harness.settle()
 }
 
 /**

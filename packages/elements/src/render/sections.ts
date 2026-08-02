@@ -109,11 +109,13 @@ const build = (store: DocumentStore): Plane => {
 
         default:
           /*
-           * A model documents a type; it has no request to show and no response to have got back, so
-           * its right-hand column stays empty. An operation and a webhook both have one - a webhook
-           * has no request sample, because nobody calls it, but it does have response examples.
+           * Every section with a body puts something in the right-hand column, and each of them puts
+           * an instance there: an operation its request sample and its responses, a webhook its
+           * payload and its responses - nobody calls it, so there is no sample to send - and a model
+           * one instance of the type it describes. Only the prose sections, which describe nothing
+           * concrete enough to show, leave the column empty.
            */
-          sections.push({ id: node.id, node, kind: 'page', level, hasExample: node.type !== 'model' })
+          sections.push({ id: node.id, node, kind: 'page', level, hasExample: true })
       }
     }
   }

@@ -31,8 +31,10 @@ numbers. Read this file for how the code is meant to be written and what has alr
 | M15 schema edges | Done — `contentMediaType`/`contentEncoding`, `dependentRequired`/`dependentSchemas`, `if`/`then`/`else`, and `$dynamicRef`/`$dynamicAnchor` in both the tree and the example |
 | M16 design system | Done — one focus ring instead of sixteen, the six control states, semantic borders, selection as an edge, forced colors |
 | M17 the continuous plane | Done — the whole document as one virtualised scroller, the URL following the reader, three columns every section shares, Copy for LLM |
+| M18 the section index | Done — every section with a body uses both columns, and every header carries an index of what is inside it: operations, the events that declare its tag, the models that carry `x-tags` |
+| M19 the descriptive column | Done — the introduction in two columns, `x-openish-aside` and section-level `x-codeSamples`, an `overview-aside` slot for the host, and a scroll correction that survives a page nobody is painting |
 
-`npm run verify` runs guards → typecheck → tests. 601 tests today across three projects: `core` and
+`npm run verify` runs guards → typecheck → tests. 638 tests today across three projects: `core` and
 `client` in Node, `elements` in real Chromium via Playwright (`npx playwright install chromium`
 once). A `.browser.test.ts` suffix inside `packages/client/test` puts a file in the Chromium project
 instead - that is where the two OAuth transports are tested, and the suffix is what keeps the rest of
@@ -814,6 +816,185 @@ both are the price of a scroll that lands accurately rather than a page that is 
 eviction window designed as a contingency for a plane that never unmounts is **not needed**: the
 virtualiser recycles, and 40 MB after traversing the whole document is nowhere near the 1.5 GB
 threshold that would have justified it.
+
+## M18 — the section index (done)
+
+The examples column stopped at the sections that were not operations: a model and a webhook rendered
+their one instance in the documentation column, and a tag header had no right-hand column at all.
+This is the other half of M17's geometry - **what describes goes left, what is an instance of it goes
+right, and what a section contains goes right too** - and the first thing openish does with a fact
+the document has always carried and no reference has ever shown: which tag an event belongs to.
+
+### Every section with a body uses both columns
+
+The columns were an operation's idea and the plane made them the document's. A model and a webhook
+kept rendering their one instance in the documentation column, under the schema it is an instance of,
+which was the only place for it when each was a page of its own. Stacked into one scroller it read as
+a fault: the right-hand band ran down the page and then stopped dead at Webhooks and Models, which on
+the reference document is six hundred and eleven sections of empty column.
+
+Both were already on `planeColumnStyles` and neither needed a new mechanism. `<openish-model>` splits
+into `.docs` and `.examples` the way `<openish-operation>` does, and a webhook's payload moves across
+on `<openish-request-body examples-only>` - the mirror of the `examples-only` `<openish-response-list>`
+has had since M14, through the same `noSchema` seam in `renderMediaTypes`. The split
+is by kind, not by section, so it does not matter that a webhook's instance is a body it *receives*
+rather than a call it sends.
+
+One rule differs from the operation's, deliberately: the model zeroes the first child's top margin
+only inside the container query. The operation's columns both start with a section that has its own
+spacing above it; the model's example is a heading, and stacked it needs that margin to stay off the
+tree above it. `Section.hasExample` is `true` for every `page` now, which is what it was actually
+asking all along.
+
+Moving the payload across also exposed a heading with nothing under it. `examples-only` drops the
+responses that carry no body - a `204` is a complete answer in the documentation column and an empty
+tab here - but the section around it was written whenever `responses` existed at all, so an operation
+that answers `200 OK` and nothing else printed "Response examples" over a blank half-page. It had
+been true since M14 and was invisible while every such section had a request sample above it; on a
+webhook it was the only thing in the column. `hasRenderableContent` is the one predicate both the
+section and the filter ask now.
+
+### A tag can be named from outside itself
+
+An operation belongs to a tag because it says so, and the traversal has always read that. Two other
+things in a document can say the same and were being thrown away:
+
+- **A webhook's `tags`.** A webhook entry is a Path Item and its `post` is an ordinary Operation
+  Object, so this is the standard field, not an extension - `@scalar/galaxy` tags `newPlanet` with
+  `Planets` and openish showed it under Webhooks and nowhere else.
+- **A schema's `x-tags`.** JSON Schema has no `tags` keyword and OpenAPI adds none, so there is
+  nothing standard to read; `x-tags` is Redoc's convention and the one every tool that groups models
+  by tag uses. It joins the family openish already honours - `x-displayName`, `x-tagGroups`,
+  `x-internal`, `x-codeSamples`.
+
+Both are read by one function, `declaredTags`, which drops anything that is not a usable name:
+`tags: [null]` and `tags: []` are a document saying nothing, and a bucket keyed on the empty string
+would collect them into a tag that does not exist.
+
+**Neither moves the node.** The tags travel with it and the node stays where the traversal put it, so
+a webhook that gains a `tags:` line keeps its id, its place under Webhooks, and every link anyone
+ever made to it. The index is *links*, not sections - which is also why this needed no change to the
+plane, the router, or `documentSections`.
+
+### The index is in the right-hand column, and bounded
+
+Before the plane a tag listed its children above the fold, because that list was the only way to
+reach them. M17 took it away, correctly: on a plane those children follow the header down the page,
+so the list was the same links twice and, for Models, six hundred of them between the reader and the
+first model.
+
+In the examples column it is a table of contents rather than a wall - out of the reading order, level
+with the prose, and the only place from which the events and models that name this tag can be reached
+at all. Rows are `jh-list-item`'s anatomy through openish's hooks: the method chip in the leading
+slot, the name as primary text, the route as right-aligned primary metadata, dividers between rows
+rather than gaps, and the six control states from `controlStyles`. The row for the section the reader
+is on wears the same fill and inside edge the sidebar row does, because it is the same fact.
+
+**The cap is the part that matters.** Six hundred and eleven rows is a section thirty-four thousand
+pixels tall, and the reader who scrolls past the Models heading scrolls all of it - M17's wall,
+rebuilt one column over. So the list is bounded at `min(70vh, 40rem)` and scrolls inside itself, with
+`overscroll-behavior: contain` so reaching its end does not set the whole plane moving. A tag with six
+operations never reaches the cap and is six operations tall.
+
+`no-index` is gone from `<openish-tag-section>`, and it is the one thing a host has to notice. It
+existed so the plane could suppress a list that only made sense on a page of its own; there is now one
+answer for both, and it is the same element in the same column either way.
+
+### Two things the tabs made honest
+
+`<openish-tabs>` renders a panel's content inside **its own** shadow root, so a template handed to
+`content` arrives unstyled - the list had to become `<openish-section-list>` before a single rule
+applied to it. That is the rule, not the exception: everything that goes through a `content` callback
+is a component or it is unstyled.
+
+And the convergence loop turned out to be running on a budget measured against short headers. A test
+that measured where a jump landed came back 1,416 px out - reproducibly under a loaded suite, never
+when run alone - and there were two faults behind the one number:
+
+- The test asked *mid-flight*. A jump is corrected over several frames and `settle` waits for one
+  render, so what it measured depended on how tall the sections happened to be. `settleScroll` waits
+  for the scroller to hold still, before the jump as well as after: a deep link is itself a
+  convergence, and asking for a second one while the first is still running leaves two loops
+  correcting towards different sections.
+- `CONVERGE_FRAMES` was **90**, and the walk spends one frame per step. Headers that are now seven
+  hundred pixels tall spend more of them, and on a loaded machine the loop hit the cap mid-correction
+  and stopped - which to a reader is the plane ignoring their click. At 300 the suite is green five
+  runs out of five; at 90 it failed two out of three. The cap costs nothing when nothing is wrong,
+  because the loop still ends on eight quiet frames.
+
+## M19 — the column on a section that generates nothing for it (done)
+
+M18 filled the examples column wherever openish could build something to put there: a request, a
+payload, an instance of a schema, an index of what a section contains. What it could not do was fill
+it on the sections whose authors have the most to say - the introduction, and a tag whose whole
+content is prose. Three ways in, and they are complementary rather than alternatives.
+
+### The introduction already had a tenant
+
+Servers, authentication, contact and the download button were always facts a reader *acts* on rather
+than prose about what the API is, and they were stacked under the description because there was
+nowhere else to put them. Moving them into the column makes the introduction read like every other
+section, and it needed no new API at all.
+
+The column is a grid with a gap rather than a stack of margins, and that is not a preference. Its
+first child is a `<slot>` - `display: contents` - so a rule about the first child lands on something
+that is not there, and a margin on whatever follows collapses out through a column that has no
+padding and moves the column instead. Grid items' margins do not collapse, and an unfilled slot
+contributes no item, so the spacing is the same whether a host slotted anything in or not.
+
+Condensed, the right column goes under the left in full, on every section kind. There is no ordering
+rule anywhere: two children of a one-column grid are read in the order they were written, and that
+order is the section described and then what to do about it.
+
+### What the document says: `x-openish-aside`, and samples that are not an operation's
+
+`authorSamples` never actually needed an operation - every read inside it was against a bag of keys -
+so `x-codeSamples` on `info` or on a Tag Object is read by the same function, with the same seven
+spellings, the same language labels and the same picker rules. An author who has written one for an
+operation has already learnt this.
+
+The prose half is `x-openish-aside`, and it is the one extension here that is namespaced. The others
+openish reads - `x-codeSamples`, `x-tags`, `x-displayName`, `x-tagGroups`, `x-internal` - are
+conventions several tools share, so openish honours the spelling that exists. This one has no
+convention to honour, because no other reference has a column to put it in, and a plain name would be
+squatting on something another tool may want.
+
+Both are markdown-and-code rather than a widget, both are demoted to sit under the section's own
+title, and both travel with **Copy for LLM** - they are the document talking, and a copy that dropped
+them would be missing the part the author added by hand. `declarationFor` is what the page and the
+markdown export share: two answers to "which Tag Object is this section" is one too many.
+
+### What the host says: one slot, because there is one introduction
+
+`overview-aside` is the only per-section slot on the plane that needs no scoping. Every other one has
+the problem M17 hit - one name, many sections, one shadow root, and only the first in tree order is
+assigned the host's nodes - and a document has exactly one introduction, so this one is unambiguous
+by construction. It is where a host puts what the document cannot know: a signup link, a sandbox
+notice, its own components. It cannot travel with Copy for LLM, and should not: openish has no way to
+serialise someone else's DOM and guessing at its text would be worse than the omission.
+
+For every *other* section the honest surface is still the render hook M17 flagged, and it is still
+its own milestone, because the thing that makes it worth doing is that it also retires the four
+per-operation slots.
+
+### A correction that only lives on frames does not live in a background tab
+
+Two real faults came out of one flaky test, and they are worth separating from the test noise around
+them.
+
+- **The pin fires after the loop has finished.** `element(index).scrollIntoView()` is queued behind
+  `layoutComplete`, and on a long jump that promise settles after the convergence loop has run out of
+  corrections. The plane then moves *once more* after everything watching it has stopped, and stays
+  there. The loop is started again behind the pin now, with the previous run's frames cancelled first.
+- **`requestAnimationFrame` is not a clock.** A page that is not being painted gets no frames, and
+  every correction openish makes was scheduled on one - so a reference resolving a deep link in a tab
+  the reader has not switched to yet sat wherever the estimate left it. The scheduler races a frame
+  against a 32 ms timer and cancels the loser: sixty corrections a second while someone is looking,
+  thirty-odd when nobody is, the same answer either way.
+
+The test noise is worth recording too, because it cost more than the faults did. A wait that outlives
+the runner's own timeout reports as **"Test timed out"**, not as the assertion it was waiting for - so
+a 15-second settle inside a 15-second test looked for three runs like a plane that never arrived.
 
 ## The loop
 

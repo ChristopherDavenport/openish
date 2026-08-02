@@ -2,6 +2,16 @@ openapi: 3.1.0
 info:
   title: Extensions
   version: 1.0.0
+  # Prose for the examples column of a section that generates none: openish's own extension.
+  x-openish-aside: |
+    ## Before you start
+    Every call needs an `X-Institution-Id` header.
+  # The spelling operations already use, read from `info` because a section has no request to
+  # generate a sample from and a curated one is the only kind it can show.
+  x-codeSamples:
+    - lang: bash
+      label: Get a token
+      source: curl -X POST https://api.example.com/token
 servers:
   - url: https://api.example.com
 x-tagGroups:
@@ -13,6 +23,11 @@ x-tagGroups:
 tags:
   - name: payments
     description: Taking money.
+    x-openish-aside: Amounts are in minor units, always.
+    x-codeSamples:
+      - lang: bash
+        label: A payment, end to end
+        source: curl https://api.example.com/payments
   - name: refunds
     description: Giving it back.
   - name: admin
@@ -70,6 +85,8 @@ webhooks:
   paymentSettled:
     post:
       operationId: paymentSettled
+      # A webhook entry is a path item, so `tags` here is the standard field, not an extension.
+      tags: [payments]
       responses:
         '200': { description: OK }
   internalPing:
@@ -81,6 +98,14 @@ webhooks:
 components:
   schemas:
     Payment:
+      # JSON Schema has no `tags`, so a schema names its tags Redoc's way or not at all.
+      x-tags: [payments]
+      type: object
+      properties:
+        id: { type: string }
+    Refund:
+      # An entry that is not a usable name is not a tag: the first two go, `refunds` stays.
+      x-tags: ['', null, refunds]
       type: object
       properties:
         id: { type: string }

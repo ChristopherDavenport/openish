@@ -96,7 +96,8 @@ A block of code: highlighted, labelled, and copyable.
 |---|---|---|---|---|
 | `code` | `code` | `string` | `''` | The source to show. Copied verbatim; only the rendering is highlighted. |
 | `language` | `language` | `string` | `'plaintext'` | A highlight.js language name. Unknown ones render unhighlighted rather than failing. |
-| `label` | `label` | `string` | `''` | What to call this block, e.g. `curl`. Falls back to the language. |
+| `label` | `label` | `string` | `''` | What to call this block, e.g. `curl`. Falls back to the language, and to the `title` slot. |
+| `status` | `status` | `string` | `''` | Shown in place of the code, for a block whose source has not arrived or could not be built. |
 
 ### `<openish-code-sample>`
 
@@ -112,6 +113,25 @@ A ready-to-run request for one operation, in the reader's language.
 | Event | |
 |---|---|
 | `openish-client-change` | The reader picked a different client. |
+
+### `<openish-copy-button>`
+
+Putting something on the clipboard, and saying so.
+
+| Property | Attribute | Type | Default | |
+|---|---|---|---|---|
+| `source` | — | `(() => string) \| undefined` | — | What to copy, worked out when the button is pressed. |
+| `action` | `action` | `string` | `'Copy'` | The visible word. `Copy` unless the thing being copied needs a different one. |
+| `label` | `label` | `string` | `''` | What is being copied, added to the accessible name after the visible text. |
+
+### `<openish-copy-markdown>`
+
+The section, on the clipboard, as a Markdown document.
+
+| Property | Attribute | Type | Default | |
+|---|---|---|---|---|
+| `store` | — | `DocumentStore \| undefined` | — | The parsed document. Provided by `<openish-api-reference>` through context. |
+| `node` | — | `NavNode \| undefined` | — | The section to copy. Undefined is the overview. |
 
 ### `<openish-disclosure>`
 
@@ -154,6 +174,7 @@ One schema from `components.schemas`.
 |---|---|---|---|---|
 | `store` | — | `DocumentStore \| undefined` | — | The parsed document. Provided by `<openish-api-reference>` through context. |
 | `node` | — | `NavModelNode` | — | The model to render. |
+| `level` | `level` | `number` | `1` | The heading level this section's own title takes. See `<openish-operation>`'s. |
 
 ### `<openish-operation>`
 
@@ -164,6 +185,7 @@ One operation: what it is, what it takes, and what it answers with.
 | `store` | — | `DocumentStore \| undefined` | — | The parsed document. Provided by `<openish-api-reference>` through context. |
 | `ui` | — | `OpenishUiState \| undefined` | — | Presentation state. Provided by `<openish-api-reference>` through context. |
 | `node` | — | `NavOperationNode \| NavWebhookNode` | — | The operation or webhook to render. |
+| `level` | `level` | `number` | `1` | The heading level this section's own title takes. |
 
 ### `<openish-overview>`
 
@@ -174,6 +196,7 @@ The landing page: what the API is, where it lives, and how to authenticate.
 | `store` | — | `DocumentStore \| undefined` | — | The parsed document. Provided by `<openish-api-reference>` through context. |
 | `ui` | — | `OpenishUiState \| undefined` | — | Presentation state. Provided by `<openish-api-reference>` through context. |
 | `hash` | `hash` | `string` | `''` | Fragment to scroll to, passed down rather than read from `location` here. |
+| `level` | `level` | `number` | `1` | The heading level this section's own title takes. See `<openish-operation>`'s. |
 
 ### `<openish-parameters>`
 
@@ -191,6 +214,7 @@ An operation's request body: what to send, and in which media type.
 |---|---|---|---|---|
 | `requestBody` | — | `unknown` | `undefined` | A Request Body Object, or a `$ref` to one. |
 | `noExample` | `no-example` | `boolean` | `false` | Document the schema without an example. |
+| `examplesOnly` | `examples-only` | `boolean` | `false` | Render only the example body, media type by media type. |
 
 ### `<openish-request-form>`
 
@@ -269,6 +293,25 @@ Search over the navigation tree.
 | `open` | `open` | `boolean` | `false` | Whether the dialog is showing. Set it; the element does the rest. |
 | `hotkeys` | — | `unknown` | `new HotkeyController(this, () => [{ key: this.ui?.config.searchHotKey \|\| '/' }, { key: 'k', modifier: true }], () => { this.#show(deepActiveElement()) })` | The shortcuts that open this dialog. Public because it is part of the element's behaviour. |
 
+### `<openish-section-index>`
+
+What is inside a section, as links, in tabs.
+
+| Property | Attribute | Type | Default | |
+|---|---|---|---|---|
+| `store` | — | `DocumentStore \| undefined` | — | The parsed document. Provided by `<openish-api-reference>` through context. |
+| `node` | — | `SectionParent` | — | The tag or container whose contents this indexes. |
+
+### `<openish-section-list>`
+
+A list of links to sections, built to the design system's list item.
+
+| Property | Attribute | Type | Default | |
+|---|---|---|---|---|
+| `ui` | — | `OpenishUiState \| undefined` | — | Presentation state. Provided by `<openish-api-reference>` through context. |
+| `items` | — | `readonly NavNode[]` | `[]` | The nodes to list, in the order they should read. |
+| `label` | `label` | `string` | `''` | An accessible name for the list, when it is not already labelled by a tab. |
+
 ### `<openish-server-select>`
 
 Which server a request goes to, and what its `{variables}` are.
@@ -343,12 +386,13 @@ A tab set.
 
 ### `<openish-tag-section>`
 
-The landing page for a tag, a group, or any other node that has children: its prose, then an index of what is inside it.
+The landing for a tag, a group, or any other node that has children: its prose on one side, and an index of what is inside it on the other.
 
 | Property | Attribute | Type | Default | |
 |---|---|---|---|---|
-| `ui` | — | `OpenishUiState \| undefined` | — | Presentation state. Provided by `<openish-api-reference>` through context. |
-| `node` | — | `NavTagNode \| NavGroupNode` | — | The tag or group whose children this page indexes. |
+| `store` | — | `DocumentStore \| undefined` | — | The parsed document. Provided by `<openish-api-reference>` through context. |
+| `node` | — | `SectionParent` | — | The tag or group whose children this indexes. |
+| `level` | `level` | `number` | `1` | The heading level this section's own title takes. See `<openish-operation>`'s. |
 
 ### `<openish-try-it>`
 

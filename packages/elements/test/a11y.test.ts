@@ -87,10 +87,19 @@ describe('accessibility', () => {
   })
 
   it('keeps one heading sequence when the operation is split into two columns', async () => {
-    const harness = await mountReference({ path: '/tags/accounts/getAccount' })
+    /*
+     * Mounted at the front rather than at the operation, because the `h1` under test is the
+     * overview's and the overview is only in the DOM while it is in the virtualiser's range. Asking
+     * from three sections down was asking whether the plane happened to have rendered it - which it
+     * did until the introduction became two columns and got shorter, and then it did not.
+     */
+    const harness = await mountReference({ path: '/' })
     harness.frame.style.width = '1600px'
     await new Promise((resolve) => setTimeout(resolve, 200))
     await harness.settle()
+
+    /* The columns under test are on the page: an operation in range, split into two of them. */
+    expect(deepQueryAll(harness.element.shadowRoot!, 'openish-operation').length).toBeGreaterThan(0)
 
     /*
      * The whole plane, not one section: the document is one page now, so a heading sequence that is

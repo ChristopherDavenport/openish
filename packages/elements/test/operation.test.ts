@@ -101,11 +101,13 @@ describe('parameters', () => {
      *
      * `h3`, because on the plane an operation sits under its tag: the tag's heading is the level two
      * and these are one below the operation's own level three.
+     *
+     * There is no "Response examples" either: this operation answers `200 OK` with no body, so the
+     * examples column has nothing to put under that heading and does not write it.
      */
     expect([...operation.querySelectorAll('h4')].map((heading) => textOf(heading))).toEqual([
       'Responses',
       'Request',
-      'Response examples',
     ])
   })
 })

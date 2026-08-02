@@ -20,6 +20,7 @@ import { repeat } from 'lit/directives/repeat.js'
 import { documentContext, uiContext, type OpenishUiState } from '../context/contexts.js'
 import { externalDocsStyles, renderExternalDocs } from '../render/external-docs.js'
 import { heading } from '../render/heading.js'
+import { hasRenderableContent } from '../render/media-types.js'
 import { baseStyles, planeColumnStyles, titleRowStyles } from '../styles/shared.js'
 import './openish-callbacks.js'
 import './openish-code-sample.js'
@@ -352,6 +353,29 @@ export class OpenishOperation extends LitElement {
     const tryIt = node.type === 'operation' && this.ui?.config.hideTryIt !== true
 
     /*
+     * A webhook's payload is its example, and it belongs in the examples column.
+     *
+     * An operation's generated body is already over there, inside the request sample the reader can
+     * copy. A webhook has no request to send, so the body used to render its example in place - which
+     * left the one instance on the section sitting in the documentation column, with the column that
+     * exists to hold instances empty beside it.
+     */
+    const payload: unknown =
+      node.type === 'webhook' && hasRenderableContent(operation?.requestBody)
+        ? operation?.requestBody
+        : undefined
+
+    /*
+     * A heading in the examples column only when something is under it.
+     *
+     * `<openish-response-list examples-only>` drops the statuses with no body - a `204` is a complete
+     * answer in the documentation column and an empty tab here - and an operation whose responses are
+     * *all* like that left the heading standing over nothing. Which is most visible on a webhook,
+     * where it was the only thing in the column.
+     */
+    const responseExamples = Object.values(operation?.responses ?? {}).some(hasRenderableContent)
+
+    /*
      * Two panes, side by side where there is room and stacked where there is not.
      *
      * The split is by *kind*, not by section: everything that describes the interface goes left, and
@@ -403,7 +427,7 @@ export class OpenishOperation extends LitElement {
                 <section part="body-section">
                   ${heading(this.level + 1, 'Request body', { 'section-title': true })}
                   <openish-request-body
-                    ?no-example=${tryIt}
+                    ?no-example=${tryIt || payload !== undefined}
                     .requestBody=${operation.requestBody}
                   ></openish-request-body>
                 </section>
@@ -450,11 +474,19 @@ export class OpenishOperation extends LitElement {
                 </section>
               `
             : nothing}
-          ${operation?.responses
+          ${payload !== undefined
+            ? html`
+                <section part="payload-section">
+                  ${heading(this.level + 1, 'Payload', { 'section-title': true })}
+                  <openish-request-body examples-only .requestBody=${payload}></openish-request-body>
+                </section>
+              `
+            : nothing}
+          ${responseExamples
             ? html`
                 <section part="examples-section">
                   ${heading(this.level + 1, 'Response examples', { 'section-title': true })}
-                  <openish-response-list examples-only .responses=${operation.responses}></openish-response-list>
+                  <openish-response-list examples-only .responses=${operation?.responses}></openish-response-list>
                 </section>
               `
             : nothing}

@@ -380,8 +380,8 @@ export const planeColumnStyles = css`
   }
 
   /*
-   * Everything is one column unless it says otherwise, which is what keeps a page that has no
-   * examples - the overview, a tag, a model - from having its content dealt alternately into two.
+   * Everything is one column unless it says otherwise, which is what keeps a section that has no
+   * examples - the overview, a tag - from having its content dealt alternately into two.
    *
    * No measure of its own: the column *is* the measure. Capping the content inside a track that is
    * already half the page put a band of nothing between the two columns on a wide screen, which

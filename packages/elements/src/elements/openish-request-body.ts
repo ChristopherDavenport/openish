@@ -59,10 +59,26 @@ export class OpenishRequestBody extends LitElement {
   @property({ type: Boolean, attribute: 'no-example' })
   noExample = false
 
+  /**
+   * Render only the example body, media type by media type.
+   *
+   * What the examples column shows for a webhook, which has no request for the reader to send and so
+   * no code sample to carry its payload. The schema tree, the description and whether the body is
+   * required all stay in the documentation column beside it. The same seam
+   * `<openish-response-list examples-only>` has, and reusing this element rather than writing a
+   * second one keeps one answer to "which media types are there, and in what order".
+   */
+  @property({ type: Boolean, attribute: 'examples-only' })
+  examplesOnly = false
+
   override render(): TemplateResult | typeof nothing {
     const body = getResolvedRef(this.requestBody) as RequestBody | undefined
     if (!body) {
       return nothing
+    }
+
+    if (this.examplesOnly) {
+      return html`${renderMediaTypes(body.content, 'Request media types', { noSchema: true })}`
     }
 
     return html`

@@ -44,6 +44,8 @@ export {
   type SecurityRequirement,
 } from './operation/security.js'
 export { authorSamples, type AuthorSample } from './har/author-samples.js'
+export { authorAside } from './aside.js'
+export { declarationFor } from './navigation/declaration.js'
 export { asExternalDocs } from './external-docs.js'
 export { mediaTypeExamples, type MediaTypeExample } from './operation/examples.js'
 export { operationBadges, type OperationBadge } from './operation/badges.js'
