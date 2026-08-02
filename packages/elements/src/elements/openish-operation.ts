@@ -428,8 +428,8 @@ export class OpenishOperation extends LitElement {
                        * about a different operation - a response to GET /planets shown under
                        * GET /planets/{id} is not untidy, it is wrong.
                        */
-                      keyed(`${node.method} ${node.path}`, html`<openish-try-it exportparts="dialog, dialog-bar, code, code-head, copy" .node=${node}></openish-try-it>`)
-                    : html`<openish-code-sample exportparts="code, code-head, copy" .node=${node}></openish-code-sample>`}
+                      keyed(`${node.method} ${node.path}`, html`<openish-try-it exportparts="dialog, dialog-toolbar, code, code-toolbar, copy" .node=${node}></openish-try-it>`)
+                    : html`<openish-code-sample exportparts="code, code-toolbar, copy" .node=${node}></openish-code-sample>`}
                   <slot name="request-end"></slot>
                 </section>
               `

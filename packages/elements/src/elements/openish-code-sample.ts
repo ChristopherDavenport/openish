@@ -17,7 +17,7 @@ import { repeat } from 'lit/directives/repeat.js'
 
 import { documentContext, uiContext, type OpenishUiState } from '../context/contexts.js'
 import { dispatch } from '../events.js'
-import { baseStyles, visuallyHidden } from '../styles/shared.js'
+import { baseStyles, controlStyles, visuallyHidden } from '../styles/shared.js'
 import './openish-code-block.js'
 
 /**
@@ -38,6 +38,7 @@ import './openish-code-block.js'
 export class OpenishCodeSample extends LitElement {
   static override styles = [
     baseStyles,
+    controlStyles,
     visuallyHidden,
     css`
       :host {
@@ -64,11 +65,6 @@ export class OpenishCodeSample extends LitElement {
         color: var(--openish-color-text);
         font: var(--openish-font-small);
         font-family: inherit;
-      }
-
-      select:focus-visible {
-        outline: none;
-        box-shadow: var(--openish-focus-ring);
       }
 
       .status {
@@ -269,7 +265,7 @@ export class OpenishCodeSample extends LitElement {
           snippet
             ? html`
                 <openish-code-block
-                  exportparts="code, code-head, copy"
+                  exportparts="code, code-toolbar, copy"
                   .code=${snippet}
                   language=${language}
                   label=${label}

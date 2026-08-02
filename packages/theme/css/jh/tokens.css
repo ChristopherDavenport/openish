@@ -51,14 +51,73 @@
   --openish-color-info: var(--jh-color-content-brand-enabled);
   --openish-color-info-surface: var(--jh-color-container-brand-enabled);
 
-  /* ---- Lines and focus ------------------------------------------------ */
-  --openish-color-border: var(--jh-color-divider-secondary);
-  --openish-color-border-strong: var(--jh-color-divider-primary);
-  --openish-focus-ring: var(--jh-shadow-focus);
-  /* For a control that fills its cell, where an outset ring would be clipped by the cell's edge. */
-  --openish-focus-ring-inset: inset 0 0 0 2px var(--jh-color-interactive-focus-outer);
-  --openish-color-focus: var(--jh-color-interactive-focus-outer);
+  /*
+   * ---- Lines -----------------------------------------------------------
+   *
+   * JH names the same six border concepts openish does - decorative, control, action, focus,
+   * selected, error - as `--jh-border-{concept}-{style|width|color}`. Those tokens are *documented*
+   * but are not in `@jack-henry/jh-core@1.6.1`; the site's border foundation is ahead of the
+   * package. So each one is asked for first and falls back to the alias that does ship and means the
+   * same thing. Nothing here changes when they land - the `var()` fallback simply stops being taken.
+   */
+  --openish-border-decorative-color: var(--jh-border-decorative-color, var(--jh-color-divider-secondary));
+  --openish-border-decorative-width: var(--jh-border-decorative-width, 1px);
+  --openish-border-control-color: var(--jh-border-control-color, var(--jh-color-divider-primary));
+  --openish-border-control-width: var(--jh-border-control-width, 1px);
+  /*
+   * The action edge stays neutral here too, for the reason the neutral file gives - a page of
+   * blue-edged buttons is a form, not a document - so this one does *not* take the JH token when it
+   * lands. That is a deliberate divergence rather than an oversight: it is the one border concept
+   * where openish's answer is about what it is (a reference someone reads) rather than about brand.
+   */
+  --openish-border-action-color: var(--jh-color-divider-primary);
+  --openish-border-action-width: 1px;
+
+  --openish-border-selected-color: var(--jh-border-selected-color, var(--jh-color-content-brand-enabled));
+  --openish-border-selected-width: var(--jh-border-selected-width, 2px);
+
+  --openish-color-border: var(--openish-border-decorative-color);
+  --openish-color-border-strong: var(--openish-border-control-color);
+
+  /*
+   * ---- Focus -----------------------------------------------------------
+   *
+   * The focus foundation specifies an outline - colour, style and width from the border-focus
+   * concept, offset by 1px - which is why openish draws one rather than the `--jh-shadow-focus`
+   * box-shadow it used to. The shadow is the same ring expressed as the thing Figma could draw; its
+   * outer colour is `--jh-color-interactive-focus-outer`, which ships today and is the fallback
+   * here, so the ring is the right blue in both schemes either way.
+   */
+  --openish-focus-ring-color: var(--jh-border-focus-color, var(--jh-color-interactive-focus-outer));
+  --openish-focus-ring-style: var(--jh-border-focus-style, solid);
+  --openish-focus-ring-width: var(--jh-border-focus-width, 2px);
+  --openish-focus-ring-offset: 1px;
+  --openish-color-focus: var(--openish-focus-ring-color);
+
   --openish-color-highlight: var(--jh-color-interactive-highlight);
+
+  /*
+   * ---- States ----------------------------------------------------------
+   *
+   * The tints are the same expression as the neutral theme's, and deliberately so: they are relative
+   * to the control's own colour rather than to a palette, so there is nothing for a binding to
+   * re-point. JH's `container-*-hover` aliases are opaque replacement backgrounds, which only work
+   * for a control whose enabled background is the matching `container-*-enabled` - openish has three
+   * button looks and an accent one is not among them.
+   *
+   * JH 1.6.1 ships no disabled alias in either theme, and there is no documented name to guess at,
+   * so those two are derived rather than bound. Mixing the secondary content colour towards the
+   * surface it sits on is the one form that stays correct in both schemes without restating a
+   * palette - a global grey would not, because globals do not re-point when `.jh-theme-dark` is set.
+   */
+  --openish-state-hover-tint: color-mix(in srgb, currentColor 8%, transparent);
+  --openish-state-active-tint: color-mix(in srgb, currentColor 16%, transparent);
+  --openish-color-text-disabled: color-mix(
+    in srgb,
+    var(--jh-color-content-secondary-enabled) 62%,
+    var(--jh-color-container-primary-enabled)
+  );
+  --openish-color-surface-disabled: var(--jh-color-container-neutral-enabled);
 
   /* ---- Space ---------------------------------------------------------- */
   --openish-space-3xs: var(--jh-space-50); /* 2px  */
@@ -93,13 +152,7 @@
   --openish-font-family-sans: var(--jh-font-family-primary);
 
   /* ---- Layout --------------------------------------------------------- */
-  --openish-sidebar-width: 18rem;
-  /* How tall a code block grows before it scrolls on its own. */
-  --openish-code-max-height: 24rem;
-  /* The measure for prose: how wide a paragraph gets before it is tiring to read. */
-  --openish-content-max-width: 48rem;
-  /* The measure for a page that puts two columns side by side, which is only the operation page. */
-  --openish-content-max-width-wide: 82rem;
+  /* The measures live in `../layout.css`, which both entry points import - they are openish's own. */
   --openish-z-overlay: var(--jh-z-index-positive-800);
   --openish-z-dialog: var(--jh-z-index-positive-900);
 

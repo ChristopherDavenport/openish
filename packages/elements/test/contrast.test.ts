@@ -139,6 +139,31 @@ const TEXT_PAIRS: Array<[string, string]> = [
   ['--openish-color-code-content', '--openish-color-code-surface'],
 ]
 
+/**
+ * Non-text pairs, which WCAG 2.1 asks 3:1 of.
+ *
+ * A different threshold and a different reason. These are not things a reader reads, they are things
+ * a reader has to *see*: the ring that says where the keyboard is, and the edge that says where a
+ * control ends. 1.4.11 covers both, and nothing measured either before - the ring in particular was
+ * a translucent shadow, which is the one form of it that cannot be checked by eye.
+ *
+ * The ring is measured against every surface it can land on rather than against the page alone,
+ * because a control in the request client sits on a raised surface and one in a search result sits
+ * on the selected fill, and it is the worst of those that decides whether the ring is visible.
+ */
+const NON_TEXT_PAIRS: Array<[string, string]> = [
+  ['--openish-focus-ring-color', '--openish-color-page'],
+  ['--openish-focus-ring-color', '--openish-color-surface'],
+  ['--openish-focus-ring-color', '--openish-color-surface-raised'],
+  ['--openish-focus-ring-color', '--openish-color-surface-selected'],
+  ['--openish-focus-ring-color', '--openish-color-code-surface'],
+  ['--openish-border-control-color', '--openish-color-page'],
+  ['--openish-border-control-color', '--openish-color-surface'],
+  ['--openish-border-action-color', '--openish-color-surface'],
+  ['--openish-border-selected-color', '--openish-color-surface'],
+  ['--openish-border-selected-color', '--openish-color-surface-selected'],
+]
+
 const METHODS = ['get', 'post', 'put', 'patch', 'delete', 'options', 'head', 'trace']
 
 const HIGHLIGHTS = ['keyword', 'string', 'number', 'literal', 'comment', 'attr', 'title', 'punctuation']
@@ -152,6 +177,17 @@ describe.each(['neutral', 'jh'] as const)('the %s theme', (theme) => {
         pair: `${foreground} on ${background}`,
         ratio: contrast(token(foreground), token(background)),
       })).filter((measured) => measured.ratio < 4.5)
+
+      expect(failures.map((f) => `${f.pair}: ${f.ratio.toFixed(2)}:1`)).toEqual([])
+    })
+
+    it('meets the 3:1 non-text floor for the focus ring and the borders that carry meaning', async () => {
+      const token = await tokensFor(theme, scheme)
+
+      const failures = NON_TEXT_PAIRS.map(([foreground, background]) => ({
+        pair: `${foreground} on ${background}`,
+        ratio: contrast(token(foreground), token(background)),
+      })).filter((measured) => measured.ratio < 3)
 
       expect(failures.map((f) => `${f.pair}: ${f.ratio.toFixed(2)}:1`)).toEqual([])
     })

@@ -30,15 +30,165 @@ export const baseStyles = css`
     text-decoration: underline;
   }
 
-  a:focus-visible,
-  button:focus-visible {
-    outline: none;
-    box-shadow: var(--openish-focus-ring);
-    border-radius: var(--openish-radius-sm);
+  /*
+   * The focus ring. One rule, for everything that can hold focus.
+   *
+   * It is here rather than in each component because a ring that is declared sixteen times is a ring
+   * that differs in sixteen places, and it already did: some copies added a radius, some did not, and
+   * the controls inside a table cell drew a different shape entirely. The list covers the three
+   * focusable things that are not controls as well - the virtualised tree, the scrollable regions of
+   * a code block and a table, and a tab panel - all of which carry a tabindex.
+   *
+   * :where() has no specificity, so :focus-visible alone decides this rule's weight. A component
+   * that genuinely needs a different ring can still say so with one class; it can no longer do it by
+   * accident.
+   *
+   * An outline, not a shadow. An outline follows border-radius without being told what the radius
+   * is, which is why the old copies each had to repeat one, and it is painted in forced-colors mode,
+   * where a box-shadow is dropped entirely and the ring simply vanished. The offset keeps it clear
+   * of the element's own edge; an element that sits flush inside something that clips - a cell, a
+   * frame - negates the offset rather than removing the ring, by redeclaring the token on itself.
+   */
+  :where(a, button, select, input, textarea, [tabindex]):focus-visible {
+    outline: var(--openish-focus-ring-width) var(--openish-focus-ring-style)
+      var(--openish-focus-ring-color);
+    outline-offset: var(--openish-focus-ring-offset);
+  }
+
+  /*
+   * Forced colors replaces the palette wholesale, including the ring's colour, which would otherwise
+   * resolve to a token the mode has already overridden. Highlight is the system colour that means
+   * "this is the thing you are on", so the ring keeps its meaning rather than its hue.
+   */
+  @media (forced-colors: active) {
+    :where(a, button, select, input, textarea, [tabindex]):focus-visible {
+      outline-color: Highlight;
+    }
   }
 
   code {
     font: var(--openish-font-code);
+  }
+`
+
+/**
+ * The six states every control is in exactly one of: enabled, hover, focus, active, disabled,
+ * pending.
+ *
+ * The design system names those six and expects all of them from anything interactive. openish had
+ * two and a half - focus everywhere, hover on seven of twenty-odd controls, `:active` nowhere at all,
+ * and a disabled attribute on buttons that were styled for it in one file out of twenty-seven. This
+ * block is the other three and a half, declared once so a new control gets them by existing.
+ *
+ * What it deliberately does *not* declare is appearance. openish has three button looks - bordered,
+ * accent, and plain - and which one a control wears is a decision about the surface it sits on, so
+ * it stays with the component. Hover and active are therefore drawn as a tint laid over whatever the
+ * component chose, not as a background of their own: an inset shadow spread far enough to fill the
+ * element, which works identically on a white chip, a blue button, and a transparent toggle, and
+ * costs nothing when the component later changes its mind about which of those it is.
+ *
+ * `focus` is not here. It is in `baseStyles`, because plenty of things take focus that are not
+ * controls.
+ *
+ * `.pressable` is how an anchor opts in. Some of what a reader presses in this project is a link
+ * because it goes somewhere - a sidebar row, a download - and those are controls in every sense that
+ * matters to a hand on a mouse, but a bare `a` selector here would also catch every link in a
+ * paragraph of documentation, and a word of prose should not grow a ring when it is clicked. So the
+ * component that has already decided an anchor is a row or a button says so, and gets the same
+ * states rather than a near-copy of them.
+ */
+export const controlStyles = css`
+  :where(button, select, input, textarea) {
+    font-family: inherit;
+  }
+
+  /* Enabled. A control is a target, and is at least as big as one. */
+  :where(button, select) {
+    min-block-size: var(--openish-target-min);
+    min-inline-size: var(--openish-target-min);
+    cursor: pointer;
+  }
+
+  :where(input:not([type='checkbox']):not([type='radio']), textarea) {
+    min-block-size: var(--openish-target-min);
+  }
+
+  /* Hover: a tint over whatever the component chose, moving towards its own text colour. */
+  :where(button, select, .pressable):hover:not(:disabled) {
+    box-shadow: inset 0 0 0 100vmax var(--openish-state-hover-tint);
+  }
+
+  /*
+   * Active - the control is being pressed right now.
+   *
+   * A deeper tint *and* a ring drawn inside the control's edge, for the moment the press lasts. The
+   * ring is the part that matters: a tint alone is a change of a few percent in lightness, which is
+   * the first thing to disappear on a poor screen, in bright light, or under a finger. An edge
+   * appearing where there was none is unambiguous at any contrast.
+   *
+   * The ring is currentColor, not --openish-border-selected-color, and that is not a shortcut.
+   * The selected colour and the accent are the same blue - deliberately, they are one idea - so a
+   * selected-coloured ring inside the primary button, whose fill *is* that blue, is invisible: the
+   * one control on the page whose press most needs acknowledging was the one that showed nothing.
+   * Drawing from the control's own text colour is the same self-correcting move the tint makes: it
+   * is white inside a blue button, near-black inside a white one, muted inside a bare toggle, and it
+   * cannot collide with a fill because it is the colour chosen to read against that fill.
+   *
+   * Both halves in one box-shadow, because they are one paint: the later inset spreads to fill the
+   * element and the earlier one sits on top of it.
+   */
+  :where(button, select, .pressable):active:not(:disabled) {
+    box-shadow:
+      inset 0 0 0 var(--openish-border-selected-width) currentColor,
+      inset 0 0 0 100vmax var(--openish-state-active-tint);
+  }
+
+  @media (forced-colors: active) {
+    /* Every half of that is a shadow, so every half is dropped. An outline is the edge that lives. */
+    :where(button, select, .pressable):active:not(:disabled) {
+      outline: var(--openish-border-selected-width) solid Highlight;
+      outline-offset: calc(-1 * var(--openish-border-selected-width));
+    }
+  }
+
+  /*
+   * Disabled. Quiet, not invisible, and not a target: the tints above are excluded rather than
+   * overridden, so a disabled control does not respond to a pointer that is over it.
+   */
+  :where(button, select, input, textarea):disabled {
+    color: var(--openish-color-text-disabled);
+    cursor: default;
+  }
+
+  :where(button, select):disabled {
+    background: var(--openish-color-surface-disabled);
+    border-color: var(--openish-border-decorative-color);
+  }
+
+  /*
+   * Pending: the control has started something that has not finished. One name for what the
+   * download button and the authorize button each had their own private word for. aria-busy is
+   * the state rather than a class because assistive technology has to hear about it too, and each
+   * of those buttons already sits beside a live region saying what is happening.
+   *
+   * Not every wait is a pending control. Sending a request swaps Send for Cancel, which is a
+   * different control and not a busy one, and copying to the clipboard reports a result rather than
+   * a wait. Marking either would be describing the page rather than the button.
+   */
+  :where(button, select)[aria-busy='true'] {
+    cursor: progress;
+  }
+
+  @media (forced-colors: active) {
+    /*
+     * The tints are shadows, which forced colors drops, and the disabled colours are tokens it has
+     * already replaced. GrayText is the system colour for exactly this, and it is what the browser
+     * would have used had the control never been styled.
+     */
+    :where(button, select, input, textarea):disabled {
+      color: GrayText;
+      border-color: GrayText;
+    }
   }
 `
 
@@ -82,6 +232,18 @@ export const methodStyles = css`
   .method[data-method='trace'] {
     background: var(--openish-method-trace);
   }
+
+  /*
+   * Forced colors throws the eight method colours away and paints every chip the same, which is not
+   * a loss - the chip says GET or DELETE in words, so the colour was never the only carrier - but it
+   * does leave the chip shapeless, floating in the row beside the title as if it were part of it. A
+   * border puts the shape back.
+   */
+  @media (forced-colors: active) {
+    .method {
+      border: 1px solid currentColor;
+    }
+  }
 `
 
 /**
@@ -101,6 +263,13 @@ export const statusStyles = css`
     background: var(--openish-color-danger-surface);
     border-radius: var(--openish-radius-lg);
     padding: var(--openish-space-md);
+  }
+
+  /* The tinted panel is what makes this read as a failure and not as a paragraph. Keep the edge. */
+  @media (forced-colors: active) {
+    .error {
+      border: 1px solid currentColor;
+    }
   }
 `
 
@@ -272,11 +441,16 @@ export const rowStyles = css`
     font: var(--openish-font-code-small);
   }
 
-  .value input:focus-visible,
-  .value select:focus-visible,
-  .value textarea:focus-visible {
-    outline: none;
-    box-shadow: var(--openish-focus-ring-inset);
+  /*
+   * These controls fill their cell, so the ring goes inside it.
+   *
+   * Not a different ring - the same one, with its offset negated. The focus foundation allows
+   * exactly this for an element with no visible container of its own, which is what a borderless
+   * input in a bordered cell is. Redeclaring the token rather than rewriting the rule is what keeps
+   * it the same ring: change the width or the colour once and this follows.
+   */
+  .value :where(input, select, textarea) {
+    --openish-focus-ring-offset: calc(-1 * var(--openish-focus-ring-width));
   }
 
   .required {

@@ -17,7 +17,7 @@ import {
 import { HotkeyController } from '../controllers/hotkey.js'
 import { hrefFor } from '../router/urls.js'
 import { searchNodes, type SearchResult } from '../search/search.js'
-import { baseStyles, methodStyles, visuallyHidden } from '../styles/shared.js'
+import { baseStyles, controlStyles, methodStyles, visuallyHidden } from '../styles/shared.js'
 
 /**
  * The element that actually has focus, not the host that contains it.
@@ -54,6 +54,7 @@ const deepActiveElement = (): HTMLElement | undefined => {
 export class OpenishSearch extends LitElement {
   static override styles = [
     baseStyles,
+    controlStyles,
     methodStyles,
     visuallyHidden,
     css`
@@ -78,9 +79,6 @@ export class OpenishSearch extends LitElement {
         cursor: pointer;
       }
 
-      .trigger:hover {
-        background: var(--openish-color-surface-hover);
-      }
 
       kbd {
         padding: 0 var(--openish-space-3xs);
@@ -114,11 +112,12 @@ export class OpenishSearch extends LitElement {
         color: var(--openish-color-text);
         font: var(--openish-font-body);
         font-family: inherit;
-      }
-
-      input:focus-visible {
-        outline: none;
-        box-shadow: var(--openish-focus-ring);
+        /*
+         * The field is the top of the dialog, edge to edge, so an outset ring lands on the dialog's
+         * own border and half of it falls outside the rounded corner - drawn, and not seen. Inside,
+         * like every other control that fills its container.
+         */
+        --openish-focus-ring-offset: calc(-1 * var(--openish-focus-ring-width));
       }
 
       .results {
@@ -137,8 +136,23 @@ export class OpenishSearch extends LitElement {
         text-decoration: none;
       }
 
+      /*
+       * The highlighted result, which is the same kind of thing as the sidebar's keyboard cursor:
+       * a position the arrow keys move, while the DOM's focus stays on the input. A fill alone said
+       * it in colour only, so the ring says it in shape as well - the same ring, drawn inside the
+       * row because the list scrolls and an outset one would be clipped at the ends.
+       */
       a[aria-selected='true'] {
         background: var(--openish-color-surface-selected);
+        outline: var(--openish-focus-ring-width) var(--openish-focus-ring-style)
+          var(--openish-focus-ring-color);
+        outline-offset: calc(-1 * var(--openish-focus-ring-width));
+      }
+
+      @media (forced-colors: active) {
+        a[aria-selected='true'] {
+          outline-color: Highlight;
+        }
       }
 
       .title {
@@ -348,6 +362,7 @@ export class OpenishSearch extends LitElement {
       <a
         id="result-${index}"
         role="option"
+        tabindex="-1"
         aria-selected=${index === this.active ? 'true' : 'false'}
         href=${hrefFor(node, this.ui)}
         ${ref(index === this.active ? this.#activeOption : undefined)}
@@ -420,10 +435,11 @@ export class OpenishSearch extends LitElement {
       <button
         type="button"
         class="trigger"
+        aria-haspopup="dialog"
         @click=${(event: Event) => this.#show(event.currentTarget as HTMLElement)}
       >
         <span>Search</span>
-        <kbd>/</kbd>
+        <kbd>${this.ui?.config.searchHotKey || '/'}</kbd>
       </button>
 
       <dialog part="dialog" aria-label="Search the API reference" @close=${this.#onClose}>

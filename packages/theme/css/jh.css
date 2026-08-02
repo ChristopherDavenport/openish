@@ -17,6 +17,7 @@
  * light.css, and the binding files after both.
  */
 @import './fonts.css';
+@import './layout.css';
 @import './light.css';
 @import './dark.css';
 @import './jh/tokens.css';

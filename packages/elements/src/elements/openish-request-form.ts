@@ -4,7 +4,7 @@ import { customElement, property } from 'lit/decorators.js'
 import { repeat } from 'lit/directives/repeat.js'
 
 import { schemaTypeLabel } from '../schema/summary.js'
-import { baseStyles, rowStyles } from '../styles/shared.js'
+import { baseStyles, controlStyles, rowStyles } from '../styles/shared.js'
 
 const HEADINGS: Record<ParameterLocation, string> = {
   path: 'Path',
@@ -43,6 +43,7 @@ const bodyRows = (body: string): number => Math.min(20, Math.max(6, body.split('
 export class OpenishRequestForm extends LitElement {
   static override styles = [
     baseStyles,
+    controlStyles,
     rowStyles,
     css`
       :host {
@@ -59,11 +60,8 @@ export class OpenishRequestForm extends LitElement {
         color: var(--openish-color-text);
         font: var(--openish-font-code-small);
         resize: vertical;
-      }
-
-      textarea:focus-visible {
-        outline: none;
-        box-shadow: var(--openish-focus-ring-inset);
+        /* Fills the panel's last band edge to edge, like the cell inputs above it. */
+        --openish-focus-ring-offset: calc(-1 * var(--openish-focus-ring-width));
       }
 
       .body {
@@ -82,10 +80,6 @@ export class OpenishRequestForm extends LitElement {
         text-transform: none;
       }
 
-      .group select:focus-visible {
-        outline: none;
-        box-shadow: var(--openish-focus-ring);
-      }
     `,
   ]
 

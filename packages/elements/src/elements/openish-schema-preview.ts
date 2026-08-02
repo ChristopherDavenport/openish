@@ -3,7 +3,7 @@ import { LitElement, html, css, nothing, type TemplateResult } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
 import { repeat } from 'lit/directives/repeat.js'
 
-import { baseStyles } from '../styles/shared.js'
+import { baseStyles, controlStyles } from '../styles/shared.js'
 import './openish-code-block.js'
 import './openish-markdown.js'
 import './openish-schema.js'
@@ -27,6 +27,7 @@ import './openish-schema.js'
 export class OpenishSchemaPreview extends LitElement {
   static override styles = [
     baseStyles,
+    controlStyles,
     css`
       :host {
         display: block;
@@ -63,11 +64,6 @@ export class OpenishSchemaPreview extends LitElement {
         color: var(--openish-color-text);
         font: var(--openish-font-small);
         font-family: inherit;
-      }
-
-      select:focus-visible {
-        outline: none;
-        box-shadow: var(--openish-focus-ring);
       }
 
       .example-summary {

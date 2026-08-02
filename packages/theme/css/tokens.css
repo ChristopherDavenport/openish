@@ -64,14 +64,84 @@
   --openish-color-info: light-dark(#0b57d0, #7cb0ff);
   --openish-color-info-surface: light-dark(#e8f0fe, #16324f);
 
-  /* ---- Lines and focus ------------------------------------------------ */
-  --openish-color-border: light-dark(#dde3ea, #2a333d);
-  --openish-color-border-strong: light-dark(#b9c2cd, #3d4854);
+  /*
+   * ---- Lines -----------------------------------------------------------
+   *
+   * A border is chosen by what it separates, not by how dark it is, so the concepts are named and
+   * the greys are not interchangeable. `decorative` is the hairline between two things and is the
+   * one concept that deliberately does *not* meet non-text contrast on its own - a hairline is
+   * structure, not information. Everything below it does: an edge that tells a reader where a field
+   * ends, that an element is the selected one, or that a value is wrong, is carrying meaning and is
+   * measured for it in `contrast.test.ts`.
+   *
+   * `style` is not a hook. openish draws solid borders; a design that draws dashed ones is a
+   * different design, not a retheme of this one.
+   */
+  --openish-border-decorative-color: light-dark(#dde3ea, #2a333d);
+  --openish-border-decorative-width: 1px;
+  --openish-border-control-color: light-dark(#767f8b, #8c97a4);
+  --openish-border-control-width: 1px;
+
+  /*
+   * The edge of a button, and it is deliberately the same neutral as a field's rather than the
+   * brand colour a design system would usually put here. openish's chrome is quiet by choice: Copy,
+   * Download, Authorize and Close are all on screen at once on an operation page, and a dozen
+   * blue-edged buttons around a document is a page that looks like a form. It is a separate hook
+   * from `control` precisely so that a host who *does* want them to read as actions can say so in
+   * one declaration without also restyling every input.
+   */
+  --openish-border-action-color: light-dark(#767f8b, #8c97a4);
+  --openish-border-action-width: 1px;
+
+  /*
+   * The thing that is selected - the open tab, the page the sidebar is on - and the edge a control
+   * wears for as long as it is being pressed. Wider than the rest, because it is the one border on
+   * the page whose job is to be noticed rather than to divide.
+   */
+  --openish-border-selected-color: light-dark(#0b57d0, #7cb0ff);
+  --openish-border-selected-width: 2px;
+
+  /*
+   * The two names the components were written against, kept because they are the pair that was
+   * always meant: the hairline, and the edge that has to be seen.
+   */
+  --openish-color-border: var(--openish-border-decorative-color);
+  --openish-color-border-strong: var(--openish-border-control-color);
+
+  /*
+   * ---- Focus -----------------------------------------------------------
+   *
+   * One ring, decomposed into the parts an `outline` takes, because an outline is what draws it.
+   * That is not a stylistic preference: an outline follows `border-radius` without being told the
+   * radius, and it is one of the few things a forced-colors mode still paints, which a `box-shadow`
+   * is not. The offset keeps the ring off the element's own edge; the components that sit flush in
+   * a cell negate it rather than turning it off - see `.value` in `styles/shared.ts`.
+   */
   --openish-color-focus: light-dark(#0b57d0, #7cb0ff);
-  --openish-focus-ring: 0 0 0 3px light-dark(rgb(11 87 208 / 40%), rgb(124 176 255 / 45%));
-  /* For a control that fills its cell, where an outset ring would be clipped by the cell's edge. */
-  --openish-focus-ring-inset: inset 0 0 0 2px light-dark(#0b57d0, #7cb0ff);
+  --openish-focus-ring-color: var(--openish-color-focus);
+  --openish-focus-ring-style: solid;
+  --openish-focus-ring-width: 2px;
+  --openish-focus-ring-offset: 1px;
+
   --openish-color-highlight: light-dark(#fff3bf, #4d3f11);
+
+  /*
+   * ---- States ----------------------------------------------------------
+   *
+   * Hover and active are a tint laid over whatever a control already looks like, not a background of
+   * their own, so that one pair of values works on a white chip, a blue button and a transparent
+   * toggle alike. Mixing from `currentColor` is what makes that true: the tint always moves towards
+   * the control's own text, which is always the direction that reads as "you are on this", whichever
+   * scheme is in force and whichever of openish's three button looks the control wears.
+   *
+   * A disabled control is quiet, not invisible. Its two colours are the only ones in this file exempt
+   * from the contrast floor - WCAG excludes inactive controls - but they still have to read as text,
+   * so they are dimmed rather than faded into the background.
+   */
+  --openish-state-hover-tint: color-mix(in srgb, currentColor 8%, transparent);
+  --openish-state-active-tint: color-mix(in srgb, currentColor 16%, transparent);
+  --openish-color-text-disabled: light-dark(#8a939e, #5f6b78);
+  --openish-color-surface-disabled: light-dark(#f0f2f5, #1a212a);
 
   /* ---- Space ---------------------------------------------------------- */
   --openish-space-3xs: 0.125rem; /* 2px  */
@@ -109,13 +179,7 @@
   --openish-font-heading-4: 700 1rem / 1.4 var(--openish-font-family-sans);
 
   /* ---- Layout --------------------------------------------------------- */
-  --openish-sidebar-width: 18rem;
-  /* How tall a code block grows before it scrolls on its own. */
-  --openish-code-max-height: 24rem;
-  /* The measure for prose: how wide a paragraph gets before it is tiring to read. */
-  --openish-content-max-width: 48rem;
-  /* The measure for a page that puts two columns side by side, which is only the operation page. */
-  --openish-content-max-width-wide: 82rem;
+  /* The measures live in `layout.css`, which both entry points import - they are openish's own. */
   --openish-z-overlay: 800;
   --openish-z-dialog: 900;
 

@@ -8,6 +8,7 @@
     ".": "./css/index.css",
     "./index.css": "./css/index.css",
     "./tokens.css": "./css/tokens.css",
+    "./layout.css": "./css/layout.css",
     "./highlight.css": "./css/highlight.css",
     "./jh.css": "./css/jh.css",
     "./jh/tokens.css": "./css/jh/tokens.css",

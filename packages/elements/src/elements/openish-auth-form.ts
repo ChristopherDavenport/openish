@@ -20,7 +20,7 @@ import { repeat } from 'lit/directives/repeat.js'
 
 import { requestContext, uiContext, type OpenishRequestState, type OpenishUiState } from '../context/contexts.js'
 import { dispatch } from '../events.js'
-import { baseStyles, rowStyles, statusStyles, visuallyHidden } from '../styles/shared.js'
+import { baseStyles, controlStyles, rowStyles, statusStyles, visuallyHidden } from '../styles/shared.js'
 import './openish-markdown.js'
 
 type OAuthFlows = Record<string, { authorizationUrl?: string; tokenUrl?: string; scopes?: Record<string, string> }>
@@ -42,6 +42,7 @@ type OAuthFlows = Record<string, { authorizationUrl?: string; tokenUrl?: string;
 export class OpenishAuthForm extends LitElement {
   static override styles = [
     baseStyles,
+    controlStyles,
     rowStyles,
     statusStyles,
     visuallyHidden,
@@ -62,23 +63,11 @@ export class OpenishAuthForm extends LitElement {
         flex: none;
         margin: var(--openish-space-3xs) var(--openish-space-3xs) var(--openish-space-3xs) 0;
         padding: var(--openish-space-3xs) var(--openish-space-xs);
-        border: 1px solid var(--openish-color-border-strong);
+        border: var(--openish-border-action-width) solid var(--openish-border-action-color);
         border-radius: var(--openish-radius-sm);
         background: var(--openish-color-surface-raised);
         color: var(--openish-color-text);
         font: var(--openish-font-small);
-        font-family: inherit;
-        cursor: pointer;
-      }
-
-      button:focus-visible {
-        outline: none;
-        box-shadow: var(--openish-focus-ring);
-      }
-
-      button[disabled] {
-        cursor: default;
-        opacity: 0.6;
       }
 
       /*
@@ -126,11 +115,6 @@ export class OpenishAuthForm extends LitElement {
         font: var(--openish-font-micro);
         font-family: var(--openish-font-family-mono);
         text-transform: none;
-      }
-
-      .group select:focus-visible {
-        outline: none;
-        box-shadow: var(--openish-focus-ring);
       }
 
       .state {
@@ -570,6 +554,7 @@ export class OpenishAuthForm extends LitElement {
           />
           <button
             type="button"
+            aria-busy=${busy ? 'true' : nothing}
             ?disabled=${busy || clientId === ''}
             @click=${() => (direct ? void this.#requestDirectToken(entry, flow) : this.#authorize(entry))}
           >

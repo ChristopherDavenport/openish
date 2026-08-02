@@ -18,9 +18,10 @@
     "typecheck": "tsc -b && tsc -p packages/elements/tsconfig.test.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "guard": "npm run guard:vue && npm run guard:specs",
+    "guard": "npm run guard:vue && npm run guard:specs && npm run guard:focus",
     "guard:vue": "node scripts/guard-no-vue.mjs",
     "guard:specs": "node scripts/guard-no-specs.mjs",
+    "guard:focus": "node scripts/guard-focus.mjs",
     "verify": "npm run guard && npm run typecheck && npm run test"
   },
   "devDependencies": {

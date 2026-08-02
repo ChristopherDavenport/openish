@@ -29,8 +29,9 @@ numbers. Read this file for how the code is meant to be written and what has alr
 | M13 document fidelity II | Done — named examples, per-operation security, callbacks, `externalDocs`, the rest of `info`, OAuth flows read-only, parameter serialization, `links` |
 | M14 one layout | Done — `classic` removed, `layout` gone from the config and the element, samples in a column of their own on a wide page |
 | M15 schema edges | Done — `contentMediaType`/`contentEncoding`, `dependentRequired`/`dependentSchemas`, `if`/`then`/`else`, and `$dynamicRef`/`$dynamicAnchor` in both the tree and the example |
+| M16 design system | Done — one focus ring instead of sixteen, the six control states, semantic borders, selection as an edge, forced colors |
 
-`npm run verify` runs guards → typecheck → tests. 533 tests today across three projects: `core` and
+`npm run verify` runs guards → typecheck → tests. 559 tests today across three projects: `core` and
 `client` in Node, `elements` in real Chromium via Playwright (`npx playwright install chromium`
 once). A `.browser.test.ts` suffix inside `packages/client/test` puts a file in the Chromium project
 instead - that is where the two OAuth transports are tested, and the suffix is what keeps the rest of
@@ -110,10 +111,22 @@ wants. Before writing something that upstream already has, check whether the ent
 reaches Vue; the answer changes between releases. The verified state as of
 `@scalar/workspace-store@0.56.0` and `@scalar/oas-utils@0.19.9` is a table in the README.
 
-**Only `--openish-*` in component CSS.** `packages/theme/css/tokens.css` is the single place those bind to
-Jack Henry alias tokens. Two documented exceptions reach for JH *global* tokens because the alias tier has
-no equivalent semantic: the HTTP method palette and the syntax-highlight palette. Both restate themselves
-under `.jh-theme-dark`, because globals do not re-point per scheme — aliases do.
+**Only `--openish-*` in component CSS.** `packages/theme/css/tokens.css` gives every hook a value of
+its own and `packages/theme/css/jh/tokens.css` is the single place they bind to Jack Henry alias tokens —
+peers, not layers, and a consumer imports exactly one. `layout.css` is imported by both and holds the
+measures openish owns outright. Two documented exceptions reach for JH *global* tokens because the alias
+tier has no equivalent semantic: the HTTP method palette and the syntax-highlight palette. Both restate
+themselves under `.jh-theme-dark`, because globals do not re-point per scheme — aliases do.
+
+**Hooks name concepts, not values.** A border is `decorative`, `control`, `action` or `selected` by what
+it separates; focus is `--openish-focus-ring-{color,style,width,offset}`, the parts an `outline` takes.
+That is what makes the binding possible at all, and it is also the test of whether a new hook belongs:
+if it can only be described by what it looks like, it is a value and does not go here.
+
+**A state that has to survive a bad screen is not a colour.** Hover and active are a tint mixed from
+`currentColor`, so one pair of values works on all three button looks in both schemes with nothing for a
+binding to re-point — but a tint is a few percent of lightness, so anything that must be *read* rather
+than felt carries a shape too: selection is an edge, focus is a ring, a pressed control gets both.
 
 **Fixtures.** Committed API documents live only in `packages/core/test/fixtures/`, 64 KB ceiling, one
 behaviour each; `npm run guard:specs` enforces it. Real documents are loaded by hand in the playground and
@@ -182,11 +195,13 @@ hooks stayed in the theme, and that split is the general answer - tokens travel,
   arrives *after* the reopen; a handler that blindly sets `open = false` shuts the new dialog. Check
   the dialog's own state before acting on it.
 
-**No backticks inside a `css` tagged template.** Not even in a comment: the template literal ends at
-the first one, and esbuild reports it as a syntax error dozens of lines later, pointing at whatever
-word followed. Three comments in this repo have been written twice for that reason, the third after
-this warning was already here - so the real lesson is the second half: `npm run verify` catches it
-immediately, and it is worth running before reaching for a browser to find out why a page is blank.
+**No backticks inside a `css` or `html` tagged template.** Not even in a comment, and not inside an
+HTML comment in a template either: the template literal ends at the first one, and esbuild reports it
+as a syntax error dozens of lines later, pointing at whatever word followed. This has now cost eight
+comments across the project, five of them in M16 alone and every one of them written *after* this
+warning was already here - which is the actual lesson. It is not a thing anyone remembers while
+writing prose about `--openish-*` hooks. `npm run typecheck` catches it in a second and names the
+line, so run it before reaching for a browser to find out why a page is blank.
 
 **The element fills its container.** `:host { height: 100% }` is load-bearing: break the height chain
 anywhere above it and the reference is as tall as its content, so nothing inside scrolls on its own -
@@ -195,6 +210,35 @@ there is no way back to them. The playground broke it with a plain `<div id="app
 and the element and nobody noticed for six milestones, because `test/frame.html` had the same gap.
 Both give the element a height now, the menu is `position: sticky` so it survives a host that does
 not, and the README says so.
+
+**A state you can only see while it is happening cannot be measured afterwards.** The first focus
+sweep collected every tab stop and then asked each one whether it had a ring - and every one answered
+no, correctly, because focus had moved on. Measure inside the walk. The same shape of mistake is
+waiting in any test about `:hover`, `:active`, or a transition.
+
+**`:focus-visible` is about how focus arrived.** A programmatic `.focus()` does not produce it, so a
+test that focuses elements itself passes against a stylesheet with no focus rule in it at all. Drive
+it with `userEvent.keyboard('{Tab}')`.
+
+**A transparent inset `box-shadow` does not make a gap.** It reveals the shadow painted *under* it,
+not the element's fill - so a ring with distance from the edge cannot be built out of insets alone.
+The alternatives both cost something real: an `outline` with a negative offset competes with the focus
+ring for the single outline slot, and a pseudo-element does not render on `<select>`.
+
+**`instanceof` lies across realms.** The harness frame has its own copy of every DOM constructor, so
+`rule instanceof CSSStyleRule` against a stylesheet belonging to the frame matches nothing and the
+test reports an empty result rather than an error. Duck-type: `'selectorText' in rule`.
+
+**CDP input coordinates are not in the tester's space.** Vitest runs the test file inside an iframe of
+an orchestrator page, so `Input.dispatchMouseEvent` at a rect read from the tester's viewport lands
+somewhere else entirely - the press appears to do nothing and the failure looks like a CSS bug.
+`Emulation.*` is fine, because it is page-wide; input is not. Anything needing a real press belongs in
+a Playwright script run against `npm run dev`, not in this suite.
+
+**The design system's site runs ahead of its package.** `jackhenry.design` documented the whole border
+concept tier and `@jack-henry/jh-core@1.6.1` ships none of it - no `--jh-border-{concept}-*`, and no
+disabled alias either. Write every binding as `var(--jh-…, <the alias that does ship>)` and check the
+installed CSS before believing a token name, however well documented it is.
 
 **Test harness rules** (`packages/elements/test/helpers.ts` has all of this):
 - Router tests need an iframe with a **real served URL** — `about:blank` and `srcdoc` both fail, because
@@ -216,6 +260,9 @@ not, and the README says so.
 - Real key events come from `userEvent` (`vitest/browser`) and do reach the frame. A synthesised
   `KeyboardEvent` cannot close a `<dialog>`, because Escape is handled by the browser rather than by
   a listener — so the search tests type for real.
+- `cdp()` (`vitest/browser`) reaches Chromium for page-wide emulation - `forced-colors.test.ts` drives
+  the mode that way, and the Playwright provider's type augmentation has to be in `types` in
+  `tsconfig.test.json` or `CDPSession` has no `send`.
 
 ---
 
@@ -567,6 +614,87 @@ Two things worth keeping:
   try-it editor could own the request body's example. `<openish-response-list>` gained the same
   property and the same threading through `renderMediaTypes`, and that is the whole of moving
   response examples out of the documentation column.
+
+## M16 — the design system's concepts, not its components (done)
+
+The Jack Henry binding was complete for colour, space, radius and type — the foundations that map onto
+CSS values. The ones that are *rules* had never come across, and the gap showed as drift rather than as
+anything missing: sixteen components each drew their own focus ring, and the copies had already diverged
+before anyone read all sixteen.
+
+`@jack-henry/jh-ui` is still not a dependency and nothing here imports it. What was adopted is the
+vocabulary.
+
+- **One focus ring, drawn as an `outline`.** It was `outline: none` plus a `box-shadow` in sixteen
+  places — some adding a radius, some not, the table cells drawing a different shape entirely. Now one
+  rule in `baseStyles`, reaching all 27 elements. An outline follows `border-radius` without being told
+  the radius, which is why every copy had to repeat one, and it is painted in forced-colors mode, where
+  a shadow is dropped and the ring simply was not there. An element that sits flush inside something
+  that clips redeclares `--openish-focus-ring-offset` on itself; nothing removes the ring, and
+  `npm run guard:focus` fails the build on `outline: none` anywhere in component source. **The guard is
+  the point.** The values were never wrong — the sixteenth copy was.
+
+- **The six control states, declared once.** openish had two and a half: focus everywhere, hover in
+  seven files of twenty-seven, `:active` in none at all, and `[disabled]` styled in one file while
+  `<openish-download>` set the attribute with no styling behind it. `controlStyles` now declares
+  enabled / hover / focus / active / disabled / pending, and appearance deliberately stays with the
+  component — openish has three button looks and which one a control wears is a fact about the surface
+  under it, not about the state it is in.
+
+- **Selection is an edge.** The open tab and the current sidebar row had a fill, a colour and a weight
+  change; a control being pressed had a tint. All three are a few percent of lightness, which is the
+  first thing to go on a dim screen or under a finger. They carry `--openish-border-selected-*` now,
+  with the space reserved on the unselected siblings so selecting something moves nothing beside it.
+
+- **Three real gaps, as opposed to drift.** The sidebar tree moved an `aria-activedescendant` cursor
+  that *nothing drew* — arrowing through six hundred rows moved an invisible position. Search options
+  were in the tab order, which is not the combobox pattern. Neither dialog opener declared
+  `aria-haspopup`. The `<kbd>/</kbd>` in the search trigger was hard-coded while the hotkey was
+  configurable.
+
+- **Forced colors, which had no coverage at all.** The ring survives now because it is an outline;
+  method chips keep a border, the current row keeps a rule, error panels keep an edge. Everything else
+  on the page already carried its meaning in words — a chip says `GET`, a required field says
+  "Required" — so the reader's palette simply replaces ours.
+
+### Two decisions worth not relitigating
+
+**The pressed ring is `currentColor`, not the selected colour.** `--openish-color-accent` and
+`--openish-border-selected-color` are the same blue on purpose — one idea, two names — so a
+selected-coloured ring inside the primary button, whose fill *is* that blue, was invisible. The one
+control on the page whose press most needs acknowledging was the only one showing nothing. Drawing from
+the control's own text colour is the same self-correcting move the tint makes, and it cannot collide
+with a fill because it is the colour chosen to read against that fill.
+
+There is no gap between the ring and the edge, and that was tested rather than assumed: `box-shadow`
+cannot express one (a transparent inset reveals the shadow beneath it, not the fill), an `outline` with
+a negative offset competes with the focus ring for the single outline slot when a button is activated
+from the keyboard, and a pseudo-element does not render on `<select>`, so selects would silently drop
+out of the state model. Flush is the only form that covers every control identically.
+
+**`--openish-border-action-color` is neutral, and does not take the JH token.** Copy, Download,
+Authorize and Close are all on an operation page at once; a dozen blue-edged buttons around a document
+reads as a form. It stays a hook separate from `control` so a host who wants them to read as actions can
+say so in one declaration. This is the one border concept where openish's answer is about what it is —
+a reference someone reads — rather than about brand.
+
+### What the tokens could not say
+
+`@jack-henry/jh-core@1.6.1` ships **no `--jh-border-{concept}-{color,width,style}` and no disabled
+alias**; the site's borders foundation is ahead of the package. Every binding is therefore written
+`var(--jh-border-selected-color, var(--jh-color-content-brand-enabled))` — the fallback is what renders
+today and the binding upgrades itself when the tokens land, with no code change. `--openish-border-error-*`
+was declared and then removed: nothing in openish renders an invalid control, and a hook nothing reads is
+a hook that silently does nothing when a host overrides it.
+
+### Checked, not asserted
+
+`focus.test.ts` tabs through three pages with real key presses and measures the ring **at each stop**,
+because the ring only exists while the element has it. `selection.test.ts` measures the two persistent
+selections and reads the pressed rule. `forced-colors.test.ts` drives Chromium into the mode over CDP.
+`contrast.test.ts` gained the 3:1 non-text floor for the ring against every surface it can land on, and
+for the borders that carry meaning — the ring was a translucent shadow before, which is the one form of
+it that cannot be checked by eye.
 
 ## The loop
 

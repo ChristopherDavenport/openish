@@ -19,5 +19,6 @@
  * For a page that already has the Jack Henry Design System on it, import `@openish/theme/jh.css`
  * instead of this file - the same hooks, bound to JH alias tokens.
  */
+@import './layout.css';
 @import './tokens.css';
 @import './highlight.css';

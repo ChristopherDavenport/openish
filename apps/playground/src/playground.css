@@ -27,15 +27,38 @@ button {
   font: var(--openish-font-body);
   color: var(--openish-color-text);
   background: var(--openish-color-surface-raised);
-  border: 1px solid var(--openish-color-border-strong);
+  border: var(--openish-border-action-width) solid var(--openish-border-action-color);
   border-radius: var(--openish-radius-md);
   padding: var(--openish-space-2xs) var(--openish-space-sm);
   cursor: pointer;
 }
 
+/*
+ * The harness's own chrome gets the same six states the elements do.
+ *
+ * It cannot get them the same way: `controlStyles` and `baseStyles` are constructed stylesheets
+ * adopted into a shadow root, and the bar is light DOM. So the rules are restated - but from the same
+ * tokens, which is the part that has to match. A harness whose buttons behave differently from the
+ * thing it is a harness for is a harness that hides exactly the problems it exists to surface.
+ */
+button:hover {
+  box-shadow: inset 0 0 0 100vmax var(--openish-state-hover-tint);
+}
+
+button:active {
+  box-shadow: inset 0 0 0 100vmax var(--openish-state-active-tint);
+}
+
 button:focus-visible {
-  outline: none;
-  box-shadow: var(--openish-focus-ring);
+  outline: var(--openish-focus-ring-width) var(--openish-focus-ring-style)
+    var(--openish-focus-ring-color);
+  outline-offset: var(--openish-focus-ring-offset);
+}
+
+@media (forced-colors: active) {
+  button:focus-visible {
+    outline-color: Highlight;
+  }
 }
 
 main {

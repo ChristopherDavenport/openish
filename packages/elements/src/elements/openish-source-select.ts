@@ -5,7 +5,7 @@ import { repeat } from 'lit/directives/repeat.js'
 
 import { sourcesContext, type OpenishSourcesState } from '../context/contexts.js'
 import { dispatch } from '../events.js'
-import { baseStyles, visuallyHidden } from '../styles/shared.js'
+import { baseStyles, controlStyles, visuallyHidden } from '../styles/shared.js'
 
 /**
  * The document picker, for a reference configured with several `sources`.
@@ -28,6 +28,7 @@ import { baseStyles, visuallyHidden } from '../styles/shared.js'
 export class OpenishSourceSelect extends LitElement {
   static override styles = [
     baseStyles,
+    controlStyles,
     visuallyHidden,
     css`
       :host {
@@ -56,10 +57,6 @@ export class OpenishSourceSelect extends LitElement {
         font: var(--openish-font-small);
       }
 
-      select:focus-visible {
-        outline: none;
-        box-shadow: var(--openish-focus-ring);
-      }
     `,
   ]
 

@@ -53,7 +53,7 @@ import {
   stripFirstSegment,
   type RoutingMode,
 } from '../router/urls.js'
-import { baseStyles, statusStyles, visuallyHidden } from '../styles/shared.js'
+import { baseStyles, controlStyles, statusStyles, visuallyHidden } from '../styles/shared.js'
 import './openish-markdown.js'
 import './openish-sidebar.js'
 
@@ -79,6 +79,7 @@ import './openish-sidebar.js'
 export class OpenishApiReference extends LitElement {
   static override styles = [
     baseStyles,
+    controlStyles,
     statusStyles,
     visuallyHidden,
     css`

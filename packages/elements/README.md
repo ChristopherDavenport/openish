@@ -26,7 +26,7 @@ selector does not.
 
 Where a token is not enough, the layout, sidebar, tree, operation panes and sections, code blocks and
 dialogs expose **CSS parts**, chained through `exportparts` so a rule on the host page reaches four
-shadow roots down — `::part(operation-examples)`, `::part(code-head)`, and the rest. The operation
+shadow roots down — `::part(operation-examples)`, `::part(code-toolbar)`, and the rest. The operation
 page also forwards **slots** (`request-start`, `request-end`, `response-start`, `response-end`) so a
 host can put its own markup inside a page it did not render.
 

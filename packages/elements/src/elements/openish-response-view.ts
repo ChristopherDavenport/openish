@@ -78,6 +78,13 @@ export class OpenishResponseView extends LitElement {
         font: var(--openish-font-small);
       }
 
+      /* Same reason as the error panel in shared styles: without the fill it is only a sentence. */
+      @media (forced-colors: active) {
+        .failure {
+          border: 1px solid currentColor;
+        }
+      }
+
       openish-disclosure {
         margin: var(--openish-space-xs) 0;
       }

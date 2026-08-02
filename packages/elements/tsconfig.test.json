@@ -6,7 +6,12 @@
     "declaration": false,
     "declarationMap": false,
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "types": ["vite/client"],
+    /*
+     * The Playwright provider is what fills in `CDPSession`, which vitest declares empty for
+     * providers to augment. `forced-colors.test.ts` sends a CDP command, and without this the
+     * session has no `send`.
+     */
+    "types": ["vite/client", "@vitest/browser-playwright"],
     "paths": {
       "@openish/core": ["../core/src/index.ts"]
     }

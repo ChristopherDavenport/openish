@@ -1,0 +1,31 @@
+/*
+ * The measures openish owns.
+ *
+ * Every other hook in this package is a binding: `tokens.css` gives it a value, `jh/tokens.css`
+ * re-points it at a design system's, and the two files are alternatives. These four are neither.
+ * They are how wide a paragraph gets before it is tiring to read, how tall a code block grows
+ * before it scrolls, and how much of the window the navigation is allowed - decisions about *this*
+ * document browser, which no design system has an opinion about because no design system knows it
+ * is one. They were duplicated verbatim in both token files for exactly that reason; they live here
+ * once instead, and both entry points import them.
+ *
+ * A host can still override any of them. It just has to mean it, rather than getting a different
+ * measure as a side effect of choosing a palette.
+ */
+
+:root {
+  --openish-sidebar-width: 18rem;
+  /* How tall a code block grows before it scrolls on its own. */
+  --openish-code-max-height: 24rem;
+  /* The measure for prose: how wide a paragraph gets before it is tiring to read. */
+  --openish-content-max-width: 48rem;
+  /* The measure for a page that puts two columns side by side, which is only the operation page. */
+  --openish-content-max-width-wide: 82rem;
+
+  /*
+   * The smallest a control is allowed to be, on both axes. 24px is the WCAG 2.2 target-size floor
+   * and a multiple of the eight-pixel grid the spacing scale is built on, so a control that meets it
+   * still lands on the rhythm. Applied once, in `controlStyles`.
+   */
+  --openish-target-min: 1.5rem;
+}

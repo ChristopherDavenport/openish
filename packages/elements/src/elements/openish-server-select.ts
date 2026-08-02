@@ -6,7 +6,7 @@ import { repeat } from 'lit/directives/repeat.js'
 
 import { documentContext, requestContext, type OpenishRequestState } from '../context/contexts.js'
 import { dispatch } from '../events.js'
-import { baseStyles, visuallyHidden } from '../styles/shared.js'
+import { baseStyles, controlStyles, visuallyHidden } from '../styles/shared.js'
 
 type ServerVariable = { default?: unknown; enum?: unknown[]; description?: string }
 
@@ -24,6 +24,7 @@ type ServerVariable = { default?: unknown; enum?: unknown[]; description?: strin
 export class OpenishServerSelect extends LitElement {
   static override styles = [
     baseStyles,
+    controlStyles,
     visuallyHidden,
     css`
       :host {
@@ -55,12 +56,6 @@ export class OpenishServerSelect extends LitElement {
 
       input {
         min-width: 16rem;
-      }
-
-      select:focus-visible,
-      input:focus-visible {
-        outline: none;
-        box-shadow: var(--openish-focus-ring);
       }
 
       .resolved {

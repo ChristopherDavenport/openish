@@ -3,7 +3,7 @@ import { customElement, property, state } from 'lit/decorators.js'
 import { unsafeHTML } from 'lit/directives/unsafe-html.js'
 
 import { codeNow, loadCode } from '../render/highlight.js'
-import { baseStyles, highlightStyles, visuallyHidden } from '../styles/shared.js'
+import { baseStyles, controlStyles, highlightStyles, visuallyHidden } from '../styles/shared.js'
 
 /** How long the copy button stays confirmed before going back to its label. */
 const COPIED_MS = 2000
@@ -23,6 +23,7 @@ const COPIED_MS = 2000
 export class OpenishCodeBlock extends LitElement {
   static override styles = [
     baseStyles,
+    controlStyles,
     highlightStyles,
     visuallyHidden,
     css`
@@ -62,12 +63,6 @@ export class OpenishCodeBlock extends LitElement {
         background: var(--openish-color-surface);
         color: var(--openish-color-text);
         font: var(--openish-font-micro);
-        font-family: inherit;
-        cursor: pointer;
-      }
-
-      button:hover {
-        background: var(--openish-color-surface-hover);
       }
 
       /*
@@ -86,11 +81,8 @@ export class OpenishCodeBlock extends LitElement {
       .scroll {
         max-height: var(--openish-code-max-height, 24rem);
         overflow: auto;
-      }
-
-      .scroll:focus-visible {
-        outline: none;
-        box-shadow: var(--openish-focus-ring);
+        /* Flush inside .frame, which clips - so the ring goes in rather than out. */
+        --openish-focus-ring-offset: calc(-1 * var(--openish-focus-ring-width));
       }
 
       pre {
@@ -188,7 +180,7 @@ export class OpenishCodeBlock extends LitElement {
 
     return html`
       <div class="frame" part="code">
-        <div class="head" part="code-head">
+        <div class="head" part="code-toolbar">
           <span class="label">${this.label || this.language}</span>
           ${this.#canCopy
             ? html`

@@ -31,7 +31,7 @@ export const renderNode = (node: NavNode, hash = '', slugPrefix = ''): TemplateR
       return html`
         <openish-operation
           .node=${node}
-          exportparts="operation-header, operation-docs, operation-examples, request-section, parameters-section, body-section, response-section, examples-section, security-section, callbacks-section, code, code-head, copy, dialog, dialog-bar"
+          exportparts="operation-header, operation-docs, operation-examples, request-section, parameters-section, body-section, response-section, examples-section, security-section, callbacks-section, code, code-toolbar, copy, dialog, dialog-toolbar"
         >
           <slot name="request-start" slot="request-start"></slot>
           <slot name="request-end" slot="request-end"></slot>

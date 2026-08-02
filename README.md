@@ -141,6 +141,36 @@ cannot be.
 `packages/elements/README.md` is the per-element reference — every property, attribute, and event —
 and it is generated from `custom-elements.json`, which ships with the package.
 
+## Theming
+
+`@openish/theme` is one tier: the `--openish-*` style hooks, which is everything the components read.
+It ships two peers, and you import exactly one — `index.css`, which gives every hook a value of its
+own and depends on nothing, or `jh.css`, which re-points the same hooks at Jack Henry alias tokens for
+a page that already has that design system on it. `layout.css` is imported by both and is the small
+set openish owns outright: the measures, the sidebar width, the target-size floor. No design system
+has an opinion about how wide a paragraph should be in an API reference, because none of them knows it
+is one.
+
+The hooks are named for concepts rather than for values, which is what makes the binding possible:
+
+- **Borders** by what they separate — `--openish-border-decorative-color` for a hairline, then
+  `-control-` (a field's edge), `-action-` (a button's), and `-selected-` (the open tab, the current
+  page, and a control for as long as it is pressed). All but the hairline are measured for 3:1
+  against the surface behind them. `--openish-color-border` and `-border-strong` remain as the
+  decorative and control pair. The action edge is neutral rather than brand-coloured on purpose, and
+  is a separate hook so that a host who wants buttons to read as actions can say so in one line.
+- **Focus** decomposed into the parts an outline takes — `--openish-focus-ring-color`, `-style`,
+  `-width`, `-offset`. Negate the offset on an element that sits flush inside something that clips;
+  that is the supported way to move the ring, and there is no way to remove it.
+- **States** as a tint rather than a palette — `--openish-state-hover-tint` and `-active-tint` mix
+  from `currentColor`, so one pair of values is correct on a white chip, a blue button and a
+  transparent toggle, in both schemes, with nothing for a binding to re-point.
+
+The Jack Henry binding asks for the design system's own token first and falls back to the alias that
+ships today: `var(--jh-border-focus-color, var(--jh-color-interactive-focus-outer))`. The border
+concepts are documented on the site ahead of `@jack-henry/jh-core@1.6.1`, so the fallbacks are what
+render right now and the bindings upgrade themselves when the tokens land.
+
 ## Packages
 
 | Package | What it is |
@@ -193,6 +223,37 @@ Derived values are getters, so there is no second copy to keep in step - the two
 in the project both exist because a context provider pushes its value rather than being asked for
 it. The few genuinely imperative DOM calls a document browser needs - `showModal()`, `focus()`,
 `scrollIntoView()` - happen in `updated()` in response to a property changing, in one place each.
+
+**Component anatomy.** Every component is put together the same way, so a reader of one has read all
+of them and a new one is not a new set of decisions.
+
+- *Interactive things are real elements.* A `<button>`, an `<a>`, or a native control — never a div
+  with a click handler bolted on. Where the platform has no element for the pattern (a tree, a
+  tablist, a combobox) it is built to the WAI-ARIA Authoring Practices, with the roles and the
+  keyboard behaviour the pattern specifies, not an approximation of them.
+- *Every control declares all six states* — enabled, hover, focus, active, disabled, pending — from
+  `controlStyles` in `styles/shared.ts`. A component may override one; it may not skip one or invent
+  a seventh. "Pending" is `aria-busy` on the control plus a live region beside it, in every case.
+- *Selection is an edge, not a fill.* The open tab and the page the sidebar is on wear
+  `--openish-border-selected-color`; a control being pressed wears the same edge at the same width,
+  in `currentColor`. A fill on its own is a few percent of lightness and is the first thing to go on
+  a dim screen, so it is the supporting signal and never the only one. Space for the edge is reserved
+  on the unselected siblings too, or selecting something shifts what is next to it.
+- *An anchor that is a control says so.* A sidebar row and a download link are links because they go
+  somewhere and controls because a reader presses them; they take the six states by carrying
+  `pressable`. A bare `a` in the shared rule would have caught every link in a paragraph of
+  documentation, and a word of prose should not grow a ring when it is clicked.
+- *The focus ring is never removed, only relocated.* It is one rule, in `baseStyles`, drawn as an
+  `outline`. An element that sits flush inside something that clips redeclares
+  `--openish-focus-ring-offset` on itself rather than starting over. `npm run guard:focus` fails the
+  build on `outline: none` anywhere in component source, because the failure this pass fixed was not
+  a missing ring — it was sixteen slightly different ones.
+- *Parts are named for what a thing is, not where it sits* — `code`, `code-toolbar`, `copy`,
+  `dialog`, `dialog-toolbar`. A part is a public API, so a name that describes a position stops being
+  true the moment the layout changes.
+- *Appearance stays with the component; behaviour is shared.* openish has three button looks —
+  bordered, accent, plain — and which one a control wears depends on the surface under it. The states
+  it moves through do not, so they are declared once and tinted over whatever the component chose.
 
 **Context for downward traversal.** `@lit/context` carries the document, the presentation config, and the
 schema traversal down the tree. The recursive schema renderer is what the third one is for: it consumes
@@ -384,6 +445,25 @@ will when painting. Current numbers for the default theme, AA or better througho
 | Links | 6.4:1 | 8.4:1 |
 | HTTP method chips | 5.5–6.9:1 | 9.1–14.2:1 |
 | Syntax colours on the code surface | 4.7–6.2:1 | 7.3–12.3:1 |
+| Focus ring, on every surface it lands on¹ | 5.6–6.4:1 | 5.9–8.4:1 |
+| Control and action borders¹ | 3.8–4.1:1 | 5.3–6.2:1 |
+
+¹ Non-text, so the floor is 3:1 rather than 4.5:1 — WCAG 1.4.11.
+
+**Focus.** One ring, declared once, drawn as an `outline` so that it follows each element's own
+`border-radius` and survives a forced-colors mode. `packages/elements/test/focus.test.ts` tabs
+through the overview, an operation, and the request client with real key presses, measuring the ring
+at each stop — so a control that stops showing one fails the build, including a control nobody has
+written yet. It also covers the two places a ring is not enough on its own: the sidebar tree, which
+moves an `aria-activedescendant` cursor the browser's focus never follows and which now marks the row
+it is on, and the search dialog, whose result list is navigated with the arrow keys and is therefore
+kept out of the tab order.
+
+**Forced colors.** `packages/elements/test/forced-colors.test.ts` drives Chromium into the mode and
+checks the three things it takes away: the focus ring, the fill that made a method chip a chip, and
+the fill that marked the page a reader is on. Everything else on the page carries its meaning in
+words already — a chip says `GET`, a required field says "Required" — so colour was never the only
+carrier, and the palette the reader chose simply replaces ours.
 
 ## Development
 

@@ -18,7 +18,7 @@ import { customElement, property, query, state } from 'lit/decorators.js'
 
 import { documentContext, requestContext, uiContext, type OpenishRequestState, type OpenishUiState } from '../context/contexts.js'
 import { mediaTypeExample } from '../render/media-types.js'
-import { baseStyles, methodStyles, statusStyles } from '../styles/shared.js'
+import { baseStyles, controlStyles, methodStyles, statusStyles } from '../styles/shared.js'
 import type { ParameterChange } from './openish-request-form.js'
 import './openish-auth-form.js'
 import './openish-code-sample.js'
@@ -49,6 +49,7 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
 export class OpenishTryIt extends LitElement {
   static override styles = [
     baseStyles,
+    controlStyles,
     methodStyles,
     statusStyles,
     css`
@@ -173,14 +174,8 @@ export class OpenishTryIt extends LitElement {
       button.secondary {
         background: var(--openish-color-surface);
         color: var(--openish-color-text);
-        border-color: var(--openish-color-border-strong);
+        border-color: var(--openish-border-action-color);
         font: var(--openish-font-body);
-      }
-
-      button:focus-visible,
-      .test:focus-visible {
-        outline: none;
-        box-shadow: var(--openish-focus-ring);
       }
 
       .note,
@@ -413,7 +408,7 @@ export class OpenishTryIt extends LitElement {
 
     return html`
       <div class="client">
-        <div class="bar" part="dialog-bar">
+        <div class="bar" part="dialog-toolbar">
           <span class="method" data-method=${this.node.method}>${this.node.method}</span>
           <code class="url">${har?.url ?? ''}</code>
           ${sending
@@ -478,6 +473,7 @@ export class OpenishTryIt extends LitElement {
           slot="actions"
           type="button"
           class="test"
+          aria-haspopup="dialog"
           @click=${(event: Event) => this.#show(event.currentTarget as HTMLElement)}
         >
           Test request

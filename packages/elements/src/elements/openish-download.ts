@@ -5,7 +5,7 @@ import { customElement, state } from 'lit/decorators.js'
 import { repeat } from 'lit/directives/repeat.js'
 
 import { documentContext, uiContext, type OpenishUiState } from '../context/contexts.js'
-import { baseStyles } from '../styles/shared.js'
+import { baseStyles, controlStyles } from '../styles/shared.js'
 
 /**
  * Handing the reader the document the page was rendered from.
@@ -22,6 +22,7 @@ import { baseStyles } from '../styles/shared.js'
 export class OpenishDownload extends LitElement {
   static override styles = [
     baseStyles,
+    controlStyles,
     css`
       :host {
         display: block;
@@ -40,26 +41,15 @@ export class OpenishDownload extends LitElement {
         align-items: center;
         gap: var(--openish-space-3xs);
         padding: var(--openish-space-3xs) var(--openish-space-sm);
-        border: 1px solid var(--openish-color-border-strong);
+        border: var(--openish-border-action-width) solid var(--openish-border-action-color);
         border-radius: var(--openish-radius-md);
         background: var(--openish-color-surface);
         color: var(--openish-color-text);
         font: var(--openish-font-small);
         font-family: inherit;
         text-decoration: none;
-        cursor: pointer;
       }
 
-      a:hover,
-      button:hover {
-        background: var(--openish-color-surface-hover);
-      }
-
-      a:focus-visible,
-      button:focus-visible {
-        outline: none;
-        box-shadow: var(--openish-focus-ring);
-      }
 
       .label {
         font: var(--openish-font-micro);
@@ -137,7 +127,9 @@ export class OpenishDownload extends LitElement {
         ? html`
             <div class="row">
               <span class="label">OpenAPI document</span>
-              <a href=${url} download>Download</a>
+              <!-- A link, because it is a URL - but it wears the button's look, so it takes the
+                   button's states too; "pressable" is how an anchor asks for them. -->
+              <a class="pressable" href=${url} download>Download</a>
             </div>
           `
         : nothing
@@ -150,7 +142,12 @@ export class OpenishDownload extends LitElement {
           this.#formats,
           (format) => format,
           (format) => html`
-            <button type="button" ?disabled=${this.working !== undefined} @click=${() => void this.#download(format)}>
+            <button
+              type="button"
+              aria-busy=${this.working === format ? 'true' : nothing}
+              ?disabled=${this.working !== undefined}
+              @click=${() => void this.#download(format)}
+            >
               ${this.working === format ? 'Preparing…' : format.toUpperCase()}
             </button>
           `,

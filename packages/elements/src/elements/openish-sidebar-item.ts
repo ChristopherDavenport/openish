@@ -8,7 +8,7 @@ import type { NavNode } from '@openish/core'
 import { uiContext, type OpenishUiState } from '../context/contexts.js'
 import { dispatch } from '../events.js'
 import { hrefFor } from '../router/urls.js'
-import { baseStyles, methodStyles } from '../styles/shared.js'
+import { baseStyles, controlStyles, methodStyles } from '../styles/shared.js'
 
 /**
  * One row of the navigation tree.
@@ -31,6 +31,7 @@ import { baseStyles, methodStyles } from '../styles/shared.js'
 export class OpenishSidebarItem extends LitElement {
   static override styles = [
     baseStyles,
+    controlStyles,
     methodStyles,
     css`
       :host {
@@ -50,21 +51,49 @@ export class OpenishSidebarItem extends LitElement {
         align-items: center;
         gap: var(--openish-space-2xs);
         padding: var(--openish-space-2xs) var(--openish-space-xs);
+        /*
+         * Reserved on every row, coloured on the selected one - see below. Added to the selected row
+         * instead would shift its label two pixels sideways as the reader navigated.
+         */
+        border-inline-start: var(--openish-border-selected-width) solid transparent;
         border-radius: var(--openish-radius-md);
         color: var(--openish-color-text);
         text-decoration: none;
       }
 
+      /*
+       * The row is a link, so it inherits the prose treatment - a colour change and an underline -
+       * from baseStyles, and a navigation row is neither of those things. The reset is all this rule
+       * is for now: the fill it used to add comes from the shared hover tint, because the row is
+       * pressable and takes the control states like any other thing a reader presses.
+       */
       .link:hover {
-        background: var(--openish-color-surface-hover);
         color: var(--openish-color-text);
         text-decoration: none;
       }
 
+      /*
+       * The page the reader is on: a fill, and a rule down the inside edge.
+       *
+       * The rule is not only for forced colors, which is where it started. A fill is the weakest
+       * signal a list row can carry - a few percent of lightness against the row above it, and the
+       * first thing to go on a dim screen or a projector - so the row that says "you are here"
+       * carries an edge as well, in the border the design system has for exactly this.
+       *
+       * Deliberately not an outline: that is the keyboard cursor's shape here, and the cursor moving
+       * over this row and away again is a different fact from which page is open.
+       */
       .link.active {
         background: var(--openish-color-surface-selected);
+        border-inline-start-color: var(--openish-border-selected-color);
         color: var(--openish-color-accent);
         font: var(--openish-font-body-bold);
+      }
+
+      @media (forced-colors: active) {
+        .link.active {
+          border-inline-start-color: LinkText;
+        }
       }
 
       /*
@@ -93,16 +122,22 @@ export class OpenishSidebarItem extends LitElement {
         color: var(--openish-color-text-muted);
       }
 
-      /* A disclosure button, not a link: it changes nothing about the current location. */
+      /*
+       * A disclosure button, not a link: it changes nothing about the current location.
+       *
+       * Sized to the minimum target rather than to the glyph. It used to be 20px square, which is
+       * under the floor and is a real miss on a touch screen where it is the only way to open a tag
+       * without navigating to it. The spacer that stands in for it on a leaf row has to match, or
+       * the indentation of a branch and a leaf at the same level stops lining up.
+       */
       .toggle {
         flex: none;
-        width: 1.25rem;
-        height: 1.25rem;
+        width: var(--openish-target-min);
+        height: var(--openish-target-min);
         padding: 0;
         border: 0;
         background: none;
         color: var(--openish-color-text-muted);
-        cursor: pointer;
         line-height: 1;
       }
 
@@ -110,6 +145,7 @@ export class OpenishSidebarItem extends LitElement {
         display: block;
         width: 100%;
         height: 100%;
+        padding: 0.125rem;
         transition: transform 120ms ease;
       }
 
@@ -125,7 +161,7 @@ export class OpenishSidebarItem extends LitElement {
 
       .spacer {
         flex: none;
-        width: 1.25rem;
+        width: var(--openish-target-min);
       }
     `,
   ]
@@ -208,7 +244,7 @@ export class OpenishSidebarItem extends LitElement {
       <div class="row" style="padding-left: calc(${this.level - 1} * var(--openish-space-sm))">
         ${this.#renderToggle()}
         <a
-          class=${classMap({ link: true, active })}
+          class=${classMap({ link: true, pressable: true, active })}
           href=${hrefFor(this.node, this.ui)}
           tabindex="-1"
           aria-current=${ifDefined(active ? 'page' : undefined)}

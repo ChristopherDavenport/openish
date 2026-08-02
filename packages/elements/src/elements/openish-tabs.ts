@@ -4,7 +4,7 @@ import { ifDefined } from 'lit/directives/if-defined.js'
 import { createRef, ref } from 'lit/directives/ref.js'
 import { repeat } from 'lit/directives/repeat.js'
 
-import { baseStyles } from '../styles/shared.js'
+import { baseStyles, controlStyles } from '../styles/shared.js'
 
 /**
  * One tab and the panel behind it.
@@ -40,6 +40,7 @@ export type OpenishTab = {
 export class OpenishTabs extends LitElement {
   static override styles = [
     baseStyles,
+    controlStyles,
     css`
       :host {
         display: block;
@@ -58,7 +59,8 @@ export class OpenishTabs extends LitElement {
         gap: var(--openish-space-2xs);
         padding: var(--openish-space-xs) var(--openish-space-sm);
         border: 0;
-        border-bottom: 2px solid transparent;
+        /* Reserved at the selected width, so selecting a tab moves nothing beside it. */
+        border-bottom: var(--openish-border-selected-width) solid transparent;
         margin-bottom: -1px;
         background: none;
         color: var(--openish-color-text-muted);
@@ -67,14 +69,22 @@ export class OpenishTabs extends LitElement {
         cursor: pointer;
       }
 
+      /* The colour is the tab's own signal - an unselected tab is muted. The tint is the shared one. */
       button:hover {
         color: var(--openish-color-text);
-        background: var(--openish-color-surface-hover);
       }
 
+      /*
+       * The selected tab, wearing the selected border rather than a colour of its own.
+       *
+       * It used to reach for the accent, which is the same blue by value and the wrong name for it:
+       * accent is the colour of a link and of the primary button, and a tab is neither. Naming the
+       * concept is what lets a host retheme "the thing that is selected" without also restyling
+       * every link on the page.
+       */
       button[aria-selected='true'] {
         color: var(--openish-color-text);
-        border-bottom-color: var(--openish-color-accent);
+        border-bottom-color: var(--openish-border-selected-color);
         font: var(--openish-font-body-bold);
       }
 
@@ -99,11 +109,6 @@ export class OpenishTabs extends LitElement {
         padding-top: var(--openish-space-md);
       }
 
-      [role='tabpanel']:focus-visible {
-        outline: none;
-        box-shadow: var(--openish-focus-ring);
-        border-radius: var(--openish-radius-md);
-      }
     `,
   ]
 

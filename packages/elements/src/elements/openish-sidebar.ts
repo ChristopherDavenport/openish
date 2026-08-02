@@ -62,7 +62,6 @@ export class OpenishSidebar extends LitElement {
 
       lit-virtualizer {
         height: 100%;
-        outline: none;
       }
 
       /*
@@ -79,9 +78,38 @@ export class OpenishSidebar extends LitElement {
         box-sizing: border-box;
       }
 
-      lit-virtualizer:focus-visible {
+      /*
+       * The keyboard cursor.
+       *
+       * A tree with aria-activedescendant moves a cursor that the DOM's own focus never leaves the
+       * scroller to follow, so nothing draws it unless something here does - and for a long time
+       * nothing did: arrowing down six hundred rows moved an invisible position while the only ring
+       * on screen was the one around the whole list, which says "you are in the sidebar" and not one
+       * thing about where in it.
+       *
+       * That ring stays - the scroller is the tab stop, and a reader who has just pressed Tab needs
+       * to know they landed here before they press an arrow. This is the second half of the answer:
+       * the same ring again, on the row the arrows are on, offset inwards because a row is flush with
+       * the scroller's edges. The two say different things and both are worth saying.
+       *
+       * Scoped to :focus-visible on the scroller because a cursor is only meaningful while the tree
+       * is the thing being driven - aria-activedescendant is set at all times, since a tree always
+       * has a current row, so an unscoped rule would mark row zero permanently.
+       *
+       * Distinct again from .link.active inside the item, which is a third fact: that one is the page
+       * the reader is on, and it stays put while the cursor moves over it and away.
+       */
+      lit-virtualizer:focus-visible > [role='treeitem'][data-current] {
+        outline: var(--openish-focus-ring-width) var(--openish-focus-ring-style)
+          var(--openish-focus-ring-color);
+        outline-offset: calc(-1 * var(--openish-focus-ring-width));
         border-radius: var(--openish-radius-md);
-        box-shadow: var(--openish-focus-ring);
+      }
+
+      @media (forced-colors: active) {
+        lit-virtualizer:focus-visible > [role='treeitem'][data-current] {
+          outline-color: Highlight;
+        }
       }
 
       .empty {
@@ -215,6 +243,17 @@ export class OpenishSidebar extends LitElement {
     }
   }
 
+  /**
+   * Bring the cursor into view when the tree is entered.
+   *
+   * Tab lands on the scroller wherever it happens to be scrolled to, and the current row - row 0
+   * until an arrow key says otherwise - may be far above it. Without this the ring exists and cannot
+   * be seen, which is the same problem as not drawing it.
+   */
+  readonly #onFocus = (): void => {
+    void this.#focus(this.focused)
+  }
+
   async #focus(index: number): Promise<void> {
     this.focused = index
     await this.updateComplete
@@ -280,12 +319,14 @@ export class OpenishSidebar extends LitElement {
           aria-label="API reference"
           aria-activedescendant=${rows[focused] ? `row-${focused}` : nothing}
           @keydown=${this.#onKeydown}
+          @focus=${this.#onFocus}
           .items=${rows}
           .keyFunction=${(row: NavRow) => row.node.id}
           .renderItem=${(row: NavRow, index: number) => html`
             <div
               id=${`row-${index}`}
               role="treeitem"
+              ?data-current=${index === focused}
               aria-level=${row.level}
               aria-posinset=${row.position}
               aria-setsize=${row.setSize}

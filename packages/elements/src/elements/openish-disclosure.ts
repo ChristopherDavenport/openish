@@ -1,7 +1,7 @@
 import { LitElement, html, css, nothing, type TemplateResult } from 'lit'
 import { customElement, property } from 'lit/decorators.js'
 
-import { baseStyles } from '../styles/shared.js'
+import { baseStyles, controlStyles } from '../styles/shared.js'
 
 /**
  * A show/hide section.
@@ -26,6 +26,7 @@ import { baseStyles } from '../styles/shared.js'
 export class OpenishDisclosure extends LitElement {
   static override styles = [
     baseStyles,
+    controlStyles,
     css`
       :host {
         display: block;

@@ -40,11 +40,6 @@ export class OpenishTable extends LitElement {
         border-radius: var(--openish-radius-lg);
       }
 
-      .scroll:focus-visible {
-        outline: none;
-        box-shadow: var(--openish-focus-ring);
-      }
-
       table {
         width: 100%;
         border-collapse: collapse;
