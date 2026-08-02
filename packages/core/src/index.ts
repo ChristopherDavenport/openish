@@ -9,6 +9,7 @@ export {
   type HiddenClients,
   type SnippetClient,
 } from './har/snippet.js'
+export { nodeToMarkdown, type NodeMarkdownOptions } from './markdown/node-to-markdown.js'
 export { joinId, SlugRegistry } from './navigation/ids.js'
 export {
   collectOperations,
@@ -49,6 +50,13 @@ export { operationBadges, type OperationBadge } from './operation/badges.js'
 export { isHidden } from './navigation/hidden.js'
 export { getResolvedRef, isRefObject, resolveLocalPointer, resolveProperty, type RefObject } from './ref.js'
 export { schemaExample, type SchemaExampleOptions } from './schema/schema-example.js'
+export {
+  asSchema,
+  modelNameFromPointer,
+  refName,
+  schemaTypeLabel,
+  schemaTypeNames,
+} from './schema/type-label.js'
 export { resolveSources } from './sources.js'
 export {
   createDocumentStore,
