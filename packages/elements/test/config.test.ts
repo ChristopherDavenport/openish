@@ -1,7 +1,16 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
 import '../src/index.js'
-import { deepQuery, deepQueryAll, deepTextOf, disposeAll, mountReference, type Harness, sectionOf } from './helpers.js'
+import {
+  deepQuery,
+  deepQueryAll,
+  deepTextOf,
+  disposeAll,
+  mountReference,
+  sectionOf,
+  shadowOf,
+  type Harness,
+} from './helpers.js'
 
 afterEach(() => {
   disposeAll()
@@ -56,14 +65,23 @@ describe('hideSearch', () => {
 })
 
 describe('showOperationId', () => {
-  it('puts the operationId beside the summary in the navigation', async () => {
-    const shown = deepQueryAll((await at('/tags/accounts', { showOperationId: true })).element.shadowRoot!, '.operation-id')
+  /*
+   * In the navigation, which is the only place this option governs: an operation page has always
+   * named itself and still does. Both of these used to be measured against the whole reference from
+   * a tag's index page - which had no operation on it at all - so the one that asserted an absence
+   * was asserting it about a page that could not have shown one either way.
+   */
+  const navigationIds = (harness: Harness): string[] =>
+    deepQueryAll(shadowOf(harness.element.shadowRoot!, 'openish-sidebar'), '.operation-id').map(
+      (one) => one.textContent ?? '',
+    )
 
-    expect(shown.map((n) => n.textContent)).toContain('listAccounts')
+  it('puts the operationId beside the summary in the navigation', async () => {
+    expect(navigationIds(await at('/tags/accounts', { showOperationId: true }))).toContain('listAccounts')
   })
 
   it('leaves it out by default', async () => {
-    expect(deepQueryAll((await at('/tags/accounts')).element.shadowRoot!, '.operation-id')).toHaveLength(0)
+    expect(navigationIds(await at('/tags/accounts'))).toHaveLength(0)
   })
 })
 

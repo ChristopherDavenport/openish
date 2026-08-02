@@ -75,7 +75,7 @@ export class OpenishOperation extends LitElement {
         margin-top: 0;
       }
 
-      @container section (min-width: 74rem) {
+      @container section (min-width: 56rem) {
         /*
          * Sticky inside the page's own scroller, so the sample stays beside whichever part of a long
          * schema the reader has scrolled to. The main element is what scrolls - see the height chain

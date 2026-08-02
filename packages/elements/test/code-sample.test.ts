@@ -109,10 +109,10 @@ describe('code samples', () => {
   })
 
   it('renders no sample for a webhook, which the reader does not call', async () => {
-    const { element } = await settledSample('/webhooks/accountCreated')
+    const { element } = await settledSample('/webhooks/post-accountcreated')
 
     expect(deepQuery(sectionOf(element), 'openish-code-sample')).toBeNull()
-    expect(deepTextOf(element.shadowRoot!)).toContain('An account was created')
+    expect(deepTextOf(sectionOf(element))).toContain('An account was created')
   })
 
   it('reads its syntax colours from a token the host declares outside the shadow root', async () => {

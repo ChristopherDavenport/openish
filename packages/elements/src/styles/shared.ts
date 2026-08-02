@@ -357,9 +357,13 @@ export const highlightStyles = css`
  *
  * A container query, not a media query, and on a wrapper rather than on `:host`: how wide *this
  * section* is depends on whether the sidebar is showing, which a media query cannot see - and an
- * element is never its own container, so the query has to be answered by a descendant. The 74rem is
- * a literal because a container condition cannot take a `var()`; it is deliberately not a token, and
- * trying to make it one will silently do nothing.
+ * element is never its own container, so the query has to be answered by a descendant.
+ *
+ * 56rem, which is two columns of about twenty-eight. A narrow column of documentation beside a
+ * narrow column of examples is still two things a reader can compare; one wide column with the
+ * example a screen below the parameters is not, and holding out for a comfortable width meant most
+ * laptops never saw the layout the page is designed around. The literal is deliberate - a container
+ * condition cannot take a `var()`, and trying to make it a token will silently do nothing.
  */
 export const planeColumnStyles = css`
   :host {
@@ -388,7 +392,7 @@ export const planeColumnStyles = css`
     min-width: 0;
   }
 
-  @container section (min-width: 74rem) {
+  @container section (min-width: 56rem) {
     .columns {
       grid-template-columns: var(--openish-docs-column) var(--openish-examples-column);
     }

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
 import '../src/index.js'
-import { deepQuery, deepQueryAll, deepTextOf, disposeAll, mountReference, type Harness } from './helpers.js'
+import { deepQuery, deepQueryAll, deepTextOf, disposeAll, mountReference, type Harness, sectionOf } from './helpers.js'
 
 afterEach(() => {
   disposeAll()
@@ -30,7 +30,7 @@ describe('author-supplied code samples', () => {
 
   it('labels an entry by its declared language when the author gave no label', async () => {
     const options = deepQueryAll<HTMLOptionElement>(
-      (await page('/tags/accounts/listAccounts')).element.shadowRoot!,
+      sectionOf(await page('/tags/accounts/listAccounts')),
       'optgroup:first-of-type option',
     )
 
@@ -62,7 +62,7 @@ describe('author-supplied code samples', () => {
   })
 
   it('offers no author group for an operation with no samples', async () => {
-    const groups = deepQueryAll<HTMLOptGroupElement>((await page('/tags/accounts/plain')).element.shadowRoot!, 'optgroup')
+    const groups = deepQueryAll<HTMLOptGroupElement>(sectionOf(await page('/tags/accounts/plain')), 'optgroup')
 
     expect(groups.map((g) => g.label)).not.toContain("From the API's authors")
   })

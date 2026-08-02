@@ -2,7 +2,7 @@ import axeSource from 'axe-core/axe.min.js?raw'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import '../src/index.js'
-import { deepQuery, disposeAll, mountReference, openTryIt, shadowOf, type Harness, sectionOf } from './helpers.js'
+import { deepQuery, deepQueryAll, disposeAll, mountReference, openTryIt, type Harness } from './helpers.js'
 
 afterEach(() => {
   disposeAll()
@@ -92,10 +92,14 @@ describe('accessibility', () => {
     await new Promise((resolve) => setTimeout(resolve, 200))
     await harness.settle()
 
-    const operation = shadowOf(sectionOf(harness), 'openish-operation')
-    const levels = [...operation.querySelectorAll('h1, h2, h3')].map((heading) =>
-      Number(heading.tagName.slice(1)),
-    )
+    /*
+     * The whole plane, not one section: the document is one page now, so a heading sequence that is
+     * correct inside each section and wrong between them is still a broken document. The single `h1`
+     * is the overview's, and every section under it nests by how deep the document puts it.
+     */
+    const levels: number[] = [...harness.element.shadowRoot!.querySelectorAll('.section')]
+      .flatMap((section) => deepQueryAll(section, 'h1, h2, h3, h4, h5, h6'))
+      .map((heading) => Number(heading.tagName.slice(1)))
 
     /* One h1, and nothing that skips a level - two columns must not read as two documents. */
     expect(levels.filter((level) => level === 1)).toHaveLength(1)

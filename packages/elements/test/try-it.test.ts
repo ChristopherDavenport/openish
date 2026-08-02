@@ -356,7 +356,7 @@ describe('the panel itself', () => {
   })
 
   it('renders no panel for a webhook, which the reader does not call', async () => {
-    const harness = await tryIt('/webhooks/accountCreated')
+    const harness = await tryIt('/webhooks/post-accountcreated')
 
     expect(deepQuery(sectionOf(harness), 'openish-try-it')).toBeNull()
   })

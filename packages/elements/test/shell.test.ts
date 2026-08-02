@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
 import '../src/index.js'
-import { deepQuery, deepQueryAll, deepTextOf, disposeAll, mountReference, shadowOf, textOf, sectionOf } from './helpers.js'
+import { deepQuery, deepQueryAll, deepTextOf, disposeAll, mountReference, shadowOf, textOf, sectionOf, titleOf } from './helpers.js'
 
 afterEach(() => {
   disposeAll()
@@ -11,7 +11,7 @@ describe('openish-api-reference', () => {
   it('loads a document and renders the overview at the root URL', async () => {
     const { element } = await mountReference({ path: '/' })
 
-    expect(textOf(shadowOf(sectionOf(element), 'openish-overview').querySelector('h1'))).toBe('Shell API')
+    expect(titleOf(shadowOf(sectionOf(element), 'openish-overview'))).toBe('Shell API')
     expect(textOf(shadowOf(sectionOf(element), 'openish-overview').querySelector('.version'))).toBe('2.3.0')
   })
 
@@ -65,7 +65,7 @@ describe('routing', () => {
   it('renders a tag page for a tag URL', async () => {
     const { element } = await mountReference({ path: '/tags/accounts' })
 
-    expect(textOf(shadowOf(sectionOf(element), 'openish-tag-section').querySelector('h1'))).toBe('accounts')
+    expect(titleOf(shadowOf(sectionOf(element), 'openish-tag-section'))).toBe('accounts')
     expect(deepTextOf(shadowOf(sectionOf(element), 'openish-tag-section'))).toContain('Everything about accounts')
   })
 
@@ -73,7 +73,7 @@ describe('routing', () => {
     const { element } = await mountReference({ path: '/tags/accounts/listAccounts' })
     const operation = deepQuery(sectionOf(element), 'openish-operation')!
 
-    expect(textOf(operation.shadowRoot!.querySelector('h1'))).toBe('List accounts')
+    expect(titleOf(operation.shadowRoot!)).toBe('List accounts')
     /* The call itself is the title of the request card now, a column to the right of the prose. */
     expect(textOf(deepQuery(operation.shadowRoot!, '.method'))).toBe('get')
     expect(textOf(deepQuery(operation.shadowRoot!, '.path'))).toBe('/accounts')
@@ -91,7 +91,7 @@ describe('routing', () => {
     const { element } = await mountReference({ path: '/models/Account' })
     const model = deepQuery(sectionOf(element), 'openish-model')!
 
-    expect(textOf(model.shadowRoot!.querySelector('h1'))).toBe('Account')
+    expect(titleOf(model.shadowRoot!)).toBe('Account')
     expect(textOf(deepQuery(model.shadowRoot!, 'pre'))).toContain('"balance"')
   })
 
@@ -103,14 +103,14 @@ describe('routing', () => {
     await harness.clickLink('/tags/accounts/listAccounts')
 
     expect(harness.currentId()).toBe('tags/accounts/listAccounts')
-    expect(textOf(shadowOf(sectionOf(harness), 'openish-operation').querySelector('h1'))).toBe('List accounts')
+    expect(titleOf(shadowOf(sectionOf(harness), 'openish-operation'))).toBe('List accounts')
   })
 
   it('restores the previous page on back, and returns on forward', async () => {
     const harness = await mountReference({ path: '/tags/accounts' })
 
     await harness.clickLink('/tags/accounts/listAccounts')
-    expect(textOf(shadowOf(sectionOf(harness), 'openish-operation').querySelector('h1'))).toBe('List accounts')
+    expect(titleOf(shadowOf(sectionOf(harness), 'openish-operation'))).toBe('List accounts')
 
     harness.window.history.back()
     await new Promise((resolve) => setTimeout(resolve, 50))
@@ -123,7 +123,7 @@ describe('routing', () => {
     await new Promise((resolve) => setTimeout(resolve, 50))
     await harness.settle()
 
-    expect(textOf(shadowOf(sectionOf(harness), 'openish-operation').querySelector('h1'))).toBe('List accounts')
+    expect(titleOf(shadowOf(sectionOf(harness), 'openish-operation'))).toBe('List accounts')
   })
 
   it('marks the active sidebar entry and opens its ancestors', async () => {
@@ -151,33 +151,44 @@ describe('routing', () => {
      * left of the one that used to assert a nested `Routes` controller had matched a tail.
      */
     expect(deepQuery(sectionOf(element), 'openish-operation')).not.toBeNull()
-    expect(textOf(shadowOf(sectionOf(element), 'openish-operation').querySelector('h1'))).toBe('List accounts')
+    expect(titleOf(shadowOf(sectionOf(element), 'openish-operation'))).toBe('List accounts')
   })
 
-  it('renders a section index at the bare section URL, which has no tail to match', async () => {
+  it('renders a section header at the bare section URL, which has no tail to match', async () => {
     const { element } = await mountReference({ path: '/models' })
 
-    expect(textOf(shadowOf(sectionOf(element), 'openish-tag-section').querySelector('h1'))).toBe('Models')
+    expect(titleOf(shadowOf(sectionOf(element), 'openish-tag-section'))).toBe('Models')
   })
 
-  it('navigates from a section index to a page inside it', async () => {
+  /*
+   * A header, and not an index of what is under it.
+   *
+   * On its own page a section listed its children, because that was the only way to reach them.
+   * On the plane they follow it down the page, so the list would be the same links twice - and for
+   * Models it would be six hundred of them between the reader and the first model. The way in is the
+   * navigation, which is what this now uses.
+   */
+  it('leaves the way into a section to the navigation, rather than listing it twice', async () => {
     const harness = await mountReference({ path: '/models' })
+
+    expect(shadowOf(sectionOf(harness), 'openish-tag-section').querySelector('ul')).toBeNull()
+
     await harness.clickLink('/models/Account')
 
-    expect(textOf(shadowOf(sectionOf(harness), 'openish-model').querySelector('h1'))).toBe('Account')
+    expect(titleOf(shadowOf(sectionOf(harness), 'openish-model'))).toBe('Account')
     expect(harness.currentId()).toBe('models/Account')
   })
 
   it('renders the webhooks section', async () => {
     const { element } = await mountReference({ path: '/webhooks' })
 
-    expect(textOf(shadowOf(sectionOf(element), 'openish-tag-section').querySelector('h1'))).toBe('Webhooks')
+    expect(titleOf(shadowOf(sectionOf(element), 'openish-tag-section'))).toBe('Webhooks')
   })
 
   it('honours a basePath in history mode', async () => {
     const { element } = await mountReference({ path: '/docs/tags/accounts', basePath: '/docs', routing: 'history' })
 
-    expect(textOf(shadowOf(sectionOf(element), 'openish-tag-section').querySelector('h1'))).toBe('accounts')
+    expect(titleOf(shadowOf(sectionOf(element), 'openish-tag-section'))).toBe('accounts')
     expect(deepQuery(element.shadowRoot!, 'a[href="/docs/tags/accounts/listAccounts"]')).not.toBeNull()
   })
 
@@ -199,7 +210,7 @@ describe('routing="hash"', () => {
      */
     expect(harness.window.location.pathname).toBe('/')
     expect(harness.window.location.hash).toBe('#/tags/accounts/listAccounts')
-    expect(textOf(shadowOf(sectionOf(harness), 'openish-operation').querySelector('h1'))).toBe('List accounts')
+    expect(titleOf(shadowOf(sectionOf(harness), 'openish-operation'))).toBe('List accounts')
   })
 
   it('renders fragment hrefs, which the browser navigates without interception', async () => {
@@ -216,7 +227,7 @@ describe('routing="hash"', () => {
     await new Promise((resolve) => setTimeout(resolve, 50))
     await harness.settle()
 
-    expect(textOf(shadowOf(sectionOf(harness), 'openish-model').querySelector('h1'))).toBe('Account')
+    expect(titleOf(shadowOf(sectionOf(harness), 'openish-model'))).toBe('Account')
   })
 
   it('ignores basePath, which is a history-mode concern', async () => {
@@ -234,7 +245,7 @@ describe('routing="none"', () => {
       selected: 'models/Account',
     })
 
-    expect(textOf(shadowOf(sectionOf(harness), 'openish-model').querySelector('h1'))).toBe('Account')
+    expect(titleOf(shadowOf(sectionOf(harness), 'openish-model'))).toBe('Account')
   })
 
   it('follows a change to the selected property', async () => {
@@ -244,7 +255,7 @@ describe('routing="none"', () => {
     harness.element.selected = 'tags/accounts'
     await harness.settle()
 
-    expect(textOf(shadowOf(sectionOf(harness), 'openish-tag-section').querySelector('h1'))).toBe('accounts')
+    expect(titleOf(shadowOf(sectionOf(harness), 'openish-tag-section'))).toBe('accounts')
   })
 })
 

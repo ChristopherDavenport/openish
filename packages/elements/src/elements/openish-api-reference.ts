@@ -1123,6 +1123,16 @@ export class OpenishApiReference extends LitElement {
     return overviewAnchors(this.store).has(this.ui.activeId)
   }
 
+  /** Whether the URL names anything this document has. False is what the banner is about. */
+  get #urlResolves(): boolean {
+    const store = this.store
+    if (!store) {
+      return false
+    }
+    const resolved = this.#resolvedId
+    return resolved === store.source.slug || store.bySlug.has(resolved)
+  }
+
   /**
    * The whole document, as one scroller.
    *
@@ -1141,10 +1151,7 @@ export class OpenishApiReference extends LitElement {
       return loading
     }
 
-    /* The overview is a section and not a node, so `bySlug` is the wrong place to look for it. */
-    const resolved = this.#resolvedId
-    const missing =
-      this.store !== undefined && resolved !== this.store.source.slug && !this.store.bySlug.has(resolved)
+    const missing = this.store !== undefined && !this.#urlResolves
     const overviewHash = this.#atOverviewAnchor
       ? (this.ui.slugPrefix ? stripFirstSegment(this.ui.activeId) : this.ui.activeId)
       : this.ui.hash
@@ -1213,6 +1220,18 @@ export class OpenishApiReference extends LitElement {
    */
   #onSpyActive(id: string): void {
     if (typeof window === 'undefined' || id === this.ui.activeId) {
+      return
+    }
+
+    /*
+     * A URL that names nothing is left exactly as the reader typed it.
+     *
+     * There is nothing to scroll to, so the plane opens at the top and the spy - doing its job -
+     * reported the overview and rewrote the URL to it. That threw away both halves of the only
+     * useful thing this case has: the banner saying which id failed, and the id itself. A bookmark
+     * that has outlived its operation should still be able to say so after a reload.
+     */
+    if (!this.#urlResolves) {
       return
     }
 

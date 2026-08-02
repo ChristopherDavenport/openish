@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
 import '../src/index.js'
-import { deepQuery, deepQueryAll, deepTextOf, disposeAll, mountReference, openTryIt, type Harness } from './helpers.js'
+import { deepQuery, deepQueryAll, deepTextOf, disposeAll, mountReference, openTryIt, type Harness, sectionOf } from './helpers.js'
 
 afterEach(() => {
   disposeAll()
@@ -55,8 +55,8 @@ describe('the client credentials grant, in the form', () => {
   it('offers Request token rather than Authorize, because there is no round trip', async () => {
     const harness = await client('machine')
 
-    expect(deepTextOf(harness.element.shadowRoot!)).toContain('Request token')
-    expect(deepTextOf(harness.element.shadowRoot!)).not.toContain('Authorize')
+    expect(deepTextOf(sectionOf(harness))).toContain('Request token')
+    expect(deepTextOf(sectionOf(harness))).not.toContain('Authorize')
   })
 
   it('posts the grant to the declared token endpoint', async () => {

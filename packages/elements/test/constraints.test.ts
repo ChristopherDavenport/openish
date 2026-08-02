@@ -19,7 +19,7 @@ const model = async (name: string, config?: Record<string, unknown>): Promise<Ha
 }
 
 /** The rendered text of the model page, with whitespace collapsed so assertions read naturally. */
-const textOfModel = (harness: Harness) => deepTextOf(harness.element.shadowRoot!).replace(/\s+/g, ' ')
+const textOfModel = (harness: Harness) => deepTextOf(sectionOf(harness)).replace(/\s+/g, ' ')
 
 describe('schema constraints', () => {
   it('states exclusive bounds as the inequality they are', async () => {

@@ -135,9 +135,18 @@ const planeQuiet = async (element: Element, frames = 60): Promise<void> => {
     return
   }
 
+  /*
+   * Six still frames, not one or two.
+   *
+   * "Has not started yet" and "has finished" look identical from here: a reference that has just
+   * been handed a new fragment is still at the top with a scroll queued behind a resolved promise
+   * and a frame, and one still reading of `scrollTop` calls that settled. Six is longer than the gap
+   * between the scroll being asked for and the first correction landing, and short enough that a
+   * page which really is not moving costs a tenth of a second.
+   */
   let last = -1
   let still = 0
-  for (let frame = 0; frame < frames && still < 3; frame += 1) {
+  for (let frame = 0; frame < frames && still < 6; frame += 1) {
     await new Promise((resolve) => requestAnimationFrame(resolve))
     still = main.scrollTop === last ? still + 1 : 0
     last = main.scrollTop
@@ -512,6 +521,17 @@ export const schemaFor = (schema: Element | null, name: string): Element | null 
   }
   return null
 }
+
+/**
+ * The title a section rendered, whatever level the document put it at.
+ *
+ * A page used to be the page, so its title was an `h1` and a test could say so. On the plane the
+ * level says where the section sits - a tag is a level two, the operations under it are level
+ * threes - and a test asserting *which page rendered* has no business also asserting how deep in
+ * the document it is. The tests that are about heading structure say `h1` and mean it.
+ */
+export const titleOf = (root: Element | ShadowRoot | null): string =>
+  textOf(root?.querySelector('h1, h2, h3, h4, h5, h6') ?? null)
 
 export const textOf = (element: Element | ShadowRoot | null): string =>
   (element?.textContent ?? '').replace(/\s+/g, ' ').trim()

@@ -4,7 +4,6 @@ import '../src/index.js'
 import { COMPOSITION_SPEC, CYCLIC_SPEC, SCALAR_REGRESSIONS_SPEC } from './fixtures.js'
 import {
   deepQuery,
-  deepQueryAll,
   deepTextOf,
   disposeAll,
   mountReference,
@@ -13,6 +12,7 @@ import {
   shadowOf,
   textOf,
   sectionOf,
+  titleOf,
   type Harness,
 } from './helpers.js'
 
@@ -226,7 +226,7 @@ describe('the model page', () => {
     const example = deepQuery(model, 'openish-code-block')!
     expect(example.shadowRoot!.querySelector('.hljs-attr')).not.toBeNull()
     expect(deepQuery(example.shadowRoot!, 'button[part="copy"]')).not.toBeNull()
-    expect(deepQueryAll(model, 'h1').map((heading) => textOf(heading))).toEqual(['Node'])
+    expect(titleOf(model)).toBe('Node')
   })
 
   it('renders the tree for a document’s own models', async () => {

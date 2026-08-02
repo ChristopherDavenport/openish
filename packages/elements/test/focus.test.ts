@@ -53,7 +53,15 @@ const hasRing = (harness: Harness, element: Element): boolean => {
 }
 
 /** One stop on the way through: the element, and whether it was drawing a ring while it was on it. */
-type Stop = { element: HTMLElement; ringed: boolean }
+/**
+  * A stop, measured while it is the stop.
+  *
+  * The ring only exists while the element has focus, which is why `ringed` was always recorded here
+  * rather than read afterwards - and on a plane the box has the same property for a different
+  * reason: tabbing scrolls, scrolling moves the rendered window, and an element the virtualiser has
+  * since recycled measures zero by zero. Both are facts about a moment, so both are taken in it.
+  */
+type Stop = { element: HTMLElement; ringed: boolean; box: DOMRect }
 
 /**
  * Tabs through the frame, reporting every stop.
@@ -84,7 +92,7 @@ const tabThrough = async (harness: Harness, limit: number): Promise<Stop[]> => {
     if (stops.some((stop) => stop.element === active)) {
       break
     }
-    stops.push({ element: active, ringed: hasRing(harness, active) })
+    stops.push({ element: active, ringed: hasRing(harness, active), box: active.getBoundingClientRect() })
   }
 
   body.removeAttribute('tabindex')
@@ -311,13 +319,11 @@ describe('the six control states', () => {
       .filter((element) => ['BUTTON', 'SELECT'].includes(element.tagName))
     expect(controls.length).toBeGreaterThan(0)
 
-    const small = controls
-      .filter((control) => {
-        const box = control.getBoundingClientRect()
-        /* 24px, the floor `--openish-target-min` names, less a pixel for subpixel rounding. */
-        return box.height < 23 || box.width < 23
-      })
-      .map(describeElement)
+    const small = stops
+      .filter((stop) => ['BUTTON', 'SELECT'].includes(stop.element.tagName))
+      /* 24px, the floor `--openish-target-min` names, less a pixel for subpixel rounding. */
+      .filter((stop) => stop.box.height < 23 || stop.box.width < 23)
+      .map((stop) => describeElement(stop.element))
 
     expect(small).toEqual([])
   })

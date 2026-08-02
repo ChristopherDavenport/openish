@@ -53,7 +53,13 @@ describe('CSS parts', () => {
   it('exposes the operation header', async () => {
     const harness = await at('/tags/accounts/listAccounts', { hideTryIt: true })
 
-    expect(styleReaches(harness, 'openish-api-reference::part(operation-header)', '.title-row')).toBe(true)
+    /*
+     * Probed by the part, not by the class. Every section has a title row now, and the first one on
+     * the plane belongs to the overview - which does not carry this part and never should.
+     */
+    expect(
+      styleReaches(harness, 'openish-api-reference::part(operation-header)', '[part~="operation-header"]'),
+    ).toBe(true)
   })
 
   it('exposes a code block through the whole nesting chain', async () => {

@@ -20,9 +20,16 @@ const SETTLE_MS = 1000
 /** How many frames to wait for the virtualiser to exist before giving up on a scroll. */
 const REACH_TRIES = 20
 
-/** How many frames the convergence loop is allowed, and how many quiet ones end it. */
-const CONVERGE_FRAMES = 45
-const STABLE_FRAMES = 3
+/**
+ * How many frames the convergence loop is allowed, and how many quiet ones end it.
+ *
+ * Eight quiet frames rather than three, because a section is not finished when it stops moving the
+ * first time: its prose and its highlighting arrive on their own schedule, and each of them changes
+ * a height somewhere above the target. Three was enough to catch the walk and not the settling, and
+ * the reference ended up one operation past the one it was asked for.
+ */
+const CONVERGE_FRAMES = 90
+const STABLE_FRAMES = 8
 
 export type SectionsOptions = {
   /** The reader is at this section. Never called for a section a programmatic scroll passed over. */
@@ -63,6 +70,7 @@ export class SectionsController implements ReactiveController {
   /** The section the reader is on their way to, kept so a rebuilt plane can be told again. */
   #target: string | undefined
   #reattached: VirtualizerHostElement | undefined
+  #frame: number | undefined
   #settle: ReturnType<typeof setTimeout> | undefined
   #quiet: ReturnType<typeof setTimeout> | undefined
   #reported: string | undefined
@@ -76,6 +84,23 @@ export class SectionsController implements ReactiveController {
   hostDisconnected(): void {
     clearTimeout(this.#settle)
     clearTimeout(this.#quiet)
+    this.#stopFrames()
+  }
+
+  /**
+   * Stop asking for frames.
+   *
+   * The convergence loop schedules itself, and a host that goes away mid-scroll leaves it running
+   * against a detached document for the rest of its budget - forty-five frames of nothing, taken
+   * from whatever is on screen now. In a browser that is a leak nobody sees; in a test run, where
+   * several references are mounted and disposed in a second, it is the previous test stealing the
+   * frames the next one is waiting on.
+   */
+  #stopFrames(): void {
+    if (this.#frame !== undefined && typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(this.#frame)
+    }
+    this.#frame = undefined
   }
 
   /** The section list, handed over on each update so nothing here reads the store. */
@@ -161,6 +186,9 @@ export class SectionsController implements ReactiveController {
       return
     }
 
+    /* One scroll at a time: a second target makes the first one's corrections wrong, not late. */
+    this.#stopFrames()
+
     this.#target = id
     this.#programmatic = id
     clearTimeout(this.#settle)
@@ -185,24 +213,54 @@ export class SectionsController implements ReactiveController {
   #reach(index: number, tries: number): void {
     const virtualizer = this.#plane?.[virtualizerRef]
     if (!virtualizer) {
-      if (tries < REACH_TRIES && typeof requestAnimationFrame === 'function') {
-        requestAnimationFrame(() => this.#reach(index, tries + 1))
+      if (tries < REACH_TRIES && typeof requestAnimationFrame === 'function' && this.#alive) {
+        this.#frame = requestAnimationFrame(() => this.#reach(index, tries + 1))
       }
       return
     }
 
     /*
+     * Straight at it, rather than behind `layoutComplete`.
+     *
+     * That promise only resolves when a reflow is *pending*, so waiting on it worked for a deep link
+     * - where the plane is still being built - and hung forever for a reader who edited the fragment
+     * of a page that had already settled. The scroll was queued behind a promise nothing would ever
+     * settle, and the reference sat where it was with the right URL and no error.
+     *
+     * The layout is initialised asynchronously, so the first attempt can land before there is one to
+     * pin: that throws, and `#reach` tries again next frame. Every attempt after the first is a real
+     * one, and the convergence loop is what makes it accurate either way.
+     *
      * Never `smooth` across sections. A smooth scroll through several hundred of them drags the
      * rendered window across the whole document on the way, mounting everything it passes - and it
-     * is also the one behaviour for which the virtualiser does *not* pin, so the jump would be made
-     * from estimates with nothing correcting it afterwards.
+     * is also the one behaviour for which the virtualiser does *not* pin.
+     */
+    /*
+     * The jump waits for the layout; the correction does not.
+     *
+     * `element(index).scrollIntoView()` hands the layout a pin, and a pin is only worth setting once
+     * the layout has measured enough to place it - which is what `layoutComplete` says. But that
+     * promise only resolves when a reflow is *pending*: on a plane that has already settled, a reader
+     * who edits the fragment would wait behind it forever, and the reference would sit where it was
+     * with the right URL and no error anywhere.
+     *
+     * So the convergence loop starts immediately and independently. It can reach any section on its
+     * own - a viewport at a time towards it, then a direct correction once it is rendered - and the
+     * pin, when it fires, is an optimisation that gets it most of the way there in one go.
+     *
+     * Never `smooth` across sections. A smooth scroll through several hundred of them drags the
+     * rendered window across the whole document on the way, mounting everything it passes - and it
+     * is also the one behaviour for which the virtualiser does *not* pin.
      */
     void virtualizer.layoutComplete
       .then(() => {
-        virtualizer.element(index)?.scrollIntoView({ block: 'start' })
-        this.#converge(index, 0, 0)
+        if (this.#alive && this.#target !== undefined && sectionIndex(this.#sections).get(this.#target) === index) {
+          virtualizer.element(index)?.scrollIntoView({ block: 'start' })
+        }
       })
       .catch(() => undefined)
+
+    this.#converge(index, 0, 0)
   }
 
   /**
@@ -228,12 +286,17 @@ export class SectionsController implements ReactiveController {
    * document whose prose keeps arriving could otherwise be chased for the life of the page.
    */
   #converge(index: number, tries: number, stable: number): void {
-    if (tries >= CONVERGE_FRAMES || stable >= STABLE_FRAMES || typeof requestAnimationFrame !== 'function') {
+    if (
+      tries >= CONVERGE_FRAMES ||
+      stable >= STABLE_FRAMES ||
+      typeof requestAnimationFrame !== 'function' ||
+      !this.#alive
+    ) {
       this.#arrived()
       return
     }
 
-    requestAnimationFrame(() => {
+    this.#frame = requestAnimationFrame(() => {
       const plane = this.#plane
       const scroller = this.#scroller
       const id = this.#target
@@ -283,8 +346,14 @@ export class SectionsController implements ReactiveController {
     })
   }
 
+  /** Whether there is still a plane in a document worth scrolling. */
+  get #alive(): boolean {
+    return this.#plane?.isConnected === true
+  }
+
   /** The scroll is over: what the plane says about itself can be believed again. */
   #arrived(): void {
+    this.#frame = undefined
     clearTimeout(this.#settle)
     this.#reported = this.#target
     this.#programmatic = undefined

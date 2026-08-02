@@ -21,7 +21,7 @@ afterEach(() => {
 /** `page` is the element's shadow root, which is what `shadowOf` hands back. */
 const pageAt = async (path: string, tag: string): Promise<{ harness: Harness; page: ShadowRoot }> => {
   const harness = await mountReference({ path, spec: DOCUMENT_INFO_SPEC })
-  return { harness, page: shadowOf(harness.element.shadowRoot!, tag) }
+  return { harness, page: shadowOf(sectionOf(harness), tag) }
 }
 
 /** Every external-documentation link on a page, as `[text, href]`. */
