@@ -34,9 +34,14 @@ numbers. Read this file for how the code is meant to be written and what has alr
 | M18 the section index | Done — every section with a body uses both columns, and every header carries an index of what is inside it: operations, the events that declare its tag, the models that carry `x-tags` |
 | M19 the descriptive column | Done — the introduction in two columns, `x-openish-aside` and section-level `x-codeSamples`, an `overview-aside` slot for the host, and a scroll correction that survives a page nobody is painting |
 
-`npm run verify` runs guards → typecheck → tests. 638 tests today across three projects: `core` and
-`client` in Node, `elements` in real Chromium via Playwright (`npx playwright install chromium`
-once). A `.browser.test.ts` suffix inside `packages/client/test` puts a file in the Chromium project
+`npm run verify` runs guards → typecheck → tests. Four guards: no Vue in the graph, no committed specs
+outside the fixtures directory, no `outline: none`, and `lit-analyzer` over every template - the last
+because `tsc` sees an `html` template as a string, so everything inside one was checked by nothing.
+707 tests today across four projects: `core`, `client` and `elements-pure` in Node, `elements` in real
+Chromium via Playwright (`npx playwright install chromium` once). `elements-pure` is
+`packages/elements/test/pure/`, and the split is enforcement rather than speed - the URL and id maths,
+the plane's scroll target, the convergence arithmetic and the OAuth flow precedence rules are pure
+functions, and running them in Node is what keeps them that way. A `.browser.test.ts` suffix inside `packages/client/test` puts a file in the Chromium project
 instead - that is where the two OAuth transports are tested, and the suffix is what keeps the rest of
 that package honest about having no DOM. `npm run build` also regenerates `custom-elements.json` and
 the element reference in `packages/elements/README.md`.

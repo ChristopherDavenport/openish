@@ -3,6 +3,7 @@ import '@lit-labs/virtualizer'
 import type { LitVirtualizer } from '@lit-labs/virtualizer/LitVirtualizer.js'
 import { LitElement, html, css, nothing, type TemplateResult } from 'lit'
 import { customElement, state } from 'lit/decorators.js'
+import { ifDefined } from 'lit/directives/if-defined.js'
 import type { DocumentStore } from '@openish/core'
 
 import {
@@ -321,6 +322,42 @@ export class OpenishSidebar extends LitElement {
   }
 
   /**
+   * One row of the tree.
+   *
+   * `unknown` in and cast at the boundary, because `lit-virtualizer` is registered in
+   * `HTMLElementTagNameMap` with its default item type and a `keyFunction` for `NavRow` is therefore
+   * not assignable to the `KeyFn<unknown>` the tag map declares. The plane does the same thing with
+   * `virtualize` for the same reason; the cast is the one place per callback where the type the
+   * element was actually given is stated.
+   *
+   * `aria-expanded` is `ifDefined` rather than a ternary ending in `nothing`: on a `treeitem` with
+   * no children the attribute must be *absent*, because present-and-false announces a leaf as a
+   * collapsed branch. The directive says "omit when undefined", which is the thing being asked for,
+   * and `nothing` says it in a way a checker cannot read.
+   */
+  #renderRow(row: NavRow, index: number, focused: number): TemplateResult {
+    return html`
+      <div
+        id=${`row-${index}`}
+        role="treeitem"
+        ?data-current=${index === focused}
+        aria-level=${row.level}
+        aria-posinset=${row.position}
+        aria-setsize=${row.setSize}
+        aria-selected=${row.node.id === this.ui?.activeId}
+        aria-expanded=${ifDefined(row.hasChildren ? (row.expanded ? 'true' : 'false') : undefined)}
+      >
+        <openish-sidebar-item
+          .node=${row.node}
+          .level=${row.level}
+          ?has-children=${row.hasChildren}
+          .expanded=${row.expanded}
+        ></openish-sidebar-item>
+      </div>
+    `
+  }
+
+  /**
    * The document picker, above search, when there is more than one document.
    *
    * Rendered before the two early returns below on purpose: a document that failed to load, or that
@@ -360,26 +397,8 @@ export class OpenishSidebar extends LitElement {
           @keydown=${this.#onKeydown}
           @focus=${this.#onFocus}
           .items=${rows}
-          .keyFunction=${(row: NavRow) => row.node.id}
-          .renderItem=${(row: NavRow, index: number) => html`
-            <div
-              id=${`row-${index}`}
-              role="treeitem"
-              ?data-current=${index === focused}
-              aria-level=${row.level}
-              aria-posinset=${row.position}
-              aria-setsize=${row.setSize}
-              aria-selected=${row.node.id === this.ui?.activeId}
-              aria-expanded=${row.hasChildren ? String(row.expanded) : nothing}
-            >
-              <openish-sidebar-item
-                .node=${row.node}
-                .level=${row.level}
-                ?has-children=${row.hasChildren}
-                .expanded=${row.expanded}
-              ></openish-sidebar-item>
-            </div>
-          `}
+          .keyFunction=${(row: unknown) => (row as NavRow).node.id}
+          .renderItem=${(row: unknown, index: number) => this.#renderRow(row as NavRow, index, focused)}
         ></lit-virtualizer>
       </nav>
     `

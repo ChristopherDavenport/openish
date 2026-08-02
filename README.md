@@ -258,6 +258,12 @@ type error rather than a comment asking nicely.
 reads `args()` from `hostUpdate` and the element derives from the same values in `willUpdate` - a snapshot
 taken in either place is read by the other one update late. The element calls `requestUpdate()` nowhere.
 
+**The templates are checked too.** `tsc` sees an `html` tagged template as a string and stops there, so
+the tag names, the attributes and the types either side of a binding were unchecked by anything here.
+`npm run guard:templates` is `lit-analyzer` over every package's source, with every rule it has turned up
+to fatal except three the tool is currently wrong about — the reasons are in `scripts/guard-templates.mjs`,
+and each is worth re-checking when it releases.
+
 **Declarative components.** Every element describes its shadow tree from the state it holds and does
 nothing else on the side: no `addEventListener` calls, no `querySelector` after rendering, and no
 reads of `window.location` while rendering. External state arrives as a reactive input through a

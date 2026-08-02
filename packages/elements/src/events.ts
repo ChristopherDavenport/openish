@@ -86,5 +86,23 @@ declare global {
     'openish-server-change': OpenishEvent<'openish-server-change'>
     'openish-source-change': OpenishEvent<'openish-source-change'>
     'openish-auth-change': OpenishEvent<'openish-auth-change'>
+    'openish-sidebar-toggle': OpenishEvent<'openish-sidebar-toggle'>
+    'openish-loaded': OpenishEvent<'openish-loaded'>
   }
 }
+
+/**
+ * Every event above is declared globally, and this is what says so.
+ *
+ * The two lists had already drifted: `openish-sidebar-toggle` and `openish-loaded` were in the map
+ * that types `dispatch` and missing from the one that types `addEventListener` - so a host following
+ * the README and listening for `openish-loaded` got an untyped `Event`, and a template binding
+ * `@openish-sidebar-toggle` was checked against nothing.
+ *
+ * A type rather than a test, because it costs a compile and nothing else: the alias resolves only
+ * when the exclusion is empty, so adding an event to `OpenishEventMap` and forgetting the global
+ * declaration fails `npm run typecheck` on this line, naming the event that was left out.
+ */
+export type AllEventsDeclared<
+  Missing extends never = Exclude<keyof OpenishEventMap, keyof HTMLElementEventMap>,
+> = Missing
