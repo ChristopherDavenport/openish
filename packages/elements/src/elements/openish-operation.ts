@@ -71,33 +71,31 @@ export class OpenishOperation extends LitElement {
        * the space between sections.
        */
       .docs > :first-child,
-      .examples .pinned > :first-child {
+      .examples > :first-child {
         margin-top: 0;
       }
 
+      /*
+       * The examples column does not stick, and cannot.
+       *
+       * It used to: the sample stayed beside whichever part of a long schema the reader had scrolled
+       * to. On the plane the virtualiser positions each section absolutely and moves it with a
+       * transform, and sticky is resolved from *layout* position while the scroll offset is real -
+       * so with the scroller seven thousand pixels down and the section's layout position at zero,
+       * the browser concluded the element was far above the scrollport and clamped it to the bottom
+       * of its containing block. The sample appeared seventeen hundred pixels below the title it
+       * belonged to, which is worse than not sticking at all.
+       *
+       * This was spiked before the plane was built and the spike passed, because it scrolled three
+       * hundred pixels and the divergence is proportional to the offset. The test that replaced it
+       * says so.
+       *
+       * The loss is smaller than it sounds: a section is bounded now rather than being the whole
+       * page, so the sample is beside its own documentation for the length of one operation.
+       */
       @container section (min-width: 56rem) {
-        /*
-         * Sticky inside the page's own scroller, so the sample stays beside whichever part of a long
-         * schema the reader has scrolled to. The main element is what scrolls - see the height chain
-         * the README insists on - and a host that breaks that chain gets a column that scrolls with
-         * the page instead, which is what it did before this existed.
-         *
-         * Two elements, because a sticky item is bounded by its own containing block and a grid item
-         * under a start alignment is only as tall as its contents. Sticking the column itself
-         * therefore pinned it to the bottom of a box the height of the sample - it started level with
-         * the title, then hung four hundred pixels down as soon as anything scrolled. The column
-         * stretches to the row and the thing inside it does the sticking.
-         */
         .examples {
           grid-column: 2;
-          align-self: stretch;
-        }
-
-        .examples > .pinned {
-          position: sticky;
-          top: 0;
-          max-height: 100vh;
-          overflow-y: auto;
         }
       }
 
@@ -432,7 +430,6 @@ export class OpenishOperation extends LitElement {
         </div>
 
         <div class="examples" part="operation-examples">
-          <div class="pinned">
           ${this.#renderSecurity(operation)}
           ${node.type === 'operation'
             ? html`
@@ -461,7 +458,6 @@ export class OpenishOperation extends LitElement {
                 </section>
               `
             : nothing}
-          </div>
         </div>
       </div>
     `

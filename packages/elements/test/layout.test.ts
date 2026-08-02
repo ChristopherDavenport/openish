@@ -158,9 +158,7 @@ describe('the examples column', () => {
     const examples = operation.querySelector('[part~="operation-examples"]')!
     /* The title lives at the top of the documentation column now, which is most of what these assert. */
     const title = operation.querySelector('[part~="operation-header"]')!
-    /* The column stretches to the row; the thing inside it is what sticks. */
-    const pinned = operation.querySelector('.examples .pinned')!
-    return { title, docs, examples, pinned }
+    return { title, docs, examples }
   }
 
   const widen = async (harness: Harness, width: string): Promise<void> => {
@@ -172,11 +170,10 @@ describe('the examples column', () => {
   it('sits beside the documentation when the page is wide enough', async () => {
     const harness = await mountReference({ path: '/tags/accounts/getAccount' })
     await widen(harness, '1600px')
-    const { title, docs, examples, pinned } = panesOf(harness)
+    const { title, docs, examples } = panesOf(harness)
 
     /* Side by side: the examples pane starts to the right of where the docs pane starts. */
     expect(examples.getBoundingClientRect().left).toBeGreaterThan(docs.getBoundingClientRect().left)
-    expect(harness.frame.contentWindow!.getComputedStyle(pinned).position).toBe('sticky')
 
     /*
      * The example starts level with the title, because the title is the top of the documentation
@@ -199,7 +196,6 @@ describe('the examples column', () => {
      */
     expect(Math.round(examples.getBoundingClientRect().left)).toBe(Math.round(docs.getBoundingClientRect().left))
     expect(docs.getBoundingClientRect().bottom).toBeLessThanOrEqual(examples.getBoundingClientRect().top + 1)
-    expect(harness.frame.contentWindow!.getComputedStyle(panesOf(harness).pinned).position).toBe('static')
   })
 
   it('follows the window across the threshold, both ways', async () => {

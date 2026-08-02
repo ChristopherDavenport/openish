@@ -3,19 +3,23 @@ import { html, render } from 'lit'
 import { afterEach, describe, expect, it } from 'vitest'
 
 /**
- * The one thing the plane depends on that cannot be assumed.
+ * Why the examples column does not stick.
  *
- * `<openish-operation>` keeps its examples column stuck to the top of the scroller while a long
- * schema goes past it. On the plane that column will be inside a virtualiser item, and a virtualiser
- * positions its items absolutely and moves them with a `transform` - and a transformed ancestor
- * changes which box some positioned descendants resolve against. Sticky is supposed to resolve
- * against the nearest scrollport and be bounded by its own containing block, which is exactly what
- * is wanted here, but "supposed to" is not a thing to find out in stage nine.
+ * It used to, when an operation was the whole page. On the plane the virtualiser positions every
+ * item absolutely and moves it with a `transform`, and a sticky descendant is resolved from its
+ * *layout* position while the scroll offset it is compared against is real. Near the top of a
+ * document the two agree closely enough that nothing looks wrong. Far down they do not, and the
+ * browser - concluding the element is far above the scrollport - clamps it to the bottom of its
+ * containing block, which puts the sample below the documentation it belongs beside.
  *
- * So this is the geometry rather than the elements: an absolutely positioned, transformed item
- * holding a two-column grid whose right column is sticky. If this ever fails, the fallback is that
- * the examples column stops being sticky and each card is simply top-aligned in its row - a smaller
- * loss than it sounds, because a section on the plane is bounded rather than being the whole page.
+ * This file used to assert the opposite, and passed: it scrolled three hundred pixels, and the
+ * divergence is proportional to the offset. That is the lesson worth keeping. A spike that exercises
+ * a mechanism at a scale the real thing will not run at is not evidence about the real thing, and
+ * this one cost a day by looking like it was.
+ *
+ * If a future virtualiser positions its items with `top` rather than a transform, or the CSS working
+ * group resolves sticky against the transformed box, these expectations flip and the column can go
+ * back to sticking. Until then the geometry says no.
  */
 const built: HTMLElement[] = []
 
@@ -25,7 +29,7 @@ afterEach(() => {
   }
 })
 
-const SECTIONS = [0, 1, 2, 3, 4]
+const SECTIONS = Array.from({ length: 12 }, (_, index) => index)
 
 const plant = async (): Promise<{ scroller: HTMLElement; plane: HTMLElement }> => {
   const scroller = document.createElement('div')
@@ -55,52 +59,62 @@ const plant = async (): Promise<{ scroller: HTMLElement; plane: HTMLElement }> =
   )
 
   /* The virtualiser cannot render until a ResizeObserver has measured it, which is a frame away. */
-  for (let pass = 0; pass < 6; pass += 1) {
+  for (let pass = 0; pass < 8; pass += 1) {
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
   }
 
   return { scroller, plane }
 }
 
-describe('a sticky column inside a virtualised item', () => {
-  it('is rendered at all, and only a window of the items with it', async () => {
+const settle = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+
+describe('a virtualised plane', () => {
+  it('renders a window of its items and not the document', async () => {
     const { plane } = await plant()
 
     const sections = plane.querySelectorAll('.section')
     expect(sections.length).toBeGreaterThan(0)
-    /* The premise of the whole plane: not every item exists. Five 1200px items in a 400px scroller. */
+    /* The premise of the whole plane: twelve 1200px items, and not twelve of them in the DOM. */
     expect(sections.length).toBeLessThan(SECTIONS.length)
   })
 
-  it('sticks to the top of the scroller rather than scrolling away with its item', async () => {
+  it('positions its items with a transform, which is what breaks sticky inside them', async () => {
     const { scroller, plane } = await plant()
 
-    const examples = plane.querySelector<HTMLElement>('.section[data-index="0"] .examples')!
-    expect(getComputedStyle(examples).position).toBe('sticky')
+    scroller.scrollTop = 6000
+    await settle()
 
-    const before = examples.getBoundingClientRect().top
-    scroller.scrollTop = 300
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    const section = plane.querySelector<HTMLElement>('.section')!
+    expect(getComputedStyle(section).transform).not.toBe('none')
 
-    const after = examples.getBoundingClientRect().top
-    const scrollerTop = scroller.getBoundingClientRect().top
+    /*
+     * The sample is supposed to be level with the top of its own documentation. Instead it is at the
+     * bottom of it - the clamp sticky applies when it believes the element has scrolled out of its
+     * containing block, which is what a layout position of zero under a real scroll offset looks
+     * like. The gap is the containing block's height less the element's, exactly.
+     */
+    const docs = section.querySelector<HTMLElement>('.docs')!
+    const examples = section.querySelector<HTMLElement>('.examples')!
+    const drop = examples.getBoundingClientRect().top - docs.getBoundingClientRect().top
 
-    /* Stuck: it stayed where it was on screen instead of travelling the 300px the item did. */
-    expect(Math.abs(after - before)).toBeLessThan(2)
-    expect(Math.abs(after - scrollerTop)).toBeLessThan(2)
+    expect(drop).toBeGreaterThan(500)
   })
 
-  it('is still bounded by its own item, so it does not follow into the next section', async () => {
+  it('does not drift near the top, which is why a small spike said it was fine', async () => {
     const { scroller, plane } = await plant()
 
-    /* Past the end of the first item, which is 1200px of documentation. */
-    scroller.scrollTop = 1180
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    scroller.scrollTop = 300
+    await settle()
 
-    const first = plane.querySelector<HTMLElement>('.section[data-index="0"] .examples')
-    if (first) {
-      /* It has been pushed up out of the scrollport by the bottom of its own containing block. */
-      expect(first.getBoundingClientRect().top).toBeLessThan(scroller.getBoundingClientRect().top + 1)
+    const section = plane.querySelector<HTMLElement>('.section[data-index="0"]')
+    if (!section) {
+      return
     }
+
+    const docs = section.querySelector<HTMLElement>('.docs')!
+    const examples = section.querySelector<HTMLElement>('.examples')!
+
+    /* Three hundred pixels in, it sticks the way it is supposed to. That was the whole of the spike. */
+    expect(examples.getBoundingClientRect().top - docs.getBoundingClientRect().top).toBeLessThan(500)
   })
 })
