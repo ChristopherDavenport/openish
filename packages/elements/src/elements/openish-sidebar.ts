@@ -261,6 +261,37 @@ export class OpenishSidebar extends LitElement {
     this.#virtualizer?.element(index)?.scrollIntoView({ block: 'nearest' })
   }
 
+  /**
+   * Keep the row for the page the reader is on in view.
+   *
+   * It never had to before: a navigation was a click on a row that was on screen by definition, or a
+   * page load, where the tree started at the top and the reader could look. Neither is true now. The
+   * reader scrolls the document and the active row moves down the tree on its own - past the bottom
+   * of a virtualised list of six hundred, where nothing would ever bring it back.
+   *
+   * `block: 'nearest'` so a row already in view is left exactly where it is: a list that recentred
+   * itself on every section the reader scrolled past would be worse than one that never moved.
+   *
+   * The keyboard cursor is deliberately not touched. Where the arrows are and which page is open are
+   * two different facts - the sidebar has drawn them differently since M16 - and following one with
+   * the other would move a reader's place in the list because the page moved under them.
+   */
+  protected override updated(): void {
+    const active = this.ui?.activeId ?? ''
+    if (active === this.#followed) {
+      return
+    }
+    this.#followed = active
+
+    const index = this.#rows.findIndex((row) => row.node.id === active)
+    if (index >= 0) {
+      this.#virtualizer?.element(index)?.scrollIntoView({ block: 'nearest' })
+    }
+  }
+
+  /** The row already brought into view, so arriving at the same page twice moves nothing. */
+  #followed: string | undefined
+
   get #virtualizer(): LitVirtualizer<NavRow> | null {
     /*
      * `querySelector` resolves `lit-virtualizer` through `HTMLElementTagNameMap`, where the element

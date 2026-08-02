@@ -30,8 +30,9 @@ numbers. Read this file for how the code is meant to be written and what has alr
 | M14 one layout | Done — `classic` removed, `layout` gone from the config and the element, samples in a column of their own on a wide page |
 | M15 schema edges | Done — `contentMediaType`/`contentEncoding`, `dependentRequired`/`dependentSchemas`, `if`/`then`/`else`, and `$dynamicRef`/`$dynamicAnchor` in both the tree and the example |
 | M16 design system | Done — one focus ring instead of sixteen, the six control states, semantic borders, selection as an edge, forced colors |
+| M17 the continuous plane | Done — the whole document as one virtualised scroller, the URL following the reader, three columns every section shares, Copy for LLM |
 
-`npm run verify` runs guards → typecheck → tests. 559 tests today across three projects: `core` and
+`npm run verify` runs guards → typecheck → tests. 598 tests today across three projects: `core` and
 `client` in Node, `elements` in real Chromium via Playwright (`npx playwright install chromium`
 once). A `.browser.test.ts` suffix inside `packages/client/test` puts a file in the Chromium project
 instead - that is where the two OAuth transports are tested, and the suffix is what keeps the rest of
@@ -42,7 +43,14 @@ the element reference in `packages/elements/README.md`.
 DPoP and PAR, which the Banno description mentions and no grant here implements. Both are big enough
 to be their own milestone rather than a loose end. The obvious follow-on to M12 is `aggregate:
 'merge'` — every document in one tree instead of one at a time — which namespaced ids have already
-paid for.
+paid for, and which the plane makes more interesting: one scroller over several documents is the
+same machinery with a longer section list.
+
+M17 left two things open on purpose. The examples column no longer sticks, because sticky cannot be
+made to work inside a transformed virtualiser item — recovering it means either a virtualiser that
+positions with `top`, or drawing the pinning by hand. And the per-operation slots are scoped to the
+active section, which is the least bad reading of a surface that assumed one operation on the page; a
+render hook would be the honest replacement.
 
 ---
 
@@ -696,6 +704,94 @@ selections and reads the pressed rule. `forced-colors.test.ts` drives Chromium i
 for the borders that carry meaning — the ring was a translucent shadow before, which is the one form of
 it that cannot be checked by eye.
 
+## M17 — the continuous plane (done)
+
+The reference rendered one node at a time, so every navigation destroyed the page and built another.
+Scalar and Stripe render the whole document as one scroller and let the reader move through it. This
+is that, plus the geometry that only makes sense once it is true.
+
+`<openish-api-reference>` renders every section of the active document through `@lit-labs/virtualizer`
+- which was already a dependency, carrying the sidebar. Column geometry moved out of
+`<openish-operation>` into `planeColumnStyles`, imported by all four page elements, so the tracks land
+in the same place on every section instead of the layout changing under the reader as they navigate.
+
+### Four things that cost real time
+
+**The virtualiser cached the wrong scroller.** It works out which ancestor clips it once, in
+`connected()`, and the `virtualize` directive connects while the template is still committing - when
+the plane has no ancestors to walk. It found none, fell back to scrolling the document, and every
+deep link rendered the right section while leaving the reader at the top of the page, with no error
+anywhere. `SectionsController.hostUpdated` reconnects it once the element is in the tree.
+
+**Scrolling follows the *resolved* target, not the active id.** A deep link asks for its section
+before the document has arrived, so the id in the URL is final several updates before it resolves to
+anything - and watching the id alone meant the one update that could have scrolled was the one where
+nothing had changed.
+
+**`layoutComplete` only resolves when a reflow is pending.** Waiting on it worked for a deep link and
+hung forever for a reader editing the fragment of a settled page. The jump still waits for it, because
+a pin is only worth setting once the layout can place it; the convergence loop starts immediately and
+independently and can reach any section on its own, which makes the pin an optimisation rather than
+the mechanism.
+
+**The mute lasts until the scroll stops, not until the target is first seen.** Those are different
+moments - the sections passed over on the way each announce themselves - so lifting on the first match
+let a later one through and the URL named the section above the one that was asked for.
+
+### The convergence loop, and why the pin is not enough
+
+`element(index).scrollIntoView()` hands the layout a pin, which re-anchors until the target stops
+moving. Any scroll unpins it, and the first correction *is* a scroll. Worse, an estimate built from a
+handful of tall operations guesses a section two thirds down to be past the end, so the scroll clamps
+at the bottom and the layout settles with an empty range waiting for an event that will never come.
+
+So the loop measures off the DOM. When the target is rendered it closes the gap directly; when it is
+not, it walks a viewport at a time in the direction the *rendered* ids say the target lies - never by
+asking the same estimate again. It ends on eight quiet frames, because a section is not finished when
+it stops moving the first time: its prose and highlighting arrive on their own schedule.
+
+### Sticky is not available inside a virtualised item
+
+The examples column used to stay beside a long schema. It cannot now: the virtualiser moves each
+section with a transform, and sticky is resolved from layout position against a real scroll offset,
+so far down the document the browser clamps the element to the bottom of its containing block - the
+sample seventeen hundred pixels below its own title.
+
+This was spiked *before* the plane was built and the spike passed. It scrolled three hundred pixels,
+and the divergence is proportional to the offset. **A spike that exercises a mechanism at a scale the
+real thing will not run at is not evidence about the real thing.** The test asserts both ends now.
+
+### Three tests were passing for the wrong reason
+
+The plane exposed them rather than breaking them. `showOperationId` was measured from a tag's index
+page, which has no operation on it, so the half asserting an absence could not fail - it governs the
+navigation. A webhook test named an id the document does not mint and matched its own title in the
+sidebar. The target-size test measured boxes *after* tabbing had scrolled the elements out of the
+rendered range, so it was reading zeros; it measures at each stop now, which is the rule the focus
+ring in the same file has always followed.
+
+### Measured
+
+The reference document, 899 KB, 221 operations, 20 tags, 611 models, 853 navigation nodes, headless
+Chromium at 1680x1000, served through `/@fs/`:
+
+| | M14 | M17 |
+|---|---|---|
+| First render | 320 ms | **388-409 ms** (warm; ~110 ms of it is the document arriving to the first section painted) |
+| Navigate to a tag | 18 ms | **45 ms** |
+| Navigate to Models, at the far end | 26 ms | **98 ms** |
+| Deep link to Models, ten runs | n/a | **0 px from the top, ten out of ten** |
+| Sections in the DOM at rest | 1 page | **1-5 of 853** |
+| Sidebar elements | 21 | **21** |
+| Memory after scrolling the entire document | n/a | **40 MB** |
+| Console errors | none | none |
+
+First render is about 70 ms slower and navigation is two to four times slower in absolute terms -
+both are the price of a scroll that lands accurately rather than a page that is replaced. The
+eviction window designed as a contingency for a plane that never unmounts is **not needed**: the
+virtualiser recycles, and 40 MB after traversing the whole document is nowhere near the 1.5 GB
+threshold that would have justified it.
+
 ## The loop
 
 At the end of every milestone:
@@ -708,10 +804,18 @@ At the end of every milestone:
    Numbers to compare against, headless Chromium, `?url=`: M2 measured file → rendered page 2.7 s,
    navigation 0.5 s, 21 sidebar DOM elements for 853 navigation nodes, no console errors. M3 measured
    1.2 s to first render, 66 ms to a tag and 73 ms to an operation in-app, the same 21 sidebar
-   elements, no console errors. **M14 measured 320 ms to first render, 18 ms to a tag and 26 ms to an
-   operation, the same 21 sidebar elements over the same 853 nodes, no console errors** - so the
-   two-pane operation page costs nothing measurable, and the earlier numbers were mostly the cold
-   pipelines that are now deferred. A regression against these is a finding.
+   elements, no console errors. M14 measured 320 ms to first render, 18 ms to a tag and 26 ms to an
+   operation, the same 21 sidebar elements over the same 853 nodes, no console errors - so the
+   two-pane operation page cost nothing measurable, and the earlier numbers were mostly the cold
+   pipelines that are now deferred. **M17 measured 388-409 ms to first render, 45 ms to a tag, 98 ms
+   to Models at the far end of the document, a deep link landing 0 px from the top ten times out of
+   ten, one to five sections in the DOM out of 853, the same 21 sidebar elements, and 40 MB after
+   scrolling the entire document. No console errors.** A regression against these is a finding.
+
+   Two of those went the wrong way on purpose. The plane pays about seventy milliseconds at load and
+   two to four times as long per navigation, and buys a scroll that lands accurately instead of a
+   page that is replaced. What matters more is what stayed bounded: the DOM, the sidebar, and the
+   heap.
 
    Serving it is the fiddly part: the file is gitignored at the repo root, so `?url=` needs a path
    Vite will actually serve. `/@fs/<absolute path>` works and stays same-origin; a separate static

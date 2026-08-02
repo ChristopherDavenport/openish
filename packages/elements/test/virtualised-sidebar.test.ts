@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
 import '../src/index.js'
-import { deepQuery, deepQueryAll, disposeAll, mountReference, type Harness } from './helpers.js'
+import { deepQuery, deepQueryAll, disposeAll, mountReference, textOf, type Harness } from './helpers.js'
 
 afterEach(() => {
   disposeAll()
@@ -180,5 +180,42 @@ describe('row width', () => {
     expect(Math.round(linkOf(item!).getBoundingClientRect().right)).toBeLessThanOrEqual(
       Math.round(list.getBoundingClientRect().right),
     )
+  })
+})
+
+/**
+ * The row for the page the reader is on, kept in view.
+ *
+ * This never had to happen before: a navigation was a click on a row that was on screen by
+ * definition, or a page load, where the tree started at the top. On a plane the reader scrolls the
+ * document and the active row moves down a virtualised list on its own.
+ */
+describe('following the reader', () => {
+  const labels = (harness: Harness): string[] =>
+    rows(harness).map((item) => textOf(item.shadowRoot!.querySelector('.label')))
+
+  it('brings the current row into the rendered window when the page moves to it', async () => {
+    const harness = await wide(600)
+
+    /* Far enough down six hundred models that it cannot be in the first window of rows. */
+    expect(labels(harness)).not.toContain('Model0400')
+
+    await harness.goto('/models/Model0400')
+
+    expect(labels(harness)).toContain('Model0400')
+  })
+
+  it('leaves the keyboard cursor where the reader put it', async () => {
+    const harness = await wide(600)
+    const tree = deepQuery<HTMLElement>(harness.element.shadowRoot!, '[role="tree"]')!
+
+    const before = tree.getAttribute('aria-activedescendant')
+    await harness.goto('/models/Model0400')
+
+    /*
+     * Where the arrows are and which page is open are two different facts, drawn differently since
+     * M16. Moving one because the other moved would take a reader's place in the list away from them.
+     */
+    expect(tree.getAttribute('aria-activedescendant')).toBe(before)
   })
 })

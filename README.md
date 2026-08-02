@@ -68,6 +68,39 @@ than only after the fact.
 Unlike earlier versions, `routing` can be changed on a live element — nothing is installed at connect
 time any more.
 
+### The URL follows the reader
+
+The document is one continuous page, so a URL names a position rather than choosing a page. Two
+consequences a host should know about:
+
+- **Scrolling rewrites the URL**, with `replaceState` and after about 120 ms of quiet. Never
+  `pushState`: every section the reader passed would be a history entry, and Back would walk them
+  back up the document instead of leaving. `openish-navigate` fires with it, so a host syncing its
+  own chrome now hears from scrolling as well as from clicks.
+- **A URL that names nothing is left exactly as the reader typed it.** The banner says which id
+  failed and the document is on screen behind it. Nothing rewrites it to the front page, because a
+  bookmark that has outlived its operation should still be able to say so after a reload.
+
+### What a continuous page costs
+
+Only a window of sections is in the DOM at a time — that is what makes a 221-operation document open
+in under half a second — and the two things that follow from it are worth stating plainly:
+
+- **Find-in-page only finds what is on screen.** Neither Scalar nor Stripe virtualises its content,
+  so this is a real divergence and not a shared trade. The search dialog is the answer: it indexes
+  titles, descriptions, parameter names, body fields, response descriptions and model fields, so it
+  finds *more* than the browser would, including sections that have never been rendered. **Copy for
+  LLM** is the other half — it hands over a whole section, or a whole tag, as Markdown built from the
+  document rather than from the page.
+- **A try-it panel does not survive scrolling out of range.** Typed values and a displayed response
+  go when the section is recycled. Credentials do not: the auth session lives on the root.
+
+Per-operation slots (`request-start` and the rest) are forwarded into the section the URL names, and
+move as the reader scrolls. With every operation on the page there is one slot per operation in a
+single shadow root and only the first in tree order would receive anything, so scoping them to the
+active section is the only well-defined reading left. `content-start` and `content-end` now bracket
+the whole document rather than a page.
+
 ## Multiple documents
 
 ```js
@@ -334,6 +367,16 @@ and a `.hljs-keyword` rule in a stylesheet the host loads does not cross that bo
 properties do. So `@openish/theme/highlight.css` declares the `--openish-hl-*` hooks and
 `@openish/elements` owns the rules that read them. Anything else styling highlighted code has the
 same constraint.
+
+**Sticky columns and the virtualised plane.** The examples column used to stay beside whichever part
+of a long schema the reader had scrolled to. It cannot on the plane: the virtualiser positions each
+section absolutely and moves it with a `transform`, and `position: sticky` is resolved from *layout*
+position against a real scroll offset — so seven thousand pixels down, the browser decides the
+element is far above the scrollport and clamps it to the bottom of its containing block. The sample
+ended up below the documentation it belonged beside. `packages/elements/test/sticky-in-virtualizer.test.ts`
+demonstrates it at six thousand pixels and its absence at three hundred, which is also why the spike
+that preceded the plane said it was fine. Anything else putting a sticky element inside a section has
+the same constraint.
 
 **Why there is no router.** There was one — `@lit-labs/router`, plus `urlpattern-polyfill` for the
 browsers without `URLPattern`, plus an `<openish-section>` element per section to match the tail of
