@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import '../src/index.js'
 import { PARAMETER_DETAIL_SPEC } from './fixtures.js'
-import { deepQueryAll, deepTextOf, disposeAll, mountReference, shadowOf, textOf } from './helpers.js'
+import { deepQueryAll, deepTextOf, disposeAll, mountReference, shadowOf, textOf, sectionOf } from './helpers.js'
 
 afterEach(() => {
   disposeAll()
@@ -12,7 +12,7 @@ type Row = { name: string; type: string; constraints: string; examples: string[]
 
 const queryRows = async (): Promise<Row[]> => {
   const harness = await mountReference({ path: '/tags/things/listThings', spec: PARAMETER_DETAIL_SPEC })
-  const operation = shadowOf(harness.element.shadowRoot!, 'openish-operation')
+  const operation = shadowOf(sectionOf(harness), 'openish-operation')
   const table = deepQueryAll(operation, 'openish-table').find(
     (element) => element.getAttribute('caption') === 'Query parameters',
   )

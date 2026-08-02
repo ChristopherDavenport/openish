@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
 import '../src/index.js'
-import { deepTextOf, disposeAll, mountReference, shadowOf, type Harness } from './helpers.js'
+import { deepTextOf, disposeAll, mountReference, shadowOf, type Harness, sectionOf } from './helpers.js'
 
 afterEach(() => {
   disposeAll()
@@ -81,7 +81,7 @@ describe('x-additionalPropertiesName', () => {
 
 describe('property ordering', () => {
   const names = (harness: Harness) =>
-    [...shadowOf(harness.element.shadowRoot!, 'openish-model').querySelectorAll('*')].length >= 0
+    [...shadowOf(sectionOf(harness), 'openish-model').querySelectorAll('*')].length >= 0
       ? textOfModel(harness)
       : ''
 

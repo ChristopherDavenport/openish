@@ -2,7 +2,7 @@ import axeSource from 'axe-core/axe.min.js?raw'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import '../src/index.js'
-import { deepQuery, disposeAll, mountReference, openTryIt, shadowOf, type Harness } from './helpers.js'
+import { deepQuery, disposeAll, mountReference, openTryIt, shadowOf, type Harness, sectionOf } from './helpers.js'
 
 afterEach(() => {
   disposeAll()
@@ -92,7 +92,7 @@ describe('accessibility', () => {
     await new Promise((resolve) => setTimeout(resolve, 200))
     await harness.settle()
 
-    const operation = shadowOf(harness.element.shadowRoot!, 'openish-operation')
+    const operation = shadowOf(sectionOf(harness), 'openish-operation')
     const levels = [...operation.querySelectorAll('h1, h2, h3')].map((heading) =>
       Number(heading.tagName.slice(1)),
     )

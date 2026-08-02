@@ -2,7 +2,7 @@ import { userEvent } from 'vitest/browser'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import '../src/index.js'
-import { deepQuery, deepQueryAll, disposeAll, mountReference, shadowOf, textOf, type Harness } from './helpers.js'
+import { deepQuery, deepQueryAll, disposeAll, mountReference, shadowOf, textOf, type Harness, sectionOf } from './helpers.js'
 
 afterEach(() => {
   disposeAll()
@@ -73,7 +73,7 @@ describe('the stacked navigation, which a narrow viewport gets', () => {
     await harness.clickLink('/tags/accounts')
 
     expect(menuOf(harness)?.getAttribute('aria-expanded')).toBe('false')
-    expect(deepQuery(harness.element.shadowRoot!, 'openish-tag-section')).not.toBeNull()
+    expect(deepQuery(sectionOf(harness), 'openish-tag-section')).not.toBeNull()
   })
 
   it('closes on Escape from inside, and hands focus back to the button', async () => {
@@ -148,7 +148,7 @@ describe('the stacked navigation, which a narrow viewport gets', () => {
  */
 describe('the examples column', () => {
   const panesOf = (harness: Harness) => {
-    const operation = shadowOf(harness.element.shadowRoot!, 'openish-operation')
+    const operation = shadowOf(sectionOf(harness), 'openish-operation')
     const intro = operation.querySelector('.intro')!
     const docs = operation.querySelector('[part~="operation-docs"]')!
     const examples = operation.querySelector('[part~="operation-examples"]')!

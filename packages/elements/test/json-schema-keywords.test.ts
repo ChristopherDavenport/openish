@@ -11,6 +11,7 @@ import {
   schemaRows,
   shadowOf,
   textOf,
+  sectionOf,
   type Harness,
 } from './helpers.js'
 
@@ -23,7 +24,7 @@ const modelSchema = async (
   name: string,
 ): Promise<{ harness: Harness; schema: Element }> => {
   const harness = await mountReference({ path: `/models/${name}`, spec })
-  const schema = shadowOf(harness.element.shadowRoot!, 'openish-model').querySelector('openish-schema')
+  const schema = shadowOf(sectionOf(harness), 'openish-model').querySelector('openish-schema')
   if (!schema) {
     throw new Error(`No schema tree on the ${name} page.`)
   }

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import '../src/index.js'
 import { OAUTH_SPEC } from './fixtures.js'
-import { deepQuery, deepTextOf, disposeAll, mountReference, openTryIt, textOf, type Harness } from './helpers.js'
+import { deepQuery, deepTextOf, disposeAll, mountReference, openTryIt, textOf, type Harness, sectionOf } from './helpers.js'
 
 afterEach(() => {
   disposeAll()
@@ -96,7 +96,7 @@ const mount = async (config: Record<string, unknown> = {}) => {
   return { harness, sent, fake }
 }
 
-const authForm = (harness: Harness) => deepQuery(harness.element.shadowRoot!, 'openish-auth-form')!
+const authForm = (harness: Harness) => deepQuery(sectionOf(harness), 'openish-auth-form')!
 
 const click = async (harness: Harness, root: ShadowRoot, label: string) => {
   const button = [...root.querySelectorAll('button')].find((candidate) => textOf(candidate).startsWith(label))
@@ -144,7 +144,7 @@ describe('an OpenID Connect scheme', () => {
     expect(deepTextOf(authForm(harness).shadowRoot!)).toContain('Signed in')
 
     /* And the request that follows carries it. */
-    const panel = deepQuery(harness.element.shadowRoot!, 'openish-try-it')!
+    const panel = deepQuery(sectionOf(harness), 'openish-try-it')!
     await click(harness, panel.shadowRoot!, 'Send')
 
     const request = sent.find((call) => call.url.startsWith('https://api.example.com'))!

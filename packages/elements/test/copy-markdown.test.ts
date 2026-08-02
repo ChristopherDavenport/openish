@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { deepQuery, deepQueryAll, disposeAll, mountReference, textOf, type Harness } from './helpers.js'
+import { deepQuery, deepQueryAll, disposeAll, mountReference, textOf, type Harness, sectionOf } from './helpers.js'
 
 afterEach(disposeAll)
 
@@ -12,7 +12,7 @@ afterEach(disposeAll)
  * can write it. Pressing it is covered separately, against a stubbed clipboard.
  */
 const copyTextIn = (harness: Harness): string => {
-  const control = deepQuery(harness.element.shadowRoot!, 'openish-copy-markdown')
+  const control = deepQuery(sectionOf(harness), 'openish-copy-markdown')
   const button = control?.shadowRoot?.querySelector('openish-copy-button') as
     | (Element & { source?: () => string })
     | null
@@ -56,7 +56,7 @@ describe('copy for LLM', () => {
   it('is offered on every kind of section', async () => {
     for (const path of ['/', '/tags/accounts', '/tags/accounts/listAccounts', '/models/Account']) {
       const harness = await mountReference({ path })
-      const control = deepQuery(harness.element.shadowRoot!, 'openish-copy-markdown')
+      const control = deepQuery(sectionOf(harness), 'openish-copy-markdown')
       expect(control, path).not.toBeNull()
 
       const button = control!.shadowRoot!.querySelector('openish-copy-button')!
@@ -66,7 +66,7 @@ describe('copy for LLM', () => {
 
   it('names what it copies after the words on the button, so the visible label still starts it', async () => {
     const harness = await mountReference({ path: '/tags/accounts/listAccounts' })
-    const button = deepQuery(harness.element.shadowRoot!, 'openish-copy-button')!
+    const button = deepQuery(sectionOf(harness), 'openish-copy-button')!
 
     expect(textOf(button.shadowRoot!.querySelector('button'))).toBe('Copy for LLM List accounts as Markdown')
   })
@@ -85,7 +85,7 @@ describe('the copy button', () => {
       },
     })
 
-    const control = deepQuery(harness.element.shadowRoot!, 'openish-copy-markdown')!
+    const control = deepQuery(sectionOf(harness), 'openish-copy-markdown')!
     const button = control.shadowRoot!.querySelector('openish-copy-button')!
     const pressed = button.shadowRoot!.querySelector('button')!
 
@@ -105,7 +105,7 @@ describe('the copy button', () => {
     })
 
     /* Every one of them: the code block's copy and the section's are the same element now. */
-    for (const button of deepQueryAll(harness.element.shadowRoot!, 'openish-copy-button')) {
+    for (const button of deepQueryAll(sectionOf(harness), 'openish-copy-button')) {
       expect(button.shadowRoot!.querySelector('button')).toBeNull()
     }
   })

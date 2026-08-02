@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
 import '../src/index.js'
-import { deepQuery, deepQueryAll, deepTextOf, disposeAll, mountReference, openTryIt, textOf, type Harness } from './helpers.js'
+import { deepQuery, deepQueryAll, deepTextOf, disposeAll, mountReference, openTryIt, textOf, type Harness, sectionOf } from './helpers.js'
 
 afterEach(() => {
   disposeAll()
@@ -55,7 +55,7 @@ const client = async (path: string, config?: Record<string, unknown>): Promise<H
 }
 
 const panelOf = (harness: Harness) => {
-  const panel = deepQuery(harness.element.shadowRoot!, 'openish-try-it')
+  const panel = deepQuery(sectionOf(harness), 'openish-try-it')
   if (!panel?.shadowRoot) {
     throw new Error('No try-it panel on the page.')
   }
@@ -63,7 +63,7 @@ const panelOf = (harness: Harness) => {
 }
 
 const fieldFor = (harness: Harness, name: string): HTMLInputElement => {
-  const form = deepQuery(harness.element.shadowRoot!, 'openish-request-form')!
+  const form = deepQuery(sectionOf(harness), 'openish-request-form')!
   const labels = [...form.shadowRoot!.querySelectorAll('label')]
   const label = labels.find((candidate) => textOf(candidate).replace('*', '') === name)
   const input = label ? form.shadowRoot!.querySelector<HTMLInputElement>(`#${CSS.escape(label.htmlFor)}`) : null
@@ -80,7 +80,7 @@ const type = async (harness: Harness, input: HTMLInputElement, value: string): P
 }
 
 const snippetOf = (harness: Harness): string =>
-  textOf(deepQuery(harness.element.shadowRoot!, 'openish-code-block')?.shadowRoot ?? null)
+  textOf(deepQuery(sectionOf(harness), 'openish-code-block')?.shadowRoot ?? null)
 
 const send = async (harness: Harness): Promise<void> => {
   const button = [...panelOf(harness).shadowRoot!.querySelectorAll('button')].find(
@@ -97,7 +97,7 @@ describe('the sample and the send are one request', () => {
     const sent = interceptFetch(harness)
 
     /* A credential the reader pasted, through the same event a real form dispatches. */
-    const auth = deepQuery(harness.element.shadowRoot!, 'openish-auth-form')!
+    const auth = deepQuery(sectionOf(harness), 'openish-auth-form')!
     const field = auth.shadowRoot!.querySelector<HTMLInputElement>('input[type="password"]')!
     field.value = 'sk_live_secret'
     field.dispatchEvent(new Event('change', { bubbles: true }))
@@ -127,7 +127,7 @@ describe('the sample and the send are one request', () => {
   it('puts the real credential in the sample when a host asks for it', async () => {
     const harness = await client('/tags/accounts/getAccount', { revealCredentialsInSamples: true })
 
-    const auth = deepQuery(harness.element.shadowRoot!, 'openish-auth-form')!
+    const auth = deepQuery(sectionOf(harness), 'openish-auth-form')!
     const field = auth.shadowRoot!.querySelector<HTMLInputElement>('input[type="password"]')!
     field.value = 'sk_live_secret'
     field.dispatchEvent(new Event('change', { bubbles: true }))
@@ -141,7 +141,7 @@ describe('the sample and the send are one request', () => {
     const harness = await client('/tags/accounts/getAccount')
     const sent = interceptFetch(harness)
 
-    const select = deepQuery(harness.element.shadowRoot!, 'openish-server-select')!.shadowRoot!.querySelector(
+    const select = deepQuery(sectionOf(harness), 'openish-server-select')!.shadowRoot!.querySelector(
       'select',
     )!
     select.value = 'https://sandbox.example.com/v1'
@@ -160,7 +160,7 @@ describe('the sample and the send are one request', () => {
     const sent = interceptFetch(harness)
 
     const editor = deepQuery<HTMLTextAreaElement>(
-      deepQuery(harness.element.shadowRoot!, 'openish-request-form')!.shadowRoot!,
+      deepQuery(sectionOf(harness), 'openish-request-form')!.shadowRoot!,
       'textarea',
     )!
     editor.value = '{"id":"edited"}'
@@ -182,7 +182,7 @@ describe('the response', () => {
     interceptFetch(harness)
 
     await send(harness)
-    const view = deepQuery(harness.element.shadowRoot!, 'openish-response-view')!
+    const view = deepQuery(sectionOf(harness), 'openish-response-view')!
 
     expect(deepTextOf(view.shadowRoot!)).toContain('200')
     expect(deepTextOf(view.shadowRoot!)).toContain('acct_1')
@@ -199,7 +199,7 @@ describe('the response', () => {
     )
 
     await send(harness)
-    const view = deepQuery(harness.element.shadowRoot!, 'openish-response-view')!
+    const view = deepQuery(sectionOf(harness), 'openish-response-view')!
     /* Not `textOf`: it collapses whitespace, and whitespace is the thing under test. */
     const body = deepQuery(view.shadowRoot!, 'pre')!.textContent ?? ''
 
@@ -213,7 +213,7 @@ describe('the response', () => {
     interceptFetch(harness, new Response('id,balance\nacct_1,10', { headers: { 'content-type': 'text/csv' } }))
 
     await send(harness)
-    const view = deepQuery(harness.element.shadowRoot!, 'openish-response-view')!
+    const view = deepQuery(sectionOf(harness), 'openish-response-view')!
 
     expect(deepQuery(view.shadowRoot!, 'pre')!.textContent).toBe('id,balance\nacct_1,10')
   })
@@ -242,7 +242,7 @@ describe('the response', () => {
     interceptFetch(harness, new Response('{"message":"nope"}', { status: 403, statusText: 'Forbidden' }))
 
     await send(harness)
-    const view = deepQuery(harness.element.shadowRoot!, 'openish-response-view')!
+    const view = deepQuery(sectionOf(harness), 'openish-response-view')!
 
     expect(deepTextOf(view.shadowRoot!)).toContain('403')
     expect(view.shadowRoot!.querySelector('[role="alert"]')).toBeNull()
@@ -256,7 +256,7 @@ describe('the response', () => {
     }) as typeof fetch
 
     await send(harness)
-    const view = deepQuery(harness.element.shadowRoot!, 'openish-response-view')!
+    const view = deepQuery(sectionOf(harness), 'openish-response-view')!
 
     expect(textOf(view.shadowRoot!.querySelector('[role="alert"]'))).toContain('CORS')
     expect(deepTextOf(view.shadowRoot!)).not.toContain('Failed to fetch')
@@ -275,7 +275,7 @@ describe('the response', () => {
 
 describe('what the panel forgets', () => {
   const responseTextOf = (harness: Harness): string =>
-    deepTextOf(deepQuery(harness.element.shadowRoot!, 'openish-response-view')?.shadowRoot ?? null)
+    deepTextOf(deepQuery(sectionOf(harness), 'openish-response-view')?.shadowRoot ?? null)
 
   const close = async (harness: Harness): Promise<void> => {
     const button = [...panelOf(harness).shadowRoot!.querySelectorAll('button')].find(
@@ -333,13 +333,13 @@ describe('the panel itself', () => {
   it('is absent when the host turns it off, and the sample is not', async () => {
     const harness = await tryIt('/tags/accounts/getAccount', { hideTryIt: true })
 
-    expect(deepQuery(harness.element.shadowRoot!, 'openish-try-it')).toBeNull()
-    expect(deepQuery(harness.element.shadowRoot!, 'openish-code-sample')).not.toBeNull()
+    expect(deepQuery(sectionOf(harness), 'openish-try-it')).toBeNull()
+    expect(deepQuery(sectionOf(harness), 'openish-code-sample')).not.toBeNull()
   })
 
   it('offers a field for every parameter the table documents', async () => {
     const harness = await client('/tags/accounts/getAccount')
-    const form = deepQuery(harness.element.shadowRoot!, 'openish-request-form')!
+    const form = deepQuery(sectionOf(harness), 'openish-request-form')!
 
     const labels = deepQueryAll(form.shadowRoot!, 'label').map((label) => textOf(label).replace('*', ''))
     expect(labels).toEqual(expect.arrayContaining(['accountId', 'expand', 'X-Trace-Id']))
@@ -358,7 +358,7 @@ describe('the panel itself', () => {
   it('renders no panel for a webhook, which the reader does not call', async () => {
     const harness = await tryIt('/webhooks/accountCreated')
 
-    expect(deepQuery(harness.element.shadowRoot!, 'openish-try-it')).toBeNull()
+    expect(deepQuery(sectionOf(harness), 'openish-try-it')).toBeNull()
   })
 })
 

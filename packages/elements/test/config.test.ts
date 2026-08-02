@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
 import '../src/index.js'
-import { deepQuery, deepQueryAll, deepTextOf, disposeAll, mountReference, type Harness } from './helpers.js'
+import { deepQuery, deepQueryAll, deepTextOf, disposeAll, mountReference, type Harness, sectionOf } from './helpers.js'
 
 afterEach(() => {
   disposeAll()
@@ -71,8 +71,8 @@ describe('hideTryIt', () => {
   it('removes the panel and leaves the sample', async () => {
     const harness = await at('/tags/accounts/listAccounts', { hideTryIt: true })
 
-    expect(deepQuery(harness.element.shadowRoot!, 'openish-try-it')).toBeNull()
-    expect(deepQuery(harness.element.shadowRoot!, 'openish-code-sample')).not.toBeNull()
+    expect(deepQuery(sectionOf(harness), 'openish-try-it')).toBeNull()
+    expect(deepQuery(sectionOf(harness), 'openish-code-sample')).not.toBeNull()
   })
 })
 
@@ -82,8 +82,8 @@ describe('expandAllResponses', () => {
     const stacked = await at('/tags/accounts/listAccounts', { hideTryIt: true, expandAllResponses: true })
 
     const tabsIn = (harness: Harness) =>
-      deepQueryAll(harness.element.shadowRoot!, 'openish-response-list openish-tabs').length +
-      (deepQuery(harness.element.shadowRoot!, 'openish-response-list')?.shadowRoot?.querySelectorAll('openish-tabs')
+      deepQueryAll(sectionOf(harness), 'openish-response-list openish-tabs').length +
+      (deepQuery(sectionOf(harness), 'openish-response-list')?.shadowRoot?.querySelectorAll('openish-tabs')
         .length ?? 0)
 
     expect(tabsIn(tabbed)).toBeGreaterThan(0)

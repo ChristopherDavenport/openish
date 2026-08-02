@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import '../src/index.js'
 import { CALLBACKS_SPEC } from './fixtures.js'
-import { deepQuery, deepTextOf, disposeAll, mountReference, shadowOf, textOf, type Harness } from './helpers.js'
+import { deepQuery, deepTextOf, disposeAll, mountReference, shadowOf, textOf, type Harness, sectionOf } from './helpers.js'
 
 afterEach(() => {
   disposeAll()
@@ -10,7 +10,7 @@ afterEach(() => {
 
 const callbacksOn = async (): Promise<{ harness: Harness; callbacks: Element }> => {
   const harness = await mountReference({ path: '/tags/hooks/subscribe', spec: CALLBACKS_SPEC })
-  const operation = shadowOf(harness.element.shadowRoot!, 'openish-operation')
+  const operation = shadowOf(sectionOf(harness), 'openish-operation')
   const callbacks = deepQuery(operation, 'openish-callbacks')
   if (!callbacks) {
     throw new Error('No callbacks element on the operation page.')
@@ -76,7 +76,7 @@ describe('callbacks', () => {
 
   it('renders no section for an operation with no callbacks', async () => {
     const harness = await mountReference({ path: '/tags/accounts/listAccounts' })
-    const operation = shadowOf(harness.element.shadowRoot!, 'openish-operation')
+    const operation = shadowOf(sectionOf(harness), 'openish-operation')
 
     expect(deepQuery(operation, 'openish-callbacks')).toBeNull()
   })

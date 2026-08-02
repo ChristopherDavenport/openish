@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
 import '../src/index.js'
-import { deepQuery, disposeAll, mountReference, type Harness } from './helpers.js'
+import { deepQuery, disposeAll, mountReference, type Harness, sectionOf } from './helpers.js'
 
 afterEach(() => {
   disposeAll()
@@ -108,7 +108,7 @@ describe('content slots', () => {
 
   it('leaves nothing behind when the host slots nothing', async () => {
     const harness = await at('/tags/accounts/listAccounts', { hideTryIt: true })
-    const operation = deepQuery(harness.element.shadowRoot!, 'openish-operation')!
+    const operation = deepQuery(sectionOf(harness), 'openish-operation')!
 
     for (const slot of operation.shadowRoot!.querySelectorAll('slot')) {
       expect(slot.assignedNodes({ flatten: true })).toHaveLength(0)

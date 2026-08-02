@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import '../src/index.js'
 import type { OpenishSearch } from '../src/elements/openish-search.js'
-import { deepQuery, disposeAll, mountReference, textOf, type Harness } from './helpers.js'
+import { deepQuery, disposeAll, mountReference, textOf, type Harness, sectionOf } from './helpers.js'
 
 afterEach(() => {
   disposeAll()
@@ -105,7 +105,7 @@ describe('search', () => {
 
     expect(harness.currentId()).toBe('tags/accounts/listAccounts')
     expect(dialogOf(search).open).toBe(false)
-    expect(deepQuery(harness.element.shadowRoot!, 'openish-operation')).not.toBeNull()
+    expect(deepQuery(sectionOf(harness), 'openish-operation')).not.toBeNull()
   })
 
   it('closes on Escape and hands focus back to whatever opened it', async () => {

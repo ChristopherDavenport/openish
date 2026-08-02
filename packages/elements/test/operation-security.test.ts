@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import '../src/index.js'
 import { OPERATION_SECURITY_SPEC } from './fixtures.js'
-import { disposeAll, mountReference, shadowOf, textOf } from './helpers.js'
+import { disposeAll, mountReference, shadowOf, textOf, sectionOf } from './helpers.js'
 
 afterEach(() => {
   disposeAll()
@@ -11,7 +11,7 @@ afterEach(() => {
 /** The Authorization section of one operation page, or null when it has none. */
 const securityOf = async (id: string): Promise<Element | null> => {
   const harness = await mountReference({ path: `/tags/secured/${id}`, spec: OPERATION_SECURITY_SPEC })
-  const operation = shadowOf(harness.element.shadowRoot!, 'openish-operation')
+  const operation = shadowOf(sectionOf(harness), 'openish-operation')
   return operation.querySelector('[part~="security-section"]')
 }
 

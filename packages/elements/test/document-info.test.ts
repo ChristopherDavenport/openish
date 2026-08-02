@@ -10,6 +10,7 @@ import {
   mountReference,
   shadowOf,
   textOf,
+  sectionOf,
   type Harness,
 } from './helpers.js'
 
@@ -59,7 +60,7 @@ describe('the info object', () => {
 
   it('renders no About section for a document that declares none of it', async () => {
     const harness = await mountReference({ path: '/' })
-    const overview = shadowOf(harness.element.shadowRoot!, 'openish-overview')
+    const overview = shadowOf(sectionOf(harness), 'openish-overview')
 
     expect(
       [...overview.querySelectorAll('h2')].map((heading) => textOf(heading)),
@@ -157,7 +158,7 @@ describe('externalDocs', () => {
 
   it('links from a schema', async () => {
     const { harness } = await pageAt('/models/Entry', 'openish-model')
-    const schema = deepQuery(shadowOf(harness.element.shadowRoot!, 'openish-model'), 'openish-schema')
+    const schema = deepQuery(shadowOf(sectionOf(harness), 'openish-model'), 'openish-schema')
 
     expect(externalLinks(schema!.shadowRoot!)).toEqual([
       ['How an entry is built', 'https://example.com/guides/entry-model'],

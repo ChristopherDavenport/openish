@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
 import '../src/index.js'
-import { deepQuery, disposeAll, mountReference, type Harness } from './helpers.js'
+import { deepQuery, disposeAll, mountReference, type Harness, sectionOf } from './helpers.js'
 
 afterEach(() => {
   disposeAll()
@@ -62,7 +62,7 @@ describe('the selected border', () => {
     await new Promise((resolve) => setTimeout(resolve, 200))
     await harness.settle()
 
-    const tabs = deepQuery(harness.element.shadowRoot!, 'openish-tabs')
+    const tabs = deepQuery(sectionOf(harness), 'openish-tabs')
     expect(tabs).not.toBeNull()
 
     const buttons = [...tabs!.shadowRoot!.querySelectorAll('button[role="tab"]')]
@@ -115,7 +115,7 @@ describe('the selected border', () => {
     await new Promise((resolve) => setTimeout(resolve, 200))
     await harness.settle()
 
-    const block = deepQuery(harness.element.shadowRoot!, 'openish-code-block')!
+    const block = deepQuery(sectionOf(harness), 'openish-code-block')!
     const pressed = rulesOf(block).find((rule) => rule.selectorText.includes(':active'))
 
     expect(pressed).toBeDefined()
@@ -141,7 +141,7 @@ describe('the selected border', () => {
     await new Promise((resolve) => setTimeout(resolve, 200))
     await harness.settle()
 
-    const tryIt = deepQuery(harness.element.shadowRoot!, 'openish-try-it')!
+    const tryIt = deepQuery(sectionOf(harness), 'openish-try-it')!
     const primary = tryIt.shadowRoot!.querySelector('button.test')!
     const style = computed(harness, primary)
 
@@ -155,7 +155,7 @@ describe('the selected border', () => {
     await new Promise((resolve) => setTimeout(resolve, 200))
     await harness.settle()
 
-    const block = deepQuery(harness.element.shadowRoot!, 'openish-code-block')!
+    const block = deepQuery(sectionOf(harness), 'openish-code-block')!
     const copy = deepQuery(block.shadowRoot!, 'button[part="copy"]')!
 
     expect(computed(harness, copy).boxShadow).not.toContain(computed(harness, copy).color)

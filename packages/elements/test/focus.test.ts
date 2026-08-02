@@ -2,7 +2,7 @@ import { userEvent } from 'vitest/browser'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import '../src/index.js'
-import { deepQuery, disposeAll, mountReference, openTryIt, type Harness } from './helpers.js'
+import { deepQuery, disposeAll, mountReference, openTryIt, type Harness, sectionOf } from './helpers.js'
 
 afterEach(() => {
   disposeAll()
@@ -288,7 +288,7 @@ describe('the six control states', () => {
       config: { documentDownloadType: 'both' },
     })
 
-    const download = deepQuery(harness.element.shadowRoot!, 'openish-download')!
+    const download = deepQuery(sectionOf(harness), 'openish-download')!
     const button = download.shadowRoot!.querySelector('button')!
     const enabled = harness.frame.contentWindow!.getComputedStyle(button)
     const enabledColour = enabled.color

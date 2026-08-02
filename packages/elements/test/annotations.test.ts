@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
 import '../src/index.js'
-import { deepQuery, deepQueryAll, deepTextOf, disposeAll, mountReference, type Harness } from './helpers.js'
+import { deepQuery, deepQueryAll, deepTextOf, disposeAll, mountReference, type Harness, sectionOf } from './helpers.js'
 
 afterEach(() => {
   disposeAll()
@@ -51,7 +51,7 @@ describe('downloading the document', () => {
    * cross a shadow boundary - `openish-download button` matches nothing however deep the search.
    */
   const buttons = (harness: Harness) =>
-    [...(deepQuery(harness.element.shadowRoot!, 'openish-download')?.shadowRoot?.querySelectorAll('button') ?? [])].map(
+    [...(deepQuery(sectionOf(harness), 'openish-download')?.shadowRoot?.querySelectorAll('button') ?? [])].map(
       (b) => b.textContent?.trim(),
     )
 
@@ -80,7 +80,7 @@ describe('downloading the document', () => {
     harness.element.url = '/openapi.yaml'
     await harness.settle()
 
-    const download = deepQuery(harness.element.shadowRoot!, 'openish-download')!
+    const download = deepQuery(sectionOf(harness), 'openish-download')!
     const links = [...(download.shadowRoot?.querySelectorAll('a') ?? [])]
 
     expect(links.map((a) => a.getAttribute('href'))).toEqual(['/openapi.yaml'])
@@ -91,6 +91,6 @@ describe('downloading the document', () => {
   it('offers nothing for direct when the document was handed over inline', async () => {
     const harness = await overview({ documentDownloadType: 'direct' })
 
-    expect(deepQuery(harness.element.shadowRoot!, 'openish-download')?.shadowRoot?.childElementCount ?? 0).toBe(0)
+    expect(deepQuery(sectionOf(harness), 'openish-download')?.shadowRoot?.childElementCount ?? 0).toBe(0)
   })
 })

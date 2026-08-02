@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
 import '../src/index.js'
-import { deepQuery, deepTextOf, disposeAll, mountReference, shadowOf, textOf } from './helpers.js'
+import { deepQuery, deepTextOf, disposeAll, mountReference, shadowOf, textOf, sectionOf } from './helpers.js'
 
 afterEach(() => {
   disposeAll()
@@ -20,7 +20,7 @@ const codeOf = (root: Element | ShadowRoot): string => textOf(deepQuery(root, 'o
 describe('code samples', () => {
   it('generates a request carrying the resolved server URL', async () => {
     const { element } = await settledSample('/tags/accounts/getAccount')
-    const sample = shadowOf(element.shadowRoot!, 'openish-code-sample')
+    const sample = shadowOf(sectionOf(element), 'openish-code-sample')
 
     expect(codeOf(sample)).toContain('https://api.example.com/v1/accounts/')
     expect(codeOf(sample)).toContain('curl')
@@ -28,7 +28,7 @@ describe('code samples', () => {
 
   it('sends the parameters the table documents, and the auth placeholder', async () => {
     const { element } = await settledSample('/tags/accounts/getAccount')
-    const code = codeOf(shadowOf(element.shadowRoot!, 'openish-code-sample'))
+    const code = codeOf(shadowOf(sectionOf(element), 'openish-code-sample'))
 
     /* `expand` is optional but carries an enum, so it belongs in a sample worth copying. */
     expect(code).toContain('Authorization: Bearer YOUR_TOKEN')
@@ -37,7 +37,7 @@ describe('code samples', () => {
 
   it('highlights the snippet inside its own shadow root, where a page stylesheet cannot reach', async () => {
     const { element } = await settledSample('/tags/accounts/getAccount')
-    const block = deepQuery(element.shadowRoot!, 'openish-code-block')!
+    const block = deepQuery(sectionOf(element), 'openish-code-block')!
 
     expect(block.shadowRoot!.querySelector('.hljs-string')).not.toBeNull()
   })
@@ -54,7 +54,7 @@ describe('code samples', () => {
     expect([...select.querySelectorAll('optgroup')].map((group) => group.label)).toContain('Python')
 
     /* The default client is hidden, so the sample falls back rather than rendering nothing. */
-    expect(codeOf(shadowOf(element.shadowRoot!, 'openish-code-sample'))).not.toBe('')
+    expect(codeOf(shadowOf(sectionOf(element), 'openish-code-sample'))).not.toBe('')
   })
 
   it('changes every sample on the page at once when the reader picks a client', async () => {
@@ -87,8 +87,8 @@ describe('code samples', () => {
    */
   it('titles the block with the call, and puts the picker beside the copy', async () => {
     const { element } = await settledSample('/tags/accounts/getAccount')
-    const sample = deepQuery(element.shadowRoot!, 'openish-code-sample')!
-    const block = deepQuery(element.shadowRoot!, 'openish-code-block')!
+    const sample = deepQuery(sectionOf(element), 'openish-code-sample')!
+    const block = deepQuery(sectionOf(element), 'openish-code-block')!
 
     const target = sample.shadowRoot!.querySelector('[slot="title"]')!
     expect(textOf(target.querySelector('.method'))).toBe('get')
@@ -111,7 +111,7 @@ describe('code samples', () => {
   it('renders no sample for a webhook, which the reader does not call', async () => {
     const { element } = await settledSample('/webhooks/accountCreated')
 
-    expect(deepQuery(element.shadowRoot!, 'openish-code-sample')).toBeNull()
+    expect(deepQuery(sectionOf(element), 'openish-code-sample')).toBeNull()
     expect(deepTextOf(element.shadowRoot!)).toContain('An account was created')
   })
 
@@ -126,7 +126,7 @@ describe('code samples', () => {
     harness.frame.contentDocument!.documentElement.style.setProperty('--openish-hl-string', 'rgb(1, 2, 3)')
     await harness.settle()
 
-    const string = deepQuery(harness.element.shadowRoot!, 'openish-code-block')!.shadowRoot!.querySelector(
+    const string = deepQuery(sectionOf(harness), 'openish-code-block')!.shadowRoot!.querySelector(
       '.hljs-string',
     )!
     expect(harness.frame.contentWindow!.getComputedStyle(string).color).toBe('rgb(1, 2, 3)')

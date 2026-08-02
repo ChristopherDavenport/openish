@@ -348,6 +348,23 @@ export const mountReference = async (
   }
 }
 
+/**
+ * The subtree one section of the document lives in.
+ *
+ * Every assertion about *page content* goes through this rather than reaching into the root's shadow
+ * root, and the reason is that the root is about to hold more than one page at a time. A bare
+ * `deepQuery(element.shadowRoot!, 'openish-operation')` then returns whichever operation happens to
+ * be first in the rendered window - which is not an error, it is worse: the test goes on passing
+ * while asserting about the wrong operation.
+ *
+ * Root-level things - the sidebar, the search dialog, the document picker, `main` - are not sections
+ * and keep reaching for the root directly.
+ *
+ * Takes the harness or the element, because tests hold whichever of the two they needed.
+ */
+export const sectionOf = (target: Harness | OpenishApiReference, _id?: string): Element | ShadowRoot =>
+  'element' in target ? target.element.shadowRoot! : target.shadowRoot!
+
 /** Every href the reference currently renders, for readable failure messages. */
 export const listHrefs = (element: Element): string[] =>
   deepQueryAll<HTMLAnchorElement>(element.shadowRoot!, 'a[href]').map((a) => a.getAttribute('href')!)

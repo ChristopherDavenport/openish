@@ -12,6 +12,7 @@ import {
   schemaRows,
   shadowOf,
   textOf,
+  sectionOf,
   type Harness,
 } from './helpers.js'
 
@@ -28,7 +29,7 @@ const modelSchema = async (
   const harness = await mountReference(
     config ? { path: `/models/${name}`, spec, config } : { path: `/models/${name}`, spec },
   )
-  const model = shadowOf(harness.element.shadowRoot!, 'openish-model')
+  const model = shadowOf(sectionOf(harness), 'openish-model')
   const schema = model.querySelector('openish-schema')
   if (!schema) {
     throw new Error(`No schema tree on the ${name} page.`)
@@ -217,7 +218,7 @@ describe('shapes Scalar gets wrong', () => {
 describe('the model page', () => {
   it('renders a property tree and an example side by side', async () => {
     const { harness, schema } = await modelSchema(CYCLIC_SPEC, 'Node')
-    const model = shadowOf(harness.element.shadowRoot!, 'openish-model')
+    const model = shadowOf(sectionOf(harness), 'openish-model')
 
     expect(schemaRows(schema).map((row) => row.name)).toEqual(['id', 'parent', 'children'])
     expect(textOf(deepQuery(model, 'pre'))).toContain('"id"')
@@ -230,7 +231,7 @@ describe('the model page', () => {
 
   it('renders the tree for a document’s own models', async () => {
     const harness = await mountReference({ path: '/models/Account' })
-    const model = shadowOf(harness.element.shadowRoot!, 'openish-model')
+    const model = shadowOf(sectionOf(harness), 'openish-model')
 
     expect(schemaRows(model.querySelector('openish-schema'))).toEqual([
       { name: 'id', type: 'string', required: 'required' },

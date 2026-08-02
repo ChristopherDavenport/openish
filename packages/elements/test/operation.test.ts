@@ -11,6 +11,7 @@ import {
   schemaRows,
   shadowOf,
   textOf,
+  sectionOf,
   type Harness,
 } from './helpers.js'
 
@@ -53,7 +54,7 @@ const panelIn = (root: Element | ShadowRoot): Element => {
 describe('parameters', () => {
   it('renders the operation’s parameter, not the path item’s, when both declare one', async () => {
     const { element } = await operationOf('getAccount')
-    const operation = shadowOf(element.shadowRoot!, 'openish-operation')
+    const operation = shadowOf(sectionOf(element), 'openish-operation')
 
     const [row] = rowsOf(operation, 'Query parameters')
 
@@ -66,7 +67,7 @@ describe('parameters', () => {
 
   it('inherits a parameter the path item declares and the operation does not', async () => {
     const { element } = await operationOf('getAccount')
-    const operation = shadowOf(element.shadowRoot!, 'openish-operation')
+    const operation = shadowOf(sectionOf(element), 'openish-operation')
 
     const [row] = rowsOf(operation, 'Path parameters')
 
@@ -77,7 +78,7 @@ describe('parameters', () => {
 
   it('lists an optional parameter with no example, which the sample request omits', async () => {
     const { element } = await operationOf('getAccount')
-    const operation = shadowOf(element.shadowRoot!, 'openish-operation')
+    const operation = shadowOf(sectionOf(element), 'openish-operation')
 
     const [row] = rowsOf(operation, 'Header parameters')
 
@@ -87,7 +88,7 @@ describe('parameters', () => {
 
   it('renders no parameter section for an operation that takes none', async () => {
     const { element } = await operationOf('listAccounts')
-    const operation = shadowOf(element.shadowRoot!, 'openish-operation')
+    const operation = shadowOf(sectionOf(element), 'openish-operation')
 
     expect(deepQuery(operation, 'openish-parameters')).toBeNull()
     /*
@@ -109,14 +110,14 @@ describe('parameters', () => {
 describe('responses', () => {
   it('tabs by status code, with default last however the document ordered it', async () => {
     const { element } = await operationOf('getAccount')
-    const responses = shadowOf(element.shadowRoot!, 'openish-response-list')
+    const responses = shadowOf(sectionOf(element), 'openish-response-list')
 
     expect(tabsIn(responses).map((tab) => textOf(tab))).toEqual(['200', '404', 'default'])
   })
 
   it('moves between tabs with the arrow keys, and wraps at the ends', async () => {
     const { element, settle } = await operationOf('getAccount')
-    const responses = shadowOf(element.shadowRoot!, 'openish-response-list')
+    const responses = shadowOf(sectionOf(element), 'openish-response-list')
     const press = async (key: string) => {
       tabsIn(responses)[0]!.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
       await settle()
@@ -141,14 +142,14 @@ describe('responses', () => {
 
   it('keeps the tab list a single tab stop by roving tabindex', async () => {
     const { element } = await operationOf('getAccount')
-    const responses = shadowOf(element.shadowRoot!, 'openish-response-list')
+    const responses = shadowOf(sectionOf(element), 'openish-response-list')
 
     expect(tabsIn(responses).map((tab) => tab.getAttribute('tabindex'))).toEqual(['0', '-1', '-1'])
   })
 
   it('renders a response with no content as its description alone', async () => {
     const { element, settle } = await operationOf('getAccount')
-    const responses = shadowOf(element.shadowRoot!, 'openish-response-list')
+    const responses = shadowOf(sectionOf(element), 'openish-response-list')
 
     tabsIn(responses)[1]!.click()
     await settle()
@@ -161,7 +162,7 @@ describe('responses', () => {
 
   it('renders response headers and the body schema for a response that has both', async () => {
     const { element } = await operationOf('getAccount')
-    const responses = shadowOf(element.shadowRoot!, 'openish-response-list')
+    const responses = shadowOf(sectionOf(element), 'openish-response-list')
 
     const [header] = rowsOf(responses, 'Response headers')
     expect(header?.[0]).toBe('X-Request-Id')
@@ -175,7 +176,7 @@ describe('responses', () => {
 
   it('stacks every response when expandAllResponses is set', async () => {
     const { element } = await operationOf('getAccount', { expandAllResponses: true })
-    const responses = shadowOf(element.shadowRoot!, 'openish-response-list')
+    const responses = shadowOf(sectionOf(element), 'openish-response-list')
 
     /* The media-type tab set inside a response stays; it is the status tabs that go away. */
     expect(responses.querySelector('openish-tabs[label="Response status codes"]')).toBeNull()
@@ -190,7 +191,7 @@ describe('responses', () => {
 describe('request body', () => {
   it('tabs by media type and says whether the body is required', async () => {
     const { element } = await operationOf('replaceAccount')
-    const body = shadowOf(element.shadowRoot!, 'openish-request-body')
+    const body = shadowOf(sectionOf(element), 'openish-request-body')
 
     expect(textOf(body.querySelector('.required'))).toBe('Required')
     expect(deepTextOf(body)).toContain('The replacement account.')
@@ -199,7 +200,7 @@ describe('request body', () => {
 
   it('shows the referenced model by name, with its property tree', async () => {
     const { element } = await operationOf('replaceAccount')
-    const body = shadowOf(element.shadowRoot!, 'openish-request-body')
+    const body = shadowOf(sectionOf(element), 'openish-request-body')
 
     expect(deepTextOf(body)).toContain('Account')
     expect(schemaRows(deepQuery(body, 'openish-schema'))).toEqual([
@@ -217,7 +218,7 @@ describe('request body', () => {
   it('leaves the example to the editor the try-it panel provides', async () => {
     const harness = await operationOf('replaceAccount')
     await openTryIt(harness)
-    const body = shadowOf(harness.element.shadowRoot!, 'openish-request-body')
+    const body = shadowOf(sectionOf(harness), 'openish-request-body')
     const editor = deepQuery<HTMLTextAreaElement>(harness.element.shadowRoot!, 'textarea')!
 
     expect(deepQuery(body, 'openish-code-block')).toBeNull()
@@ -226,7 +227,7 @@ describe('request body', () => {
 
   it('highlights the generated example when there is no editor to hold it', async () => {
     const { element } = await operationOf('replaceAccount', { hideTryIt: true })
-    const body = shadowOf(element.shadowRoot!, 'openish-request-body')
+    const body = shadowOf(sectionOf(element), 'openish-request-body')
     const example = deepQuery(body, 'openish-code-block')!
 
     expect(example.getAttribute('language')).toBe('json')
@@ -236,7 +237,7 @@ describe('request body', () => {
 
   it('renders no request body section for an operation that takes none', async () => {
     const { element } = await operationOf('getAccount')
-    const operation = shadowOf(element.shadowRoot!, 'openish-operation')
+    const operation = shadowOf(sectionOf(element), 'openish-operation')
 
     expect(deepQuery(operation, 'openish-request-body')).toBeNull()
   })
@@ -245,7 +246,7 @@ describe('request body', () => {
 describe('disclosure', () => {
   it('opens and closes its region, and says so', async () => {
     const { element, settle } = await operationOf('getAccount')
-    const disclosure = shadowOf(element.shadowRoot!, 'openish-disclosure')
+    const disclosure = shadowOf(sectionOf(element), 'openish-disclosure')
     const button = disclosure.querySelector('button')!
 
     expect(button.getAttribute('aria-expanded')).toBe('false')

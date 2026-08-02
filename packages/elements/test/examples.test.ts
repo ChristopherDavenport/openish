@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import '../src/index.js'
 import { EXAMPLES_SPEC } from './fixtures.js'
-import { deepQuery, deepTextOf, disposeAll, mountReference, shadowOf, textOf, type Harness } from './helpers.js'
+import { deepQuery, deepTextOf, disposeAll, mountReference, shadowOf, textOf, type Harness, sectionOf } from './helpers.js'
 
 afterEach(() => {
   disposeAll()
@@ -16,7 +16,7 @@ afterEach(() => {
  */
 const previewOf = async (id: string): Promise<{ harness: Harness; preview: Element }> => {
   const harness = await mountReference({ path: `/tags/accounts/${id}`, spec: EXAMPLES_SPEC })
-  const operation = shadowOf(harness.element.shadowRoot!, 'openish-operation')
+  const operation = shadowOf(sectionOf(harness), 'openish-operation')
   const pane = operation.querySelector('[part~="operation-examples"]')
   const preview = pane ? deepQuery(pane, 'openish-schema-preview') : null
   if (!preview) {
