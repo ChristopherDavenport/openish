@@ -2,6 +2,8 @@ import { virtualizerRef, type VirtualizerHostElement } from '@lit-labs/virtualiz
 import type { VisibilityChangedEvent } from '@lit-labs/virtualizer/events.js'
 import type { ReactiveController, ReactiveControllerHost } from 'lit'
 
+import { deepQuery } from '../dom/deep-query.js'
+import { correction, indexFromVisibility, stepTowards, worthCorrecting } from '../render/converge.js'
 import { sectionIndex, type Section } from '../render/sections.js'
 
 /** How long the reader has to stop scrolling before the URL is told where they are. */
@@ -54,28 +56,6 @@ export type SectionsOptions = {
 }
 
 /**
- * The first match in a subtree, shadow roots included.
- *
- * A heading lifted out of `info.description` is stamped inside `<openish-markdown>`'s shadow root,
- * two boundaries below the section that owns it, and a selector cannot cross one. Only ever run for
- * a navigation that named a heading, and only over the one section that heading is in.
- */
-const deepQuery = (root: Element | ShadowRoot, selector: string): Element | null => {
-  const direct = root.querySelector(selector)
-  if (direct) {
-    return direct
-  }
-
-  for (const child of root.querySelectorAll('*')) {
-    const found = child.shadowRoot ? deepQuery(child.shadowRoot, selector) : null
-    if (found) {
-      return found
-    }
-  }
-  return null
-}
-
-/**
  * Where the reader is on the plane, and how to put them somewhere else.
  *
  * Mounting is the virtualiser's job and scrolling accurately is the virtualiser's job - which is
@@ -121,6 +101,14 @@ export class SectionsController implements ReactiveController {
   #settle: ReturnType<typeof setTimeout> | undefined
   #quiet: ReturnType<typeof setTimeout> | undefined
   #reported: string | undefined
+
+  /**
+   * Where the reader has already been taken, so arriving there twice does nothing.
+   *
+   * A section, and the heading inside it when the URL named one - the two together are the request,
+   * and a section id on its own cannot tell two headings of one section apart.
+   */
+  #asked: string | undefined
 
   constructor(host: ReactiveControllerHost, options: SectionsOptions) {
     this.#host = host
@@ -240,6 +228,30 @@ export class SectionsController implements ReactiveController {
     }
   }
 
+  /**
+   * Records where the URL now points, and says whether that is news.
+   *
+   * The pair is the request, not the section alone: two headings of one section resolve to the same
+   * section id, and keying on that alone meant the second of them was a navigation the plane
+   * ignored. An empty section is not a request at all - the document has not arrived yet.
+   *
+   * It records rather than scrolls, because the caller has one more thing to weigh: whether the URL
+   * moved because the reader did, or the reader is being moved because the URL did. Only the second
+   * of those is a scroll, and both look identical from here.
+   */
+  arriveAt(section: string, anchor: string): boolean {
+    if (section === '') {
+      return false
+    }
+
+    const asked = anchor ? `${section}#${anchor}` : section
+    if (asked === this.#asked) {
+      return false
+    }
+    this.#asked = asked
+    return true
+  }
+
   /** A document swap: nothing that was true of the last plane is true of this one. */
   reset(): void {
     clearTimeout(this.#settle)
@@ -248,6 +260,7 @@ export class SectionsController implements ReactiveController {
     this.#reported = undefined
     this.#target = undefined
     this.#anchor = undefined
+    this.#asked = undefined
   }
 
   /**
@@ -427,7 +440,12 @@ export class SectionsController implements ReactiveController {
          * of the document, so the estimates behind the scrollbar improve as it goes.
          */
         const showing = plane.querySelector('.section')?.getAttribute('data-id') ?? ''
-        scroller.scrollTop += this.#step(sectionIndex(this.#sections).get(showing), index, scroller)
+        scroller.scrollTop += stepTowards(
+          sectionIndex(this.#sections).get(showing),
+          index,
+          this.#sections.length,
+          scroller,
+        )
         this.#converge(index, tries + 1, 0)
         return
       }
@@ -444,8 +462,8 @@ export class SectionsController implements ReactiveController {
       const anchor = this.#anchor
       const heading = anchor === undefined ? section : deepQuery(section, `[id="${CSS.escape(anchor)}"]`)
 
-      const delta = (heading ?? section).getBoundingClientRect().top - scroller.getBoundingClientRect().top
-      if (Math.abs(delta) > 1) {
+      const delta = correction((heading ?? section).getBoundingClientRect(), scroller.getBoundingClientRect())
+      if (worthCorrecting(delta)) {
         scroller.scrollTop += delta
         this.#converge(index, tries + 1, 0)
         return
@@ -453,31 +471,6 @@ export class SectionsController implements ReactiveController {
 
       this.#converge(index, tries + 1, heading ? stable + 1 : 0)
     })
-  }
-
-  /**
-   * How far to jump when the target section is out of the rendered range.
-   *
-   * A viewport a frame is safe and, on a long document, far too slow: from the bottom of six hundred
-   * models back to the overview is a hundred thousand pixels, which is more frames than the loop is
-   * allowed - so the walk ran out of budget somewhere in the middle and the reader was left where
-   * the click had not taken them, with the spy then writing *that* into the URL. Scaling the step by
-   * how many sections lie between here and there closes the same distance in a handful of frames:
-   * the mean section height is a poor description of any one section and a good one of a hundred,
-   * and every jump measures more of the document, so the next estimate is better than the last.
-   *
-   * A viewport is the floor: a gap of one section is worth one mean height, which on a document of
-   * short models is a step small enough to render nothing new and get taken again next frame.
-   */
-  #step(at: number | undefined, index: number, scroller: Element): number {
-    const viewport = scroller.clientHeight
-    if (at === undefined) {
-      return viewport
-    }
-
-    const average = scroller.scrollHeight / Math.max(this.#sections.length, 1)
-    const distance = Math.max(Math.abs(index - at) * average, viewport)
-    return at > index ? -distance : distance
   }
 
   /** Whether there is still a plane in a document worth scrolling. */
@@ -496,28 +489,16 @@ export class SectionsController implements ReactiveController {
   /**
    * The virtualiser's own report of what is on screen, turned into where the reader is.
    *
-   * `first` is the topmost item intersecting the viewport, which is the section whose text is under
-   * the reader's eye rather than the one that has just appeared at the bottom of the window. The two
-   * ends are read from the scroller instead, because a line-based answer cannot express them: at the
-   * very top the first section may be shorter than the gap above it, and at the very bottom a short
-   * final section is never topmost and would be unreachable.
+   * The reading of it is `indexFromVisibility`; what is left here is handing it the scroller and
+   * turning the answer back into an id.
    */
   readonly onVisibilityChanged = (event: VisibilityChangedEvent): void => {
     if (this.#sections.length === 0) {
       return
     }
 
-    let index = event.first
-    const scroller = this.#scroller
-    if (scroller) {
-      if (scroller.scrollTop <= 1) {
-        index = 0
-      } else if (scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 2) {
-        index = this.#sections.length - 1
-      }
-    }
-
-    const id = this.#sections[Math.max(0, Math.min(index, this.#sections.length - 1))]?.id
+    const index = indexFromVisibility(event.first, this.#sections.length, this.#scroller ?? undefined)
+    const id = this.#sections[index]?.id
     if (id !== undefined) {
       this.#report(id)
     }

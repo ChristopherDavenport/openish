@@ -1,5 +1,5 @@
 import { createContext } from '@lit/context'
-import type { AuthSession } from '@openish/client'
+import type { AuthSnapshot } from '@openish/client'
 import type {
   ColorSchemePreference,
   DocumentStore,
@@ -141,9 +141,12 @@ export const sameUiState = (left: OpenishUiState, right: OpenishUiState | undefi
  * should receive a credential by accident. Separate from the store because it is the reader's, not
  * the document's.
  *
- * `session` is here to be *read* - its status, its expiry, its last error - not written to. Changes
- * travel upward as `openish-auth-change`, and the root is the only thing that writes, which is what
- * keeps one description of what the reader is holding.
+ * `grants` is a frozen snapshot rather than the `AuthSession` it came from, and that is the whole
+ * of how "properties down" is enforced here rather than asserted. A live session travelling down
+ * the tree is an object any consumer can write to, and one whose identity never changes when it
+ * does - so the element rendering it had to be told by hand that something had happened, and the
+ * comparison below had to walk the credentials to find out. Changes travel upward as
+ * `openish-auth-change`; the root applies them and a new snapshot arrives.
  */
 export type OpenishRequestState = {
   /** The server URL the reader picked, still carrying its `{variables}`. */
@@ -154,29 +157,28 @@ export type OpenishRequestState = {
   /** What can be sent right now, keyed by security scheme. Expired grants are absent. */
   readonly credentials: Readonly<Record<string, string>>
   /** The read model behind those credentials: status, expiry, and why a flow failed. */
-  readonly session: AuthSession
+  readonly grants: AuthSnapshot
 }
 
 export const requestContext = createContext<OpenishRequestState>(Symbol('openish-request'))
 
-/** Whether two request states say the same thing. See `sameUiState` for why this exists. */
+/**
+ * Whether two request states say the same thing. See `sameUiState` for why this exists.
+ *
+ * `grants` is compared by identity, which is exact rather than approximate: the snapshot keeps its
+ * identity for as long as it says the same thing and is replaced wholesale when it does not.
+ * `credentials` is derived from it, so it needs no comparison of its own.
+ */
 export const sameRequestState = (
   left: OpenishRequestState,
   right: OpenishRequestState | undefined,
-): boolean => {
-  if (right === undefined || left.session !== right.session || left.serverUrl !== right.serverUrl) {
-    return false
-  }
-
-  const names = Object.keys(left.credentials)
-  return (
-    names.length === Object.keys(right.credentials).length &&
-    names.every((name) => left.credentials[name] === right.credentials[name]) &&
-    left.server === right.server &&
-    Object.keys(left.serverVariables).length === Object.keys(right.serverVariables).length &&
-    Object.entries(left.serverVariables).every(([name, value]) => right.serverVariables[name] === value)
-  )
-}
+): boolean =>
+  right !== undefined &&
+  left.grants === right.grants &&
+  left.serverUrl === right.serverUrl &&
+  left.server === right.server &&
+  Object.keys(left.serverVariables).length === Object.keys(right.serverVariables).length &&
+  Object.entries(left.serverVariables).every(([name, value]) => right.serverVariables[name] === value)
 
 /**
  * Where a schema renderer is in its own traversal.

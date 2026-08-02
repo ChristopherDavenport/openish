@@ -8,17 +8,18 @@ import {
   type OAuthFlowDetail,
 } from '@openish/core'
 import { LitElement, html, css, nothing, type PropertyValues, type TemplateResult } from 'lit'
-import { customElement, property, query } from 'lit/decorators.js'
+import { customElement, property } from 'lit/decorators.js'
 import { repeat } from 'lit/directives/repeat.js'
 
 import { documentContext, uiContext, type OpenishUiState } from '../context/contexts.js'
+import { deepQuery } from '../dom/deep-query.js'
 import { asideStyles, renderAside } from '../render/aside.js'
 import { externalDocsStyles, renderExternalDocs } from '../render/external-docs.js'
 import { heading } from '../render/heading.js'
 import { stripFirstSegment } from '../router/urls.js'
 import { baseStyles, planeColumnStyles, titleRowStyles } from '../styles/shared.js'
 import './openish-copy-markdown.js'
-import { OpenishMarkdown } from './openish-markdown.js'
+import './openish-markdown.js'
 import './openish-download.js'
 
 type SecurityScheme = {
@@ -190,12 +191,12 @@ export class OpenishOverview extends LitElement {
   ui: OpenishUiState | undefined
 
   /**
-   * Fragment to scroll to, passed down rather than read from `location` here.
+   * A heading inside the prose to scroll to, passed down rather than read from `location` here.
    *
-   * A heading from `info.description` is a navigation node, so arriving at one is a normal
-   * navigation and the target lives inside `<openish-markdown>`'s shadow root - out of reach of the
-   * browser's own fragment scrolling, which only looks at ids in the document. The element that owns
-   * the headings is the only one that can do it.
+   * Set only when this section is being rendered on its own, through `renderNodeById` - a host
+   * embedding one node has nothing else that could scroll to a heading. On the plane it stays empty
+   * and `SectionsController` does the scrolling, because there the correction has to survive several
+   * frames of the document settling around it, and two things scrolling one scroller fight.
    */
   @property({ type: String })
   hash = ''
@@ -205,35 +206,19 @@ export class OpenishOverview extends LitElement {
   level = 1
 
   /**
-   * The prose block, kept by `@query` rather than looked up by selector at call time.
+   * The one imperative call this element makes, in response to a property changing.
    *
-   * Declared, never initialised: `@query` installs a getter on the prototype, and with
-   * `useDefineForClassFields: false` a field initialiser would try to assign through it.
-   *
-   * Scoped to the documentation column, because there are two markdown blocks on this section now
-   * and only one of them holds the headings the navigation links at. A bare tag selector happens to
-   * find the right one while `info` has a description, and finds the aside the moment it does not.
+   * `deepQuery` rather than asking `<openish-markdown>` to find its own heading: the ids are stamped
+   * through the markdown transform, so they are ordinary DOM by the time this runs, and a parent
+   * calling a method on a child makes that method part of the child's API for the sake of one
+   * caller.
    */
-  @query('.docs > openish-markdown')
-  private prose!: OpenishMarkdown | null
-
   protected override updated(changed: PropertyValues<this>): void {
-    if (changed.has('hash') || changed.has('store')) {
-      this.#scrollToHash()
-    }
-  }
-
-  #scrollToHash(): void {
-    if (!this.hash) {
+    if (!this.hash || !(changed.has('hash') || changed.has('store'))) {
       return
     }
 
-    /* Description headings live inside `<openish-markdown>`'s shadow root, out of reach of a query here. */
-    if (this.prose?.scrollToHeading(this.hash)) {
-      return
-    }
-
-    this.renderRoot.querySelector(`[id="${CSS.escape(this.hash)}"]`)?.scrollIntoView({
+    deepQuery(this.renderRoot, `[id="${CSS.escape(this.hash)}"]`)?.scrollIntoView({
       behavior: 'smooth',
       block: 'start',
     })
@@ -244,7 +229,7 @@ export class OpenishOverview extends LitElement {
    *
    * In the form the *URL* has them, because that is what these are: a heading is not its own page,
    * so `hrefFor` puts its id in the fragment, and the fragment is what gets matched against these
-   * when the browser - or `scrollToHeading` - goes looking for the target.
+   * when the browser - or whatever is doing the scrolling - goes looking for the target.
    */
   #headingIds(): string[] {
     const prefix = this.ui?.slugPrefix ?? ''

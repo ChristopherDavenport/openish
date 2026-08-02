@@ -43,6 +43,24 @@ export default defineConfig({
         },
       },
       {
+        /*
+         * The parts of `@openish/elements` that are not elements.
+         *
+         * URL and id maths, the plane's scroll target, the convergence arithmetic and the OAuth flow
+         * precedence rules are all pure functions of their arguments, and every one of them was
+         * arrived at through a failure rather than derived. Running them in Node rather than in
+         * Chromium is not only faster - it is what keeps them honest about having no DOM, the same
+         * way the `client` project keeps that package honest. Anything here that reaches for
+         * `document` or `customElements` fails immediately and belongs in the project below.
+         */
+        resolve: { alias },
+        test: {
+          name: 'elements-pure',
+          environment: 'node',
+          include: ['packages/elements/test/pure/**/*.test.ts'],
+        },
+      },
+      {
         resolve: { alias, dedupe: ['lit', 'lit-html', 'lit-element', '@lit/reactive-element'] },
         /*
          * Named up front rather than discovered.
@@ -63,6 +81,7 @@ export default defineConfig({
         test: {
           name: 'elements',
           include: ['packages/elements/test/**/*.test.ts', 'packages/client/test/**/*.browser.test.ts'],
+          exclude: ['packages/elements/test/pure/**'],
           browser: {
             enabled: true,
             provider: playwright(),

@@ -42,7 +42,15 @@ export {
   type TokenResult,
   type TokenSet,
 } from './auth/token.js'
-export { AuthSession, type CredentialStore, type Grant, type GrantStatus } from './auth/session.js'
+export {
+  AuthSession,
+  credentialsFrom,
+  expiresInSeconds,
+  type AuthSnapshot,
+  type CredentialStore,
+  type Grant,
+  type GrantStatus,
+} from './auth/session.js'
 export {
   authorizeInPopup,
   beginRedirect,

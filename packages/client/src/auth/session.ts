@@ -29,6 +29,53 @@ export type CredentialStore = {
 }
 
 /**
+ * Everything the reader is holding, frozen, with expiry already applied.
+ *
+ * The read model, and the only form of it that crosses out of this package into a component tree.
+ * A live {@link AuthSession} handed downward is a mutable object any consumer could write to, and
+ * one whose identity never changes when it does - so the thing rendering it has to be told by hand
+ * that something happened. A snapshot is replaced wholesale instead, which makes "has this changed"
+ * an identity comparison and "may I change it" a type error.
+ *
+ * A scheme with no entry has no grant. That is the same statement as `{ status: 'idle' }` and one
+ * fewer object to build for every scheme a document declares and the reader has not touched.
+ */
+export type AuthSnapshot = Readonly<Record<string, Grant>>
+
+/**
+ * Seconds until a token expires, or `undefined` when there is no expiry to report.
+ *
+ * A function over a grant rather than a method on the session, so that something holding only the
+ * read model can still say how long is left.
+ */
+export const expiresInSeconds = (grant: Grant | undefined, now: number = Date.now()): number | undefined => {
+  if (grant?.status !== 'active' || grant.kind !== 'oauth' || grant.token.expiresAt === undefined) {
+    return undefined
+  }
+  return Math.max(0, Math.round((grant.token.expiresAt - now) / 1000))
+}
+
+/**
+ * What can be sent right now, keyed by scheme.
+ *
+ * Exactly the shape `operationToHar`'s `credentials` option takes - the seam between holding a
+ * credential and putting one on a request. An expired token is not included: sending it would
+ * produce a 401 that looks like the API's fault.
+ */
+export const credentialsFrom = (grants: AuthSnapshot): Record<string, string> => {
+  const credentials: Record<string, string> = {}
+
+  for (const [scheme, grant] of Object.entries(grants)) {
+    if (grant.status !== 'active') {
+      continue
+    }
+    credentials[scheme] = grant.kind === 'pasted' ? grant.value : grant.token.accessToken
+  }
+
+  return credentials
+}
+
+/**
  * What openish holds on behalf of the reader, per security scheme.
  *
  * In memory for the life of the page by default, and nowhere else - persisting a token is the host's
@@ -44,6 +91,12 @@ export class AuthSession {
   readonly #listeners = new Set<() => void>()
   readonly #now: () => number
   readonly #store: CredentialStore | undefined
+
+  /** Bumped by every change, so {@link snapshot} knows when the one it built is still the answer. */
+  #version = 0
+  #snapshot: AuthSnapshot | undefined
+  #snapshotVersion = -1
+  #snapshotExpired = ''
 
   constructor(options: { now?: () => number; store?: CredentialStore } = {}) {
     this.#now = options.now ?? Date.now
@@ -88,6 +141,7 @@ export class AuthSession {
   }
 
   #announce(): void {
+    this.#version += 1
     this.#persist()
     for (const listener of this.#listeners) {
       listener()
@@ -116,11 +170,32 @@ export class AuthSession {
 
   /** Seconds until a token expires, or `undefined` when there is no expiry to report. */
   expiresInSeconds(scheme: string): number | undefined {
-    const grant = this.get(scheme)
-    if (grant.status !== 'active' || grant.kind !== 'oauth' || grant.token.expiresAt === undefined) {
-      return undefined
+    return expiresInSeconds(this.get(scheme), this.#now())
+  }
+
+  /**
+   * The read model, as one frozen object, with the same identity while it says the same thing.
+   *
+   * Identity is what a consumer compares - `sameRequestState` and `@lit/context` both do - so a new
+   * object on every update would re-render every element that reads a credential on every render of
+   * the root. It is rebuilt when something announced a change, and also when a token has passed its
+   * expiry, which nothing announces: expiry is time rather than an event, so it is part of the key.
+   */
+  snapshot(): AuthSnapshot {
+    const expired = [...this.#grants.keys()].filter((scheme) => this.get(scheme).status === 'expired').join(',')
+    if (this.#snapshot && this.#snapshotVersion === this.#version && this.#snapshotExpired === expired) {
+      return this.#snapshot
     }
-    return Math.max(0, Math.round((grant.token.expiresAt - this.#now()) / 1000))
+
+    const next: Record<string, Grant> = {}
+    for (const scheme of this.#grants.keys()) {
+      next[scheme] = this.get(scheme)
+    }
+
+    this.#snapshot = Object.freeze(next)
+    this.#snapshotVersion = this.#version
+    this.#snapshotExpired = expired
+    return this.#snapshot
   }
 
   setPasted(scheme: string, value: string): void {
@@ -167,24 +242,8 @@ export class AuthSession {
       : undefined
   }
 
-  /**
-   * What is currently sendable, keyed by scheme name.
-   *
-   * Exactly the shape `operationToHar`'s `credentials` option takes - this is the seam between
-   * holding a credential and putting one on a request, and it is deliberately the only way across.
-   * An expired token is not included: sending it would produce a 401 that looks like the API's fault.
-   */
+  /** What is currently sendable, keyed by scheme name. See {@link credentialsFrom}. */
   credentials(): Record<string, string> {
-    const credentials: Record<string, string> = {}
-
-    for (const scheme of this.#grants.keys()) {
-      const grant = this.get(scheme)
-      if (grant.status !== 'active') {
-        continue
-      }
-      credentials[scheme] = grant.kind === 'pasted' ? grant.value : grant.token.accessToken
-    }
-
-    return credentials
+    return credentialsFrom(this.snapshot())
   }
 }

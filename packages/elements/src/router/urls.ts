@@ -122,6 +122,74 @@ export const idFromHash = (hash: string, slugPrefix = ''): string =>
   applySlugPrefix(hash.replace(/^#/, '').replace(/^\/+/, '').replace(/\/+$/, ''), slugPrefix)
 
 /**
+ * The parts of the address bar an id can be read out of, and the mode that decides which.
+ *
+ * Gathered into one object so that reading an id is a pure function rather than something only an
+ * element holding a `LocationController` can do. The controller satisfies `pathname` and `hash`
+ * structurally, which is the point: nothing here has to know where the strings came from.
+ */
+export type UrlState = {
+  readonly routing: RoutingMode
+  readonly pathname: string
+  readonly hash: string
+  /** The host's answer when `routing="none"`. Ignored in the other two modes. */
+  readonly selected: string
+  readonly basePath: string
+}
+
+/**
+ * The id as the URL has it, before the implied document slug is put back.
+ *
+ * Separate from {@link activeIdFrom} because deciding *which document* the URL names has to read it
+ * first, and it cannot use the full id to do that - the prefix is the very thing it is deciding.
+ */
+export const urlId = (url: UrlState): string => {
+  switch (url.routing) {
+    case 'history':
+      return idFromPathname(url.pathname, url.basePath)
+    case 'hash':
+      return idFromHash(url.hash)
+    case 'none':
+      return url.selected
+  }
+}
+
+/** Which node a URL names, according to whatever is authoritative in this mode. */
+export const activeIdFrom = (url: UrlState, slugPrefix: string): string =>
+  applySlugPrefix(urlId(url), slugPrefix)
+
+/**
+ * The id a link points at.
+ *
+ * Structural rather than an `HTMLAnchorElement`, because those two fields are all that is read and a
+ * plain object is what a test has. Both spellings are tried: a fragment link carries the id in its
+ * hash, and a `history`-mode link carries it in its path.
+ */
+export const idFromLink = (
+  link: { readonly hash: string; readonly pathname: string },
+  basePath: string,
+  slugPrefix: string,
+): string => applySlugPrefix(idFromHash(link.hash) || idFromPathname(link.pathname, basePath), slugPrefix)
+
+/**
+ * The same URL with a different id in it, in whichever part of it this mode uses.
+ *
+ * A `URL` in and a `URL` out, so a caller rewriting one part of the address - the spy replacing the
+ * id, `?api=` taking itself back out - keeps every other part of what the reader had. The id goes in
+ * whole; {@link hrefForId} is what decides whether the document slug appears in it.
+ */
+export const urlWithId = (current: URL, id: string, routing: RoutingState): URL => {
+  const next = new URL(current.href)
+  const href = hrefForId(id, routing)
+  if (routing.routing === 'history') {
+    next.pathname = href
+  } else {
+    next.hash = href
+  }
+  return next
+}
+
+/**
  * Whether a node is on the path to the active one, so the sidebar can mark ancestors open.
  *
  * A prefix test is enough precisely because ids are paths - but it has to be segment-aware, or

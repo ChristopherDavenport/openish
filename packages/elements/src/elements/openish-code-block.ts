@@ -1,7 +1,8 @@
 import { LitElement, html, css, nothing, type TemplateResult } from 'lit'
-import { customElement, property, state } from 'lit/decorators.js'
+import { customElement, property } from 'lit/decorators.js'
 import { unsafeHTML } from 'lit/directives/unsafe-html.js'
 
+import { LazyModuleController } from '../controllers/lazy-module.js'
 import { codeNow, loadCode } from '../render/highlight.js'
 import { baseStyles, controlStyles, highlightStyles, visuallyHidden } from '../styles/shared.js'
 import './openish-copy-button.js'
@@ -134,9 +135,8 @@ export class OpenishCodeBlock extends LitElement {
   @property({ type: String })
   status = ''
 
-  /** Bumped once the highlighter arrives, purely to ask for another render. See `#highlighted`. */
-  @state()
-  private loaded = 0
+  /** The syntax highlighter, once it has arrived. See `controllers/lazy-module.ts`. */
+  readonly #highlighter = new LazyModuleController(this, codeNow, loadCode)
 
   /** A bound field, so the property the button holds does not change identity on every render. */
   readonly #source = (): string => this.code
@@ -151,11 +151,8 @@ export class OpenishCodeBlock extends LitElement {
    * with no layout shift, because both forms are the same block of text.
    */
   #highlighted(): string {
-    const highlighter = codeNow()
+    const highlighter = this.#highlighter.value
     if (!highlighter) {
-      void loadCode().then(() => {
-        this.loaded += 1
-      })
       return ''
     }
 

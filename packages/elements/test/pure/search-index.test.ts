@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
-import { createDocumentStore } from '../../core/src/store/create-document-store.js'
-import { searchNodes } from '../src/search/search.js'
-import { SEARCHABLE_SPEC } from './fixtures.js'
+import { createDocumentStore } from '../../../core/src/store/create-document-store.js'
+import { searchNodes } from '../../src/search/search.js'
+import { SEARCHABLE_SPEC } from '../fixtures.js'
 
 const store = await createDocumentStore(JSON.stringify(SEARCHABLE_SPEC))
 

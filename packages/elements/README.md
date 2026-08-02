@@ -195,7 +195,7 @@ The landing page: what the API is, where it lives, and how to authenticate.
 |---|---|---|---|---|
 | `store` | — | `DocumentStore \| undefined` | — | The parsed document. Provided by `<openish-api-reference>` through context. |
 | `ui` | — | `OpenishUiState \| undefined` | — | Presentation state. Provided by `<openish-api-reference>` through context. |
-| `hash` | `hash` | `string` | `''` | Fragment to scroll to, passed down rather than read from `location` here. |
+| `hash` | `hash` | `string` | `''` | A heading inside the prose to scroll to, passed down rather than read from `location` here. |
 | `level` | `level` | `number` | `1` | The heading level this section's own title takes. See `<openish-operation>`'s. |
 
 ### `<openish-parameters>`

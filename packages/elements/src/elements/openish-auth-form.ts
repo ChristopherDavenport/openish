@@ -1,4 +1,5 @@
 import { consume } from '@lit/context'
+import { Task } from '@lit/task'
 import {
   authorizeInPopup,
   authorizeUrl,
@@ -6,11 +7,11 @@ import {
   createPkce,
   createState,
   discoverOidc,
-  exchangeCode,
+  expiresInSeconds,
   isSameOrigin,
   requestClientCredentials,
   requestPasswordToken,
-  tokenFromFragment,
+  type DiscoveryResult,
   type OidcConfiguration,
 } from '@openish/client'
 import { describeSecurityScheme, type SecurityEntry } from '@openish/core'
@@ -18,12 +19,40 @@ import { LitElement, html, css, nothing, type TemplateResult } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
 import { repeat } from 'lit/directives/repeat.js'
 
+import { completeAuthorization } from '../auth/complete-authorization.js'
+import {
+  clientIdFor,
+  endpointsFor,
+  grantFor,
+  isDirectGrant,
+  openIdConnectUrl,
+  scopesFor,
+  selectedScopes,
+  tokenEndpointFor,
+} from '../auth/oauth-flows.js'
 import { requestContext, uiContext, type OpenishRequestState, type OpenishUiState } from '../context/contexts.js'
 import { dispatch } from '../events.js'
+import { renderAuthField } from '../render/auth-field.js'
 import { baseStyles, controlStyles, rowStyles, statusStyles, visuallyHidden } from '../styles/shared.js'
 import './openish-markdown.js'
 
-type OAuthFlows = Record<string, { authorizationUrl?: string; tokenUrl?: string; scopes?: Record<string, string> }>
+/**
+ * What the reader has typed into one scheme's form, before any of it becomes a credential.
+ *
+ * One record rather than the five parallel `Record<string, string>` maps this used to keep. They
+ * were always indexed by the same key and written by the same shape of handler, and five of
+ * anything is five places to forget.
+ *
+ * `secret` and `password` are held here and never dispatched: a password is not a credential the
+ * session should learn about, it is an input to obtaining one. Only the resulting token leaves.
+ */
+type SchemeDraft = {
+  readonly clientId?: string
+  readonly secret?: string
+  readonly username?: string
+  readonly password?: string
+  readonly scopes?: readonly string[]
+}
 
 /**
  * What the reader has to supply before an operation will answer.
@@ -149,138 +178,78 @@ export class OpenishAuthForm extends LitElement {
   @state()
   private shown = ''
 
-  /** Discovered metadata per scheme, and the scopes the reader ticked. */
+  /** What the reader has typed, per scheme. */
   @state()
-  private discovered: Record<string, OidcConfiguration> = {}
-
-  @state()
-  private discoveryError: Record<string, string> = {}
-
-  @state()
-  private chosenScopes: Record<string, string[]> = {}
-
-  @state()
-  private clientIds: Record<string, string> = {}
+  private drafts: Readonly<Record<string, SchemeDraft>> = {}
 
   /**
-   * What the two direct grants need, per scheme.
+   * What a provider's metadata said, per scheme - including that it could not be read.
    *
-   * Held here and never dispatched: a password is not a credential the session should learn about,
-   * it is an input to obtaining one. Only the resulting token leaves as `openish-auth-change`.
+   * The union rather than a pair of maps: "discovered" and "failed to discover" are alternatives,
+   * and two maps let a scheme be in both at once or be checked against only one of them.
    */
   @state()
-  private secrets: Record<string, string> = {}
+  private discovery: Readonly<Record<string, DiscoveryResult>> = {}
 
-  @state()
-  private usernames: Record<string, string> = {}
+  /** One write for every field on every form. */
+  #patch(scheme: string, patch: SchemeDraft): void {
+    this.drafts = { ...this.drafts, [scheme]: { ...this.drafts[scheme], ...patch } }
+  }
 
-  @state()
-  private passwords: Record<string, string> = {}
+  #draft(scheme: string): SchemeDraft {
+    return this.drafts[scheme] ?? {}
+  }
 
   #configFor(scheme: string) {
     return this.ui?.config.oauth?.[scheme]
   }
 
+  /** The provider metadata for a scheme, when it was read successfully. */
+  #discovered(scheme: string): OidcConfiguration | undefined {
+    const result = this.discovery[scheme]
+    return result?.ok ? result.configuration : undefined
+  }
+
+  /** Why a scheme's metadata could not be read, when that is what happened. */
+  #discoveryError(scheme: string): string | undefined {
+    const result = this.discovery[scheme]
+    return result && !result.ok ? result.message : undefined
+  }
+
   #clientId(scheme: string): string {
-    return this.clientIds[scheme] ?? this.#configFor(scheme)?.clientId ?? ''
-  }
-
-  /** The endpoints for a scheme: declared by an `oauth2` flow, or discovered for `openIdConnect`. */
-  #endpointsFor(entry: SecurityEntry): { authorizationEndpoint: string; tokenEndpoint: string } | undefined {
-    const discovered = this.discovered[entry.name]
-    if (discovered) {
-      return discovered
-    }
-
-    const flows = (entry.scheme as { flows?: OAuthFlows } | undefined)?.flows ?? {}
-    const code = flows['authorizationCode']
-    if (code?.authorizationUrl && code.tokenUrl) {
-      return { authorizationEndpoint: code.authorizationUrl, tokenEndpoint: code.tokenUrl }
-    }
-
-    /* Implicit has an authorization endpoint and no token endpoint, because it never exchanges. */
-    const implicit = flows['implicit']
-    if (implicit?.authorizationUrl) {
-      return { authorizationEndpoint: implicit.authorizationUrl, tokenEndpoint: '' }
-    }
-
-    return undefined
+    return clientIdFor(this.#draft(scheme).clientId, this.#configFor(scheme))
   }
 
   /**
-   * Which grant this scheme is going to use.
+   * Reads a provider's metadata; an `openIdConnect` scheme is unusable without it.
    *
-   * Ordered by what is actually safe in a browser: the authorization code flow first (it is the only
-   * one designed for a public client), then the two that post directly to the token endpoint, then
-   * implicit last because OAuth 2.1 removes it and its token arrives in a URL fragment.
+   * Only for the scheme on screen. A document offering seven alternatives should not make a
+   * reader's browser call seven providers' well-known endpoints to render a page they may only be
+   * reading - so the task is keyed on the scheme showing, and moving the picker starts the next one.
    *
-   * `openIdConnect` discovery answers for the code flow, so a discovered scheme is always `code`.
+   * A `Task` rather than a call from `updated()`, which is what this was. That version fired on
+   * every render, was guarded only by its own result having arrived, and had nothing to cancel it
+   * when the element went away - which is three ways of saying it was a side effect in a lifecycle
+   * hook rather than a value derived from an input.
+   *
+   * Constructed rather than kept: a task registers itself with its host, and nothing here reads a
+   * result. What it produces is the {@link discovery} entry, which is reactive state like any other.
    */
-  #grantFor(entry: SecurityEntry): 'code' | 'clientCredentials' | 'password' | 'implicit' | undefined {
-    if (this.discovered[entry.name]) {
-      return 'code'
-    }
+  constructor() {
+    super()
 
-    const flows = (entry.scheme as { flows?: OAuthFlows } | undefined)?.flows ?? {}
-    if (flows['authorizationCode']?.authorizationUrl && flows['authorizationCode'].tokenUrl) {
-      return 'code'
-    }
-    if (flows['clientCredentials']?.tokenUrl) {
-      return 'clientCredentials'
-    }
-    if (flows['password']?.tokenUrl) {
-      return 'password'
-    }
-    if (flows['implicit']?.authorizationUrl) {
-      return 'implicit'
-    }
-    return undefined
-  }
-
-  /** The token endpoint for a grant that posts to one directly. */
-  #tokenEndpointFor(entry: SecurityEntry, grant: 'clientCredentials' | 'password'): string {
-    const flows = (entry.scheme as { flows?: OAuthFlows } | undefined)?.flows ?? {}
-    return flows[grant]?.tokenUrl ?? ''
-  }
-
-  /** Every scope on offer: the operation's own, plus whatever the flow or the provider advertises. */
-  #scopesFor(entry: SecurityEntry): string[] {
-    const flows = (entry.scheme as { flows?: OAuthFlows } | undefined)?.flows ?? {}
-    const declared = Object.values(flows).flatMap((flow) => Object.keys(flow?.scopes ?? {}))
-    const discovered = this.discovered[entry.name]?.scopesSupported ?? []
-
-    return [...new Set([...entry.scopes, ...declared, ...discovered])]
-  }
-
-  #selectedScopes(entry: SecurityEntry): string[] {
-    /* What the operation asks for is ticked to begin with: it is the minimum that will work. */
-    return this.chosenScopes[entry.name] ?? this.#configFor(entry.name)?.scopes ?? [...entry.scopes]
-  }
-
-  protected override updated(): void {
-    void this.#discover()
-  }
-
-  /**
-   * Reads a provider's metadata once per scheme; an `openIdConnect` scheme is unusable without it.
-   *
-   * Only for the scheme on screen. A document offering seven alternatives should not make a reader's
-   * browser call seven providers' well-known endpoints to render a page they may only be reading.
-   */
-  async #discover(): Promise<void> {
-    for (const entry of this.#shown ? [this.#shown] : []) {
-      const url = (entry.scheme as { openIdConnectUrl?: string } | undefined)?.openIdConnectUrl
-      if (!url || this.discovered[entry.name] || this.discoveryError[entry.name]) {
-        continue
-      }
-
-      const result = await discoverOidc(url)
-      if (result.ok) {
-        this.discovered = { ...this.discovered, [entry.name]: result.configuration }
-      } else {
-        this.discoveryError = { ...this.discoveryError, [entry.name]: result.message }
-      }
-    }
+    new Task(this, {
+      task: async ([scheme, url]: readonly [string, string | undefined]) => {
+        if (!url || this.discovery[scheme]) {
+          return
+        }
+        this.discovery = { ...this.discovery, [scheme]: await discoverOidc(url) }
+      },
+      args: () => {
+        const entry = this.#shown
+        return [entry?.name ?? '', entry ? openIdConnectUrl(entry) : undefined] as const
+      },
+    })
   }
 
   #redirectUri(scheme: string): string {
@@ -298,15 +267,15 @@ export class OpenishAuthForm extends LitElement {
   #authorize(entry: SecurityEntry): void {
     const clientId = this.#clientId(entry.name)
     const redirectUri = this.#redirectUri(entry.name)
-    const scopes = this.#selectedScopes(entry)
-    const endpoints = this.#endpointsFor(entry)
+    const scopes = selectedScopes(entry, this.#draft(entry.name).scopes, this.#configFor(entry.name))
+    const endpoints = endpointsFor(entry, this.#discovered(entry.name))
     const proxyUrl = this.ui?.config.proxyUrl ?? ''
 
     if (!endpoints) {
       dispatch(this, 'openish-auth-change', {
         scheme: entry.name,
         kind: 'failed',
-        message: this.discoveryError[entry.name] ?? 'This scheme declares no flow openish can start.',
+        message: this.#discoveryError(entry.name) ?? 'This scheme declares no flow openish can start.',
       })
       return
     }
@@ -324,7 +293,7 @@ export class OpenishAuthForm extends LitElement {
 
     const prepared = createPkce().then(async (pkce) => {
       const state = createState()
-      const implicit = this.#grantFor(entry) === 'implicit'
+      const implicit = grantFor(entry, this.#discovered(entry.name)) === 'implicit'
       const url = authorizeUrl({
         authorizationEndpoint: endpoints.authorizationEndpoint,
         clientId,
@@ -359,56 +328,25 @@ export class OpenishAuthForm extends LitElement {
       return
     }
 
+    /*
+     * The same finish as a redirect that came back, and deliberately the same code: the two used to
+     * be written out separately, one dispatching an event and one writing the session, and the two
+     * spellings had already drifted. See `auth/complete-authorization.ts`.
+     */
     void authorizeInPopup(prepared).then(async (outcome) => {
-      if (!outcome.ok) {
-        dispatch(this, 'openish-auth-change', { scheme: entry.name, kind: 'failed', message: outcome.message })
-        return
+      const pending = {
+        scheme: entry.name,
+        tokenEndpoint: endpoints.tokenEndpoint,
+        verifier: outcome.ok && outcome.accessToken === undefined ? (await prepared).verifier : '',
+        clientId,
+        redirectUri,
       }
-
-      /*
-       * The implicit flow has nothing to exchange - the provider put the access token itself in the
-       * fragment, which is exactly why it is deprecated. Read it and stop; there is no code, no
-       * verifier, and no refresh token to come.
-       */
-      if (outcome.accessToken !== undefined) {
-        const implicit = tokenFromFragment(outcome.fragment)
-        dispatch(
-          this,
-          'openish-auth-change',
-          implicit
-            ? {
-                scheme: entry.name,
-                kind: 'token',
-                token: {
-                  accessToken: implicit.accessToken,
-                  tokenType: implicit.tokenType,
-                  scope: implicit.scope,
-                  ...(implicit.expiresAt !== undefined ? { expiresAt: implicit.expiresAt } : {}),
-                },
-              }
-            : { scheme: entry.name, kind: 'failed', message: 'The provider returned no usable token.' },
-        )
-        return
-      }
-
-      const { verifier } = await prepared
-      const result = await exchangeCode(
-        { tokenEndpoint: endpoints.tokenEndpoint, code: outcome.code, verifier, clientId, redirectUri },
-        proxyUrl ? { proxyUrl } : {},
-      )
-
-      dispatch(
-        this,
-        'openish-auth-change',
-        result.ok
-          ? { scheme: entry.name, kind: 'token', token: result.token }
-          : { scheme: entry.name, kind: 'failed', message: result.message },
-      )
+      dispatch(this, 'openish-auth-change', await completeAuthorization(outcome, pending, { proxyUrl }))
     })
   }
 
   #renderState(entry: SecurityEntry): TemplateResult | typeof nothing {
-    const grant = this.request?.session.get(entry.name)
+    const grant = this.request?.grants[entry.name]
     if (!grant || grant.status === 'idle') {
       return nothing
     }
@@ -426,7 +364,7 @@ export class OpenishAuthForm extends LitElement {
       return html`<p class="state active" role="status">Using the value you entered.</p>`
     }
 
-    const seconds = this.request?.session.expiresInSeconds(entry.name)
+    const seconds = expiresInSeconds(this.request?.grants[entry.name])
     return html`
       <p class="state active" role="status">
         Signed in${seconds === undefined ? '' : ` — expires in ${Math.floor(seconds / 60)}m ${seconds % 60}s`}
@@ -441,11 +379,12 @@ export class OpenishAuthForm extends LitElement {
    * the code flow is the ending: a token, announced upward, written by the one thing that writes.
    */
   async #requestDirectToken(entry: SecurityEntry, grant: 'clientCredentials' | 'password'): Promise<void> {
-    const tokenEndpoint = this.#tokenEndpointFor(entry, grant)
+    const tokenEndpoint = tokenEndpointFor(entry, grant)
     const clientId = this.#clientId(entry.name)
-    const scopes = this.#selectedScopes(entry)
+    const draft = this.#draft(entry.name)
+    const scopes = selectedScopes(entry, draft.scopes, this.#configFor(entry.name))
     const proxyUrl = this.ui?.config.proxyUrl ?? ''
-    const clientSecret = this.secrets[entry.name] ?? ''
+    const clientSecret = draft.secret ?? ''
     const extraParams = this.#configFor(entry.name)?.extraParams
 
     dispatch(this, 'openish-auth-change', { scheme: entry.name, kind: 'authorizing' })
@@ -466,8 +405,8 @@ export class OpenishAuthForm extends LitElement {
             {
               tokenEndpoint,
               clientId,
-              username: this.usernames[entry.name] ?? '',
-              password: this.passwords[entry.name] ?? '',
+              username: draft.username ?? '',
+              password: draft.password ?? '',
               scopes,
               ...(clientSecret ? { clientSecret } : {}),
               ...(extraParams ? { extraParams } : {}),
@@ -477,7 +416,7 @@ export class OpenishAuthForm extends LitElement {
 
     /* The password is not kept after it has been spent. */
     if (grant === 'password') {
-      this.passwords = { ...this.passwords, [entry.name]: '' }
+      this.#patch(entry.name, { password: '' })
     }
 
     dispatch(
@@ -489,41 +428,17 @@ export class OpenishAuthForm extends LitElement {
     )
   }
 
-  /** A labelled input row, since the direct grants need three of the same shape. */
-  #renderField(
-    entry: SecurityEntry,
-    id: string,
-    label: string,
-    type: 'text' | 'password',
-    value: string,
-    onInput: (value: string) => void,
-  ): TemplateResult {
-    return html`
-      <div class="row">
-        <label class="key" for="${id}-${entry.name}">${label}</label>
-        <div class="value">
-          <input
-            id="${id}-${entry.name}"
-            type=${type}
-            autocomplete="off"
-            spellcheck="false"
-            .value=${value}
-            @input=${(event: Event) => onInput((event.target as HTMLInputElement).value)}
-          />
-        </div>
-      </div>
-    `
-  }
-
   #renderOAuth(entry: SecurityEntry): TemplateResult {
-    const scopes = this.#scopesFor(entry)
-    const selected = new Set(this.#selectedScopes(entry))
-    const grant = this.request?.session.get(entry.name)
+    const discovered = this.#discovered(entry.name)
+    const draft = this.#draft(entry.name)
+    const scopes = scopesFor(entry, discovered)
+    const selected = new Set(selectedScopes(entry, draft.scopes, this.#configFor(entry.name)))
+    const grant = this.request?.grants[entry.name]
     const busy = grant?.status === 'authorizing'
     const clientId = this.#clientId(entry.name)
-    const error = this.discoveryError[entry.name]
-    const flow = this.#grantFor(entry)
-    const direct = flow === 'clientCredentials' || flow === 'password'
+    const error = this.#discoveryError(entry.name)
+    const flow = grantFor(entry, discovered)
+    const direct = isDirectGrant(flow)
     const proxied = (this.ui?.config.proxyUrl ?? '') !== ''
 
     return html`
@@ -549,12 +464,12 @@ export class OpenishAuthForm extends LitElement {
             autocomplete="off"
             .value=${clientId}
             @input=${(event: Event) => {
-              this.clientIds = { ...this.clientIds, [entry.name]: (event.target as HTMLInputElement).value }
+              this.#patch(entry.name, { clientId: (event.target as HTMLInputElement).value })
             }}
           />
           <button
             type="button"
-            aria-busy=${busy ? 'true' : nothing}
+            aria-busy=${busy ? 'true' : 'false'}
             ?disabled=${busy || clientId === ''}
             @click=${() => (direct ? void this.#requestDirectToken(entry, flow) : this.#authorize(entry))}
           >
@@ -574,17 +489,32 @@ export class OpenishAuthForm extends LitElement {
       </div>
       ${flow === 'password'
         ? html`
-            ${this.#renderField(entry, 'username', 'username', 'text', this.usernames[entry.name] ?? '', (value) => {
-              this.usernames = { ...this.usernames, [entry.name]: value }
+            ${renderAuthField({
+              scheme: entry.name,
+              id: 'username',
+              label: 'username',
+              type: 'text',
+              value: draft.username ?? '',
+              onInput: (value) => this.#patch(entry.name, { username: value }),
             })}
-            ${this.#renderField(entry, 'password', 'password', 'password', this.passwords[entry.name] ?? '', (value) => {
-              this.passwords = { ...this.passwords, [entry.name]: value }
+            ${renderAuthField({
+              scheme: entry.name,
+              id: 'password',
+              label: 'password',
+              type: 'password',
+              value: draft.password ?? '',
+              onInput: (value) => this.#patch(entry.name, { password: value }),
             })}
           `
         : nothing}
       ${direct && proxied
-        ? this.#renderField(entry, 'secret', 'client secret', 'password', this.secrets[entry.name] ?? '', (value) => {
-            this.secrets = { ...this.secrets, [entry.name]: value }
+        ? renderAuthField({
+            scheme: entry.name,
+            id: 'secret',
+            label: 'client secret',
+            type: 'password',
+            value: draft.secret ?? '',
+            onInput: (value) => this.#patch(entry.name, { secret: value }),
           })
         : nothing}
       ${direct && !proxied
@@ -613,7 +543,7 @@ export class OpenishAuthForm extends LitElement {
                         } else {
                           next.delete(scope)
                         }
-                        this.chosenScopes = { ...this.chosenScopes, [entry.name]: [...next] }
+                        this.#patch(entry.name, { scopes: [...next] })
                       }}
                     />
                     <span>${scope}</span>
@@ -630,7 +560,7 @@ export class OpenishAuthForm extends LitElement {
   #renderScheme(entry: SecurityEntry): TemplateResult {
     const type = entry.scheme?.type
     const oauth = type === 'oauth2' || type === 'openIdConnect'
-    const grant = this.request?.session.get(entry.name)
+    const grant = this.request?.grants[entry.name]
     const pasted = grant?.status === 'active' && grant.kind === 'pasted' ? grant.value : ''
 
     return html`
@@ -720,7 +650,7 @@ export class OpenishAuthForm extends LitElement {
 
   /** Whether the reader is already holding a credential for a scheme, so the picker can say so. */
   #held(entry: SecurityEntry): boolean {
-    return this.request?.session.get(entry.name)?.status === 'active'
+    return this.request?.grants[entry.name]?.status === 'active'
   }
 }
 

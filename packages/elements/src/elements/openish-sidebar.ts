@@ -12,6 +12,7 @@ import {
   type OpenishSourcesState,
   type OpenishUiState,
 } from '../context/contexts.js'
+import { deepQuery } from '../dom/deep-query.js'
 import { navRows, type Expansion, type NavRow } from '../navigation/rows.js'
 import { baseStyles } from '../styles/shared.js'
 import './openish-search.js'
@@ -306,10 +307,17 @@ export class OpenishSidebar extends LitElement {
    *
    * Looked up by the row's own id rather than through `virtualizer.element(index)`, which hands back
    * a proxy that can scroll and focus but is not the element and has no shadow root to reach into.
+   *
+   * Activating the real anchor, rather than working out where it points and going there: the tree
+   * puts DOM focus on the scroller and moves a cursor with `aria-activedescendant`, so Enter arrives
+   * here rather than at the link the reader means. What the platform would have done with that key
+   * is exactly what a click on the anchor does - including telling the root's delegated handler
+   * which href was chosen, in whichever routing mode is in force. Re-deriving that here would be a
+   * second copy of the only thing that knows.
    */
   #anchorAt(index: number): HTMLAnchorElement | undefined {
     const row = this.renderRoot.querySelector(`#row-${index}`)
-    return row?.querySelector('openish-sidebar-item')?.shadowRoot?.querySelector('a') ?? undefined
+    return (row ? (deepQuery(row, 'a') as HTMLAnchorElement | null) : null) ?? undefined
   }
 
   /**

@@ -216,6 +216,14 @@ export class OpenishTryIt extends LitElement {
   @state()
   private mediaType = ''
 
+  /**
+   * The last answer, or nothing.
+   *
+   * Not read off `#send.value`, which is nearly but not quite the same thing: a task keeps its
+   * previous value across a re-run and across an abort, and this has to be *cleared* when the panel
+   * is reopened. The answer describes the request as it was when Send was pressed, and by then that
+   * may be a different server, a different credential, or a different operation entirely.
+   */
   @state()
   private result: SendResult | undefined = undefined
 
@@ -224,8 +232,6 @@ export class OpenishTryIt extends LitElement {
 
   /** The element to hand focus back to. Restoring it is the difference between a dialog and a trap. */
   #opener: HTMLElement | undefined
-
-  #abort: AbortController | undefined
 
   get #resolved() {
     return resolveOperationNode(this.store?.document, this.node)
@@ -325,22 +331,26 @@ export class OpenishTryIt extends LitElement {
       }
 
       const proxyUrl = this.ui?.config.proxyUrl ?? ''
-      const result = await sendRequest(har, { ...(proxyUrl ? { proxyUrl } : {}), signal })
-      this.result = result
-      return result
+      this.result = await sendRequest(har, { ...(proxyUrl ? { proxyUrl } : {}), signal })
+      return this.result
     },
     args: () => [] as const,
   })
 
   #run(): void {
-    this.#abort?.abort()
-    this.#abort = new AbortController()
     this.result = undefined
     void this.#send.run()
   }
 
+  /*
+   * The task's own signal, which is the one `sendRequest` was given.
+   *
+   * There used to be a second `AbortController` here, created beside every run and aborted by the
+   * Cancel button - and wired to nothing, because the signal that reached the request came from the
+   * task. Pressing Cancel stopped the spinner and left the request in flight.
+   */
   #cancel(): void {
-    this.#abort?.abort()
+    this.#send.abort()
   }
 
   /**
@@ -355,7 +365,7 @@ export class OpenishTryIt extends LitElement {
    */
   #show(opener: HTMLElement): void {
     this.#opener = opener
-    this.#abort?.abort()
+    this.#send.abort()
     this.result = undefined
     this.open = true
   }
@@ -392,7 +402,7 @@ export class OpenishTryIt extends LitElement {
     }
 
     /* A reader who closed the panel is not waiting for the answer any more. */
-    this.#abort?.abort()
+    this.#send.abort()
     this.open = false
     this.#opener?.focus()
   }
@@ -405,6 +415,7 @@ export class OpenishTryIt extends LitElement {
     const har = this.#harToShow
     const cookies = this.#har ? unsendableCookies(this.#har) : []
     const sending = this.#send.status === TaskStatus.PENDING
+    const result = this.result
 
     return html`
       <div class="client">
@@ -451,10 +462,10 @@ export class OpenishTryIt extends LitElement {
 
           <div class="column response">
             ${sending ? html`<p class="note" role="status">Sending…</p>` : nothing}
-            ${this.result === undefined && !sending
+            ${result === undefined && !sending
               ? html`<p class="empty">Send the request to see the response here.</p>`
               : nothing}
-            <openish-response-view .result=${this.result}></openish-response-view>
+            <openish-response-view .result=${result}></openish-response-view>
           </div>
         </div>
       </div>

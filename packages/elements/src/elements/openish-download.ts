@@ -144,7 +144,7 @@ export class OpenishDownload extends LitElement {
           (format) => html`
             <button
               type="button"
-              aria-busy=${this.working === format ? 'true' : nothing}
+              aria-busy=${this.working === format ? 'true' : 'false'}
               ?disabled=${this.working !== undefined}
               @click=${() => void this.#download(format)}
             >

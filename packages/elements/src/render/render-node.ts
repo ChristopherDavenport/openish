@@ -1,7 +1,8 @@
 import type { DocumentStore, NavNode } from '@openish/core'
 import { html, type TemplateResult } from 'lit'
 
-import { applySlugPrefix, stripFirstSegment } from '../router/urls.js'
+import { redirectedNode } from '../router/redirect.js'
+import { stripFirstSegment } from '../router/urls.js'
 
 import '../elements/openish-model.js'
 import '../elements/openish-operation.js'
@@ -72,27 +73,6 @@ export const renderOverview = (hash = ''): TemplateResult =>
       <slot name="overview-aside" slot="aside"></slot>
     </openish-overview>
   `
-
-/**
- * A second chance for an id the document has no node for.
- *
- * Consulted only on a miss, so a host's `redirect` cannot shadow a real page and costs nothing on
- * every navigation that resolves. One hop only: a generator that maps `a` to `b` and `b` to `a`
- * would otherwise be a hang, and a chain that needs two hops is a config that should say so once.
- *
- * It works in **URL space**, not in id space: a host writing `redirect` is holding a list of links
- * that used to work, and those are the strings in its old sitemap - not ids carrying a document
- * slug the single-document URL never showed. So the id goes in the way the URL had it, and an
- * answer is looked up the same way. A prefixed answer is accepted too, because a multi-document
- * host redirecting *between* documents has no other way to say which one it means.
- */
-export const redirectedNode = (store: DocumentStore, id: string, slugPrefix: string): NavNode | undefined => {
-  const target = store.config.redirect?.(slugPrefix ? stripFirstSegment(id) : id)
-  if (!target) {
-    return undefined
-  }
-  return store.bySlug.get(applySlugPrefix(target, slugPrefix)) ?? store.bySlug.get(target)
-}
 
 /**
  * Renders whatever a node id points at.

@@ -1,14 +1,9 @@
 import { provide } from '@lit/context'
-import { Task, TaskStatus } from '@lit/task'
 import {
-  createDocumentStore,
   resolveConfig,
-  resolveServerUrl,
-  resolveSources,
   type ColorSchemePreference,
   type DocumentStore,
   type OpenishConfig,
-  type ResolvedSource,
   type SourceConfig,
 } from '@openish/core'
 import { virtualize } from '@lit-labs/virtualizer/virtualize.js'
@@ -18,15 +13,9 @@ import { classMap } from 'lit/directives/class-map.js'
 import { keyed } from 'lit/directives/keyed.js'
 import { createRef, ref } from 'lit/directives/ref.js'
 
-import {
-  AuthSession,
-  exchangeCode,
-  resumeRedirect,
-  tokenFromFragment,
-  type CredentialStore,
-} from '@openish/client'
+import type { CredentialStore } from '@openish/client'
 
-import { scopedCredentialStore } from '../auth/scoped-credential-store.js'
+import { buildRequestState } from '../context/build.js'
 import {
   documentContext,
   requestContext,
@@ -39,25 +28,20 @@ import {
   type OpenishSourcesState,
   type OpenishUiState,
 } from '../context/contexts.js'
-import { LocationController } from '../controllers/location.js'
+import { AuthController } from '../controllers/auth.js'
 import { MediaQueryController } from '../controllers/media-query.js'
+import { RoutingController } from '../controllers/routing.js'
 import { SectionsController } from '../controllers/sections.js'
-import { SourcePrefetchController } from '../controllers/source-prefetch.js'
+import { ServerChoiceController } from '../controllers/server-choice.js'
+import { SourcesController } from '../controllers/sources.js'
 import { readStoredClient, writeStoredClient } from '../storage/client-choice.js'
-import { dispatch } from '../events.js'
-import { redirectedNode } from '../render/render-node.js'
+import { dispatch, type OpenishAuthChange } from '../events.js'
 import { renderSection } from '../render/render-section.js'
-import { documentSections, overviewAnchors, type Section } from '../render/sections.js'
+import { documentSections, type Section } from '../render/sections.js'
+import { resolvedId, scrollTarget, urlResolves, type PlanePosition } from '../render/scroll-target.js'
+import { documentServers } from '../render/servers.js'
 import { navigate } from '../router/navigate.js'
-import {
-  applySlugPrefix,
-  hrefForOverview,
-  idFromHash,
-  idFromPathname,
-  normalizeBasePath,
-  stripFirstSegment,
-  type RoutingMode,
-} from '../router/urls.js'
+import { normalizeBasePath, stripFirstSegment, type RoutingMode } from '../router/urls.js'
 import { baseStyles, controlStyles, statusStyles, visuallyHidden } from '../styles/shared.js'
 import './openish-markdown.js'
 import './openish-sidebar.js'
@@ -326,6 +310,62 @@ export class OpenishApiReference extends LitElement {
   #clientRestored = false
 
   /**
+   * The documents on offer, the one on screen, and everything it took to get it there.
+   *
+   * A controller rather than a dozen fields here, because none of what it holds is reactive state -
+   * a cache, an in-flight map and a generation counter - and an element that held them had to
+   * announce every mutation of them by hand.
+   */
+  readonly #sources: SourcesController = new SourcesController(this, {
+    configured: () => ({ sources: this.sources, url: this.url, spec: this.spec, config: this.config }),
+    named: () => this.#routing.urlId.split('/')[0] ?? '',
+    onLoaded: (result) => dispatch(this, 'openish-loaded', result),
+  })
+
+  /**
+   * The URL, read and written in one place.
+   *
+   * Constructed after {@link #sources} because it asks it for the slug prefix, and before
+   * {@link #sectionsController} because the spy hands its answers straight to it.
+   */
+  readonly #routing: RoutingController = new RoutingController(this, {
+    inputs: () => ({
+      mode: this.routing,
+      basePath: normalizeBasePath(this.basePath),
+      selected: this.selected,
+      slugPrefix: this.#sources.slugPrefix,
+    }),
+    onSameId: () => {
+      const target = scrollTarget(this.store, this.#position)
+      this.#sectionsController.scrollTo(target.section, target.anchor)
+    },
+    onNavigate: (id) => dispatch(this, 'openish-navigate', id),
+    resolves: () => urlResolves(this.store, this.#position),
+    hasSource: (slug) => this.#sources.sources.some((source) => source.slug === slug),
+    usesSources: () => this.#sources.usesSources,
+  })
+
+  /**
+   * What the reader is holding, and the one thing that writes it.
+   *
+   * One session per document: two documents that both declare `oauth2` are usually two different
+   * authorization servers, and one session would send the first one's token to the second.
+   */
+  readonly #auth: AuthController = new AuthController(this, {
+    activeSlug: () => this.#sources.activeSlug,
+    usesSources: () => this.#sources.usesSources,
+    store: () => this.credentialStore,
+    prefilled: () => this.credentials,
+    proxyUrl: () => this.ui.config.proxyUrl,
+    onChange: (change) => dispatch(this, 'openish-auth-change', change),
+  })
+
+  /** The server each document's reader picked, so switching away and back does not forget it. */
+  readonly #serverChoice: ServerChoiceController = new ServerChoiceController(this, {
+    activeSlug: () => this.#sources.activeSlug,
+  })
+
+  /**
    * Credentials a host already has - after its own login, say.
    *
    * A property, never an attribute: a token does not belong in markup, where it would be visible in
@@ -348,103 +388,6 @@ export class OpenishApiReference extends LitElement {
   @property({ attribute: false })
   credentialStore: CredentialStore | undefined = undefined
 
-  /** Stores built so far, keyed by slug. A store is immutable, so one is only ever built once. */
-  readonly #stores = new Map<string, DocumentStore>()
-
-  /**
-   * Loads in flight, keyed by slug.
-   *
-   * Two things ask for a document - the reader navigating to it, and the idle prefetch warming it -
-   * and without this they would fetch and parse it twice.
-   */
-  readonly #inflight = new Map<string, Promise<DocumentStore>>()
-
-  /**
-   * Bumped whenever the configured documents change, so a load started against the old
-   * configuration cannot write its result into the new one's cache.
-   */
-  #generation = 0
-
-  #sourcesKey: readonly unknown[] = []
-  #sourcesCache: readonly ResolvedSource[] = []
-
-  /**
-   * What the reader is holding, for the life of this page.
-   *
-   * Owned here rather than by the panel that shows it, because a reader authorises once and every
-   * operation uses it. `openish-auth-change` announces every change either way, so a host can
-   * persist by listening rather than by supplying a store if that suits it better.
-   */
-  readonly #sessions = new Map<string, AuthSession>()
-  #sessionStore: CredentialStore | undefined
-  #sessionStoreSeen = false
-
-  /**
-   * The session for the document on screen, built against whatever store the host has given by now.
-   *
-   * There is no single moment when "now" is late enough for a field initialiser: `request`'s own
-   * initial value names a session, so the constructor asks for one before any property assignment
-   * has happened. So it is built on first use *and* rebuilt in `connectedCallback` if a store has
-   * arrived since - which is the point where `element.credentialStore = …; parent.append(element)`
-   * has certainly run, and still before the first render. Rebuilding costs nothing: the session it
-   * replaces cannot have anything in it yet.
-   *
-   * One per document, because two documents that both declare `oauth2` are usually two different
-   * authorization servers, and one session would send the first one's token to the second.
-   */
-  get #session(): AuthSession {
-    return this.#sessionFor(this.#activeSlug)
-  }
-
-  #sessionFor(slug: string): AuthSession {
-    if (!this.#sessionStoreSeen || this.#sessionStore !== this.credentialStore) {
-      this.#sessionStoreSeen = true
-      this.#sessionStore = this.credentialStore
-      this.#sessions.clear()
-    }
-
-    const existing = this.#sessions.get(slug)
-    if (existing) {
-      return existing
-    }
-
-    /*
-     * A single-document reference is handed the host's store untouched, so anything it has already
-     * persisted still reads back. Only `sources` namespaces, because only `sources` can collide.
-     */
-    const store =
-      this.credentialStore && this.#usesSources
-        ? scopedCredentialStore(this.credentialStore, slug)
-        : this.credentialStore
-
-    const session = new AuthSession(store ? { store } : {})
-    this.#sessions.set(slug, session)
-    return session
-  }
-
-  override connectedCallback(): void {
-    super.connectedCallback()
-    /* Reads the getter, which is what rebuilds the session against a store set before append. */
-    void this.#session
-  }
-
-  @state()
-  private server = ''
-
-  @state()
-  private serverVariables: Record<string, string> = {}
-
-  /**
-   * The server each document's reader picked, so switching away and back does not forget it.
-   *
-   * A plain map rather than state: `server` and `serverVariables` above are the reactive pair, and
-   * this is only where the inactive documents' answers wait.
-   */
-  readonly #serverChoice = new Map<string, { server: string; variables: Record<string, string> }>()
-
-  /** Which document `server` currently describes, so `willUpdate` can tell when it has to swap. */
-  #serverSlug: string | undefined
-
   /**
    * Every document on offer, and which of them are loaded.
    *
@@ -463,9 +406,6 @@ export class OpenishApiReference extends LitElement {
     loading: new Set(),
   }
 
-  /** Prefilled credentials are a starting state, not something to reapply over the reader's edits. */
-  #appliedCredentials = false
-
   @provide({ context: requestContext })
   @state({
     hasChanged: (value: OpenishRequestState, old: OpenishRequestState | undefined) =>
@@ -476,16 +416,8 @@ export class OpenishApiReference extends LitElement {
     serverVariables: {},
     serverUrl: '',
     credentials: {},
-    session: this.#session,
+    grants: this.#auth.session.snapshot(),
   }
-
-  /**
-   * The URL as a reactive input, rather than a `window.location` read inside `render()`.
-   *
-   * Every element below reads the active id from `uiContext`, so this is the only place in the
-   * project that touches the global at all.
-   */
-  readonly #location = new LocationController(this)
 
   /**
    * Whether the viewport is too narrow for two columns.
@@ -504,18 +436,7 @@ export class OpenishApiReference extends LitElement {
    * id. What it reports comes back through the URL, which stays the single authority - see
    * `#onSpyActive`.
    */
-  readonly #sectionsController = new SectionsController(this, { onActive: (id) => this.#onSpyActive(id) })
-
-  /** The id the spy last wrote into the URL, so `updated` can tell a follow from a navigation. */
-  #writtenId: string | undefined
-
-  /**
-   * Where the reader has already been taken, so arriving there twice does nothing.
-   *
-   * A section, and the heading inside it when the URL named one - the two together are the request,
-   * and a section id on its own cannot tell two headings of the same section apart.
-   */
-  #scrolledId: string | undefined
+  readonly #sectionsController = new SectionsController(this, { onActive: (id) => this.#routing.follow(id) })
 
   /** Whether the stacked navigation is showing. Meaningless in the two-column layout. */
   @state()
@@ -525,181 +446,9 @@ export class OpenishApiReference extends LitElement {
   readonly #menuButton = createRef<HTMLButtonElement>()
 
 
-  /** Whether the host configured several documents rather than one. */
-  get #usesSources(): boolean {
-    return (this.sources?.length ?? 0) > 0
-  }
-
-  /**
-   * The documents this reference offers, with their slugs and titles decided.
-   *
-   * A reference configured with `url` or `spec` gets a one-entry list rather than a special case:
-   * the store it builds has a source like any other, and the only thing that makes it different is
-   * that the URL leaves the slug out.
-   */
-  get #sources(): readonly ResolvedSource[] {
-    const key = [this.sources, this.url, this.spec, this.config] as const
-    if (key.length === this.#sourcesKey.length && key.every((value, index) => this.#sourcesKey[index] === value)) {
-      return this.#sourcesCache
-    }
-
-    /*
-     * Invalidated here rather than in `willUpdate` because `@lit/task` reads `args()` from
-     * `hostUpdate`, and whichever of the two runs first, the answer has to be the same. A load
-     * already in flight is left to finish and discarded by its generation check.
-     */
-    this.#sourcesKey = key
-    this.#generation += 1
-    this.#stores.clear()
-    this.#inflight.clear()
-    this.#sourcesCache = resolveSources(this.#usesSources ? this.sources! : [this.#implicitSource()])
-    return this.#sourcesCache
-  }
-
-  /**
-   * The sources, with a generated title replaced by the document's own once it has loaded.
-   *
-   * A host that named its documents gets exactly those names. One that did not gets `API #2` in the
-   * picker until the document arrives and then what the document calls itself, which is the name the
-   * reader would recognise. The slug never moves - it is in every URL - so this is a label change
-   * and nothing more.
-   */
-  #titled(): readonly ResolvedSource[] {
-    const sources = this.#sources
-    if (!sources.some((source) => source.titleIsGenerated)) {
-      return sources
-    }
-
-    return sources.map((source) => {
-      const title = this.#stores.get(source.slug)?.document.info?.title
-      return source.titleIsGenerated && title ? { ...source, title } : source
-    })
-  }
-
-  /** The single document a host named with `url` or `spec`, as a source like any other. */
-  #implicitSource(): SourceConfig {
-    return {
-      ...(this.url !== undefined ? { url: this.url } : {}),
-      ...(this.spec !== undefined ? { content: this.spec } : {}),
-    }
-  }
-
-  /** The document on screen: the one the URL names, else the one marked `default`, else the first. */
-  get #activeSlug(): string {
-    const sources = this.#sources
-    if (sources.length === 0) {
-      return ''
-    }
-    if (!this.#usesSources) {
-      return sources[0]!.slug
-    }
-
-    const named = this.#urlId(normalizeBasePath(this.basePath)).split('/')[0] ?? ''
-    if (sources.some((source) => source.slug === named)) {
-      return named
-    }
-    return (sources.find((source) => source.isDefault) ?? sources[0]!).slug
-  }
-
-  /**
-   * The document slug the URL leaves out.
-   *
-   * Empty whenever `sources` is used: there the slug is what decides which document an id is about,
-   * so it has to be in the URL. The single-document case is the only one that can imply it.
-   */
-  get #slugPrefix(): string {
-    return this.#usesSources ? '' : (this.#sources[0]?.slug ?? '')
-  }
-
-  /**
-   * Builds a document's store, or hands back the one already built.
-   *
-   * openish's port of Scalar's `ensureDocumentLoaded`: cache, then in-flight, then do the work.
-   */
-  #loadSource(slug: string): Promise<DocumentStore> {
-    const cached = this.#stores.get(slug)
-    if (cached) {
-      return Promise.resolve(cached)
-    }
-    const pending = this.#inflight.get(slug)
-    if (pending) {
-      return pending
-    }
-
-    const source = this.#sources.find((candidate) => candidate.slug === slug)
-    if (!source) {
-      return Promise.reject(new Error(`No document is configured with the slug "${slug}".`))
-    }
-
-    const generation = this.#generation
-    const promise = (async () => {
-      const input = source.content ?? (source.url ? await this.#fetchDocument(source.url) : undefined)
-      if (input === undefined) {
-        throw new Error(`The document "${slug}" names neither a url nor content.`)
-      }
-
-      const store = await createDocumentStore(input, {
-        config: { ...this.config, ...source.config },
-        source: { slug: source.slug, title: source.title, url: source.url },
-      })
-
-      /* The configuration changed while this was in the air; the result belongs to nothing now. */
-      if (generation === this.#generation) {
-        this.#stores.set(slug, store)
-      }
-      return store
-    })().finally(() => {
-      this.#inflight.delete(slug)
-      /* So the picker stops saying "loading" and search picks up a document that has just landed. */
-      this.requestUpdate()
-    })
-
-    this.#inflight.set(slug, promise)
-    return promise
-  }
-
-  /** Warms the documents the reader has not asked for, while the browser is idle. */
-  readonly #prefetch = new SourcePrefetchController(this, {
-    pending: () => this.#sources.map((source) => source.slug).filter((slug) => !this.#stores.has(slug)),
-    load: (slug) => this.#loadSource(slug).then(() => undefined),
-  })
-
-  readonly #loadTask = new Task(this, {
-    task: async ([slug]: readonly [string, readonly ResolvedSource[]]) => {
-      if (slug === '') {
-        return undefined
-      }
-      return this.#loadSource(slug)
-    },
-    args: () => [this.#activeSlug, this.#sources] as const,
-    onComplete: (value) => {
-      this.store = value
-      if (value) {
-        dispatch(this, 'openish-loaded', { ok: true, store: value })
-      }
-      /* Only once a document is on screen, so the first one is never competing for the network. */
-      this.#prefetch.start()
-    },
-    onError: (error: unknown) => {
-      this.store = undefined
-      dispatch(this, 'openish-loaded', {
-        ok: false,
-        message: error instanceof Error ? error.message : String(error),
-      })
-    },
-  })
-
-  /** Whether a document has been configured at all. An empty `url` counts as "not configured". */
-  get #hasSource(): boolean {
-    return this.#sources.length > 0
-  }
-
-  async #fetchDocument(url: string): Promise<string> {
-    const response = await fetch(url)
-    if (!response.ok) {
-      throw new Error(`Could not fetch ${url}: ${response.status} ${response.statusText}`)
-    }
-    return response.text()
+  /** What the plane is being asked for, in the form `render/scroll-target.ts` reads. */
+  get #position(): PlanePosition {
+    return { activeId: this.ui.activeId, slugPrefix: this.ui.slugPrefix, hash: this.ui.hash }
   }
 
   /*
@@ -738,8 +487,7 @@ export class OpenishApiReference extends LitElement {
 
   readonly #onServerChange = (event: CustomEvent<{ url: string; variables: Record<string, string> }>): void => {
     event.stopPropagation()
-    this.server = event.detail.url
-    this.serverVariables = event.detail.variables
+    this.#serverChoice.set(event.detail.url, event.detail.variables)
   }
 
   /**
@@ -752,161 +500,50 @@ export class OpenishApiReference extends LitElement {
   readonly #onSourceChange = (event: CustomEvent<string>): void => {
     event.stopPropagation()
     const slug = event.detail
-    if (slug === this.#activeSlug || !this.#sources.some((source) => source.slug === slug)) {
+    if (slug === this.#sources.activeSlug || !this.#sources.sources.some((source) => source.slug === slug)) {
       return
     }
 
-    const routing = { routing: this.routing, basePath: normalizeBasePath(this.basePath), slugPrefix: this.#slugPrefix }
     if (this.routing === 'none') {
       dispatch(this, 'openish-navigate', slug)
       return
     }
-    navigate(routing, slug)
+    navigate(this.#routing.state, slug)
   }
 
   /**
-   * The only thing that writes to the session.
+   * Every change to what the reader is holding, on its way to the one thing that writes it.
    *
-   * A form that wanted to set a credential itself would be a second writer, and two writers is two
-   * ideas of what the reader is holding. It dispatches instead, and hears the result back as context.
-   */
-  readonly #onAuthChange = (event: CustomEvent<import('../events.js').OpenishAuthChange>): void => {
-    const change = event.detail
-
-    switch (change.kind) {
-      case 'pasted':
-        this.#session.setPasted(change.scheme, change.value)
-        break
-      case 'authorizing':
-        this.#session.beginAuthorizing(change.scheme)
-        break
-      case 'token':
-        this.#session.setToken(change.scheme, change.token)
-        break
-      case 'failed':
-        this.#session.fail(change.scheme, change.message)
-        break
-      case 'clear':
-        this.#session.clear(change.scheme)
-        break
-    }
-
-    this.requestUpdate()
-  }
-
-  /**
-   * The one thing this element derives, and the only reason it has a `willUpdate` at all.
+   * A form that set a credential itself would be a second writer, and two writers is two ideas of
+   * what the reader is holding. It dispatches instead, and hears the result back as context.
    *
-   * Everywhere else a value computed from other state is a getter, because nothing outside the
-   * element needs it. This one is *provided*: a context provider pushes, so the value has to be
-   * assigned somewhere in the update, and `willUpdate` is where an assignment joins the update
-   * already in flight instead of scheduling another. `hasChanged` above then decides whether
-   * anything downstream needs to hear about it.
+   * Deliberately not stopped: nothing re-dispatches this one, so the original escaping is how the
+   * host hears about a credential.
    */
-  /**
-   * Finishes an authorization that navigated away and came back.
-   *
-   * Runs once, on the first update, because that is when the URL carrying the code is still there -
-   * `resumeRedirect` strips it immediately, so nothing downstream ever sees a code in the address
-   * bar. The reader is then sent back to the page they left, which may not be where the provider
-   * returned them.
-   */
-  async #resumeOAuth(): Promise<void> {
-    const resumed = resumeRedirect()
-    if (!resumed) {
-      return
-    }
-
-    const { pending, outcome } = resumed
-    if (!outcome.ok) {
-      this.#session.fail(pending.scheme, outcome.message)
-      this.requestUpdate()
-      return
-    }
-
-    this.#session.beginAuthorizing(pending.scheme)
-    this.requestUpdate()
-
-    /*
-     * A redirect that came back with a token rather than a code is an implicit flow, which has
-     * nothing to exchange. `resumeRedirect` has already verified the state and stripped the URL.
-     */
-    if (outcome.accessToken !== undefined) {
-      const implicit = tokenFromFragment(outcome.fragment)
-      if (implicit) {
-        this.#session.setToken(pending.scheme, {
-          accessToken: implicit.accessToken,
-          tokenType: implicit.tokenType,
-          scope: implicit.scope,
-          ...(implicit.expiresAt !== undefined ? { expiresAt: implicit.expiresAt } : {}),
-        })
-      } else {
-        this.#session.fail(pending.scheme, 'The provider returned no usable token.')
-      }
-      this.requestUpdate()
-      return
-    }
-
-    const proxyUrl = this.ui.config.proxyUrl
-    const result = await exchangeCode(
-      {
-        tokenEndpoint: pending.tokenEndpoint,
-        code: outcome.code,
-        verifier: pending.verifier,
-        clientId: pending.clientId,
-        redirectUri: pending.redirectUri,
-      },
-      proxyUrl ? { proxyUrl } : {},
-    )
-
-    if (result.ok) {
-      this.#session.setToken(pending.scheme, result.token)
-    } else {
-      this.#session.fail(pending.scheme, result.message)
-    }
-    this.requestUpdate()
-
-    /*
-     * `resumeRedirect` has already stripped the provider's `code` and `state` out of the URL, so
-     * what is left differing from `returnTo` is the page the reader was on before they were sent
-     * away. Restoring it is a `replaceState` rather than a push: the authorization round trip is not
-     * a place the back button should be able to return to.
-     */
-    const here = `${window.location.pathname}${window.location.search}${window.location.hash}`
-    if (pending.returnTo && pending.returnTo !== here) {
-      window.history.replaceState(window.history.state, '', pending.returnTo)
-      this.requestUpdate()
-    }
+  readonly #onAuthChange = (event: CustomEvent<OpenishAuthChange>): void => {
+    this.#auth.apply(event.detail)
   }
 
   /** The server templates the document offers, in its own order. */
   get #servers(): string[] {
-    /*
-     * A host's list replaces the document's rather than adding to it. "Both" would leave a reader
-     * choosing between environments the host has already decided are not on offer.
-     */
-    const configured = this.ui.config.servers
-    const servers = configured.length > 0 ? configured : (this.store?.document.servers ?? [])
-    const base = this.ui.config.baseServerURL
-
-    return servers
-      .map((server) => server.url ?? '')
-      .filter((url) => url !== '')
-      /* A relative server is only meaningful against something; `baseServerURL` is that something. */
-      .map((url) => (base && url.startsWith('/') ? `${base.replace(/\/$/, '')}${url}` : url))
+    return documentServers(this.ui.config, this.store?.document.servers)
   }
 
+  /**
+   * The three provided contexts, assembled from what the controllers hold.
+   *
+   * The only `willUpdate` on this element, and the reason it exists at all: everywhere else a
+   * derived value is a getter, but these are *provided*, and a context provider pushes - so the
+   * value has to be assigned somewhere in the update. An assignment here joins the update already
+   * in flight; one in `updated` schedules a second render, which is where the bugs live. Each
+   * context's `hasChanged` then decides whether anything downstream needs to hear about it.
+   */
   protected override willUpdate(): void {
-    const base = normalizeBasePath(this.basePath)
     const config = this.store?.config ?? resolveConfig(this.config)
-    const activeSlug = this.#activeSlug
 
     /*
-     * The reader's last client choice, if the host asked for it to be remembered.
-     *
-     * Read here rather than at connect because the config that permits it arrives as a property, and
-     * assigned here rather than in `updated()` for the reason the server swap above gives: this
-     * joins the update in flight instead of scheduling a second one.
+     * The reader's last client choice, if the host asked for it to be remembered. Read here rather
+     * than at connect, because the config that permits it arrives as a property.
      */
     if (!this.#clientRestored && config.persistClient) {
       this.#clientRestored = true
@@ -916,46 +553,16 @@ export class OpenishApiReference extends LitElement {
       }
     }
 
-    /*
-     * The server the reader picked follows the document it was picked for. Assigned here rather
-     * than watched for in `updated()`: this joins the update already in flight, where a second
-     * assignment would schedule a second render.
-     */
-    if (this.#serverSlug !== activeSlug) {
-      if (this.#serverSlug !== undefined) {
-        this.#serverChoice.set(this.#serverSlug, { server: this.server, variables: this.serverVariables })
-      }
-      const restored = this.#serverChoice.get(activeSlug)
-      this.server = restored?.server ?? ''
-      this.serverVariables = restored?.variables ?? {}
-      this.#serverSlug = activeSlug
-    }
+    this.store = this.#sources.store
+    this.sourcesState = this.#sources.state
+    this.#auth.applyPrefilled()
 
-    this.sourcesState = {
-      sources: this.#titled(),
-      activeSlug,
-      loaded: new Map(this.#stores),
-      loading: new Set(this.#inflight.keys()),
-    }
-
-    /* A host's prefilled credentials are applied once, as the starting state, not on every update. */
-    if (this.credentials && !this.#appliedCredentials) {
-      this.#appliedCredentials = true
-      for (const [scheme, value] of Object.entries(this.credentials)) {
-        this.#session.setPasted(scheme, value)
-      }
-    }
-
-    const server = this.server || this.#servers[0] || ''
-    const declared = this.store?.document.servers?.find((candidate) => candidate.url === server)
-
-    this.request = {
-      server,
-      serverVariables: this.serverVariables,
-      serverUrl: declared ? resolveServerUrl(declared, this.serverVariables) : server,
-      credentials: this.#session.credentials(),
-      session: this.#session,
-    }
+    this.request = buildRequestState({
+      store: this.store,
+      server: this.#serverChoice.server || this.#servers[0] || '',
+      serverVariables: this.#serverChoice.variables,
+      session: this.#auth.session,
+    })
 
     this.#sectionsController.observe(documentSections(this.store))
 
@@ -963,108 +570,19 @@ export class OpenishApiReference extends LitElement {
       config,
       colorScheme: this.colorScheme,
       selectedClient: this.clientChosenByUser ?? config.defaultHttpClient,
-      basePath: base,
+      basePath: normalizeBasePath(this.basePath),
       routing: this.routing,
-      documentUrl: this.store?.source.url || (this.#usesSources ? '' : (this.url ?? '')),
-      slugPrefix: this.#slugPrefix,
-      activeId: this.#activeId(base),
+      documentUrl: this.store?.source.url || (this.#sources.usesSources ? '' : (this.url ?? '')),
+      slugPrefix: this.#sources.slugPrefix,
+      activeId: this.#routing.activeId,
       /*
        * The fragment is the heading the overview should scroll to - but only `history` mode has a
        * fragment to spare. In the other two the id is *in* the fragment, and a heading from
        * `info.description` is a navigation node in its own right, which `renderNode` already knows
        * means "the overview, scrolled here".
        */
-      hash: this.routing === 'history' ? this.#location.hash : '',
+      hash: this.#routing.hash,
     }
-  }
-
-  /**
-   * The id as the URL has it, before the implied document slug is put back.
-   *
-   * Separate from {@link #activeId} because {@link #activeSlug} has to read it to find out which
-   * document the URL names, and it cannot use the full id to do that - deciding the prefix is the
-   * very thing it is in the middle of.
-   */
-  #urlId(base: string): string {
-    switch (this.routing) {
-      case 'history':
-        return idFromPathname(this.#location.pathname, base)
-      case 'hash':
-        return idFromHash(this.#location.hash)
-      case 'none':
-        return this.selected
-    }
-  }
-
-  /** Which node the reference is showing, according to whatever is authoritative in this mode. */
-  #activeId(base: string): string {
-    return applySlugPrefix(this.#urlId(base), this.#slugPrefix)
-  }
-
-  /**
-   * Click interception, for the two modes that need it.
-   *
-   * `hash` needs none: a fragment link is navigation the browser performs itself, and the
-   * `hashchange` that follows is already a reactive input through `LocationController`. That is the
-   * whole reason it is the default.
-   *
-   * `history` needs `pushState` instead of a page load. `none` needs the click to become an
-   * `openish-navigate` for the host - without this a sidebar link in that mode navigated the browser
-   * to a URL the host had never agreed to serve.
-   *
-   * Bound in the template rather than with `addEventListener`, and reading `composedPath()` so that
-   * anchors inside a nested shadow root - which is all of them - are seen.
-   */
-  readonly #onClick = (event: MouseEvent): void => {
-    if (event.defaultPrevented || event.button !== 0) {
-      return
-    }
-    /* A modified click is the reader asking for a new tab or a download. Leave it to the browser. */
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
-      return
-    }
-
-    const anchor = event.composedPath().find((target): target is HTMLAnchorElement => target instanceof HTMLAnchorElement)
-    if (!anchor || anchor.target !== '' || anchor.hasAttribute('download') || anchor.origin !== window.location.origin) {
-      return
-    }
-
-    /*
-     * Clicking the section you are already on, which the browser has nothing to say about.
-     *
-     * The URL does not change, so no `hashchange` fires and nothing would move - but a reader who
-     * has scrolled away and clicked the current sidebar row means "take me back to it", and before
-     * the plane that request was answered by the page being rebuilt. Now it has to be answered here.
-     */
-    const clicked = applySlugPrefix(idFromHash(anchor.hash) || idFromPathname(anchor.pathname, normalizeBasePath(this.basePath)), this.#slugPrefix)
-    if (this.routing !== 'none' && clicked === this.ui.activeId) {
-      event.preventDefault()
-      const target = this.#scrollTarget
-      this.#sectionsController.scrollTo(target.section, target.anchor)
-      return
-    }
-
-    /* A fragment link is navigation the browser performs itself; `hashchange` is already an input. */
-    if (this.routing === 'hash') {
-      return
-    }
-
-    event.preventDefault()
-
-    if (this.routing === 'none') {
-      /*
-       * `none` renders fragment hrefs - see `hrefFor` - so the id is in the anchor's hash, not its
-       * path. This is the *request*, and it is the only `openish-navigate` this mode sends: the host
-       * answers by setting `selected`, and re-announcing that back at it would be telling the host
-       * what the host just decided.
-       */
-      dispatch(this, 'openish-navigate', idFromHash(anchor.hash))
-      return
-    }
-
-    window.history.pushState({}, '', anchor.href)
-    /* `pushState` fires nothing; `LocationController` is listening for the browser's own signal. */
-    window.dispatchEvent(new PopStateEvent('popstate'))
   }
 
   /**
@@ -1074,7 +592,7 @@ export class OpenishApiReference extends LitElement {
    * routed element can assume the document exists, and the loading and error states are stated once.
    */
   #renderLoadState(): TemplateResult | undefined {
-    if (!this.#hasSource) {
+    if (!this.#sources.hasSource) {
       return html`<p class="status" role="status">No document loaded.</p>`
     }
 
@@ -1084,11 +602,11 @@ export class OpenishApiReference extends LitElement {
      * than running. Saying "loading" is the truthful answer; "not found" would be a lie the reader
      * would act on.
      */
-    if (this.#loadTask.status === TaskStatus.PENDING || this.sourcesState.loading.has(this.sourcesState.activeSlug)) {
+    if (this.#sources.pending || this.sourcesState.loading.has(this.sourcesState.activeSlug)) {
       return html`<p class="status" role="status">Loading the API reference…</p>`
     }
 
-    const error = this.#loadTask.error
+    const error = this.#sources.error
     if (error) {
       return html`
         <div class="status">
@@ -1103,71 +621,6 @@ export class OpenishApiReference extends LitElement {
   /** Every section of the active document, in reading order. Memoised on the store. */
   get #sections(): readonly Section[] {
     return documentSections(this.store)
-  }
-
-  /**
-   * The section the URL names, after a `redirect` has had its one chance.
-   *
-   * Separate from `ui.activeId`, which is what the URL *says*: a redirected id has to scroll
-   * somewhere while the URL keeps what the reader typed, and the two are only the same string when
-   * nothing was redirected.
-   */
-  get #resolvedId(): string {
-    const store = this.store
-    const id = this.ui.activeId
-    if (!store || id === '' || id === store.source.slug) {
-      return store?.source.slug ?? ''
-    }
-    if (store.bySlug.has(id)) {
-      return id
-    }
-    return redirectedNode(store, id, this.ui.slugPrefix)?.id ?? id
-  }
-
-  /** Whether the id names a heading inside `info.description` rather than a section of its own. */
-  get #atOverviewAnchor(): boolean {
-    return overviewAnchors(this.store).has(this.ui.activeId)
-  }
-
-  /**
-   * The heading in the overview the URL is asking for, in the form the overview stamps its ids in.
-   *
-   * Two ways to name one, because a heading is both a navigation entry and a fragment: the id itself
-   * when the URL names the heading node, and the browser's own fragment in `history` mode, which is
-   * the only mode with one to spare.
-   */
-  get #overviewHash(): string {
-    return this.#atOverviewAnchor
-      ? (this.ui.slugPrefix ? stripFirstSegment(this.ui.activeId) : this.ui.activeId)
-      : this.ui.hash
-  }
-
-  /**
-   * What the plane is being asked for: a section to mount, and where in it to stop.
-   *
-   * A heading from `info.description` has no section of its own - the overview renders it - so the
-   * section to mount is the front of the document and the heading is where the reader actually
-   * asked to be. Without the pair the click resolved to a section id the plane has never heard of
-   * and nothing moved at all, which is only invisible while the overview happens to be on screen.
-   */
-  get #scrollTarget(): { section: string; anchor: string } {
-    const slug = this.store?.source.slug ?? ''
-    if (this.#atOverviewAnchor) {
-      return { section: slug, anchor: this.#overviewHash }
-    }
-
-    const section = this.#resolvedId
-    return { section, anchor: section === slug ? this.ui.hash : '' }
-  }
-
-  /** Whether the URL names anything this document has. False is what the banner is about. */
-  get #urlResolves(): boolean {
-    const store = this.store
-    if (!store) {
-      return false
-    }
-    const resolved = this.#resolvedId
-    return resolved === store.source.slug || store.bySlug.has(resolved)
   }
 
   /**
@@ -1188,8 +641,10 @@ export class OpenishApiReference extends LitElement {
       return loading
     }
 
-    const missing = this.store !== undefined && !this.#urlResolves
-    const overviewHash = this.#overviewHash
+    const position = this.#position
+    const missing = this.store !== undefined && !urlResolves(this.store, position)
+    /* Hoisted out of the item renderer: the answer is the same for every section on the plane. */
+    const active = resolvedId(this.store, position)
 
     return html`
       ${missing ? this.#renderNotFound() : nothing}
@@ -1206,10 +661,7 @@ export class OpenishApiReference extends LitElement {
             keyFunction: (section) => (section as Section).id,
             renderItem: (section) => html`
               <div class="section" data-id=${(section as Section).id} data-kind=${(section as Section).kind}>
-                ${renderSection(section as Section, {
-                  overviewHash,
-                  active: (section as Section).id === this.#resolvedId,
-                })}
+                ${renderSection(section as Section, { active: (section as Section).id === active })}
               </div>
             `,
           }),
@@ -1239,112 +691,20 @@ export class OpenishApiReference extends LitElement {
     this.#sectionsController.plane = element
   }
 
-  /**
-   * The spy has decided the reader is somewhere else.
-   *
-   * It writes the URL and asks for an update; it does not set a second copy of the active id. The
-   * URL stays the one authority and `willUpdate` re-reads it, which is the same trick `#onClick`
-   * uses after a `pushState`.
-   *
-   * `replaceState`, and not the alternatives. `pushState` would make every section the reader passes
-   * a history entry, so Back would walk them back up the document and never leave the reference.
-   * Assigning `location.hash` *is* a navigation - it pushes an entry and fires `hashchange`, which
-   * re-renders, which scrolls: the feedback loop written out. `replaceState` fires nothing, which is
-   * exactly what is wanted, because the URL is being made to describe the position rather than to
-   * cause it.
-   */
-  #onSpyActive(id: string): void {
-    if (typeof window === 'undefined' || id === this.ui.activeId) {
-      return
-    }
-
-    /*
-     * A URL that names nothing is left exactly as the reader typed it.
-     *
-     * There is nothing to scroll to, so the plane opens at the top and the spy - doing its job -
-     * reported the overview and rewrote the URL to it. That threw away both halves of the only
-     * useful thing this case has: the banner saying which id failed, and the id itself. A bookmark
-     * that has outlived its operation should still be able to say so after a reload.
-     */
-    if (!this.#urlResolves) {
-      return
-    }
-
-    const urlId = this.#slugPrefix ? stripFirstSegment(id) : id
-
-    if (this.routing === 'none') {
-      /* The host is the one navigating; this is the request, in the channel that mode already has. */
-      dispatch(this, 'openish-navigate', urlId)
-      return
-    }
-
-    const url = new URL(window.location.href)
-    if (this.routing === 'history') {
-      url.pathname = `${normalizeBasePath(this.basePath)}/${urlId}`
-    } else {
-      url.hash = `#/${urlId}`
-    }
-
-    this.#writtenId = id
-    window.history.replaceState(window.history.state, '', url.toString())
-    this.requestUpdate()
+  /** Finishes an authorization the reader was redirected away for, if this load is that return. */
+  protected override firstUpdated(): void {
+    void this.#auth.resume()
   }
 
   /**
-   * Announcements, decided by what actually changed.
+   * Announcements, and the one piece of coordination between two controllers.
    *
-   * Every one of these is a reactive property, so Lit's own `changedProperties` is the record of
-   * what happened - there is no "last announced" field to keep beside them and no way for the two
+   * Every announcement is decided by a reactive property, so Lit's own `changedProperties` is the
+   * record of what happened - there is no "last announced" field beside them and no way for the two
    * to disagree.
    */
-  protected override firstUpdated(): void {
-    void this.#resumeOAuth()
-  }
-
-  /** Whether `?api=` has been dealt with. Once only, however late the documents arrive. */
-  #adoptedApiParam = false
-
-  /**
-   * `?api=<slug>` selects a document, then takes itself back out of the URL.
-   *
-   * A link into a reference has to name an id to be a deep link, and an id begins with a slug the
-   * linker may not know - a host publishing "the admin API" from its own navigation knows the slug
-   * and nothing else. This is the shape for that, ported from Scalar. It is rewritten to the
-   * canonical URL immediately, with `replaceState` rather than `pushState`, so the reader's Back
-   * button does not land on a URL that only redirects again.
-   */
-  #adoptApiParam(): void {
-    /*
-     * Not in `firstUpdated`: a host that fetches its own list of documents assigns `sources` after
-     * the element is in the DOM, so the first update is usually too early to know whether the param
-     * names anything. This runs on every update until there are documents to check it against.
-     */
-    if (this.#adoptedApiParam || typeof window === 'undefined' || !this.#usesSources) {
-      return
-    }
-    this.#adoptedApiParam = true
-
-    const url = new URL(window.location.href)
-    const slug = url.searchParams.get('api')
-    if (!slug || !this.#sources.some((source) => source.slug === slug)) {
-      return
-    }
-
-    url.searchParams.delete('api')
-    const routing = { routing: this.routing, basePath: normalizeBasePath(this.basePath), slugPrefix: '' }
-    const target = hrefForOverview(routing, slug)
-
-    if (this.routing === 'history') {
-      url.pathname = target
-    } else {
-      url.hash = target
-    }
-    window.history.replaceState(window.history.state, '', url.toString())
-    this.requestUpdate()
-  }
-
   protected override updated(changed: PropertyValues): void {
-    this.#adoptApiParam()
+    this.#routing.adoptApiParam()
 
     if (changed.has('colorScheme')) {
       dispatch(this, 'openish-color-scheme-change', this.colorScheme)
@@ -1352,7 +712,21 @@ export class OpenishApiReference extends LitElement {
     if (changed.has('clientChosenByUser') && this.clientChosenByUser) {
       dispatch(this, 'openish-client-change', this.clientChosenByUser)
     }
-    if (changed.has('server') || changed.has('serverVariables')) {
+
+    /*
+     * The server, out of the request rather than out of a pair of fields beside it.
+     *
+     * `request` is rebuilt on every update and compared, so what `changedProperties` holds is the
+     * previous *value* - which is the only place the old server still exists now that the reader's
+     * choice lives in a controller. Credentials change it too, hence the two explicit reads.
+     */
+    const before = changed.get('request') as OpenishRequestState | undefined
+    if (
+      changed.has('request') &&
+      (before === undefined ||
+        before.server !== this.request.server ||
+        before.serverVariables !== this.request.serverVariables)
+    ) {
       dispatch(this, 'openish-server-change', { url: this.request.server, variables: this.request.serverVariables })
     }
 
@@ -1367,32 +741,20 @@ export class OpenishApiReference extends LitElement {
      * update that could have scrolled was the one where nothing had changed. Watching what the id
      * resolves to covers both: a navigation, and a document turning up under a URL that was already
      * pointing into it.
-     *
-     * A navigation moves the reader; the URL following them does not. The spy writes the URL and
-     * asks for an update, which arrives here looking exactly like a navigation - and scrolling then
-     * would put the reader back where they had just scrolled away from. One one-shot field is the
-     * whole of the feedback-loop defence.
      */
-    /*
-     * The heading is part of what was asked for, so it is part of what "already scrolled" means.
-     *
-     * A section and a heading inside it resolve to the same section id, and keying on that alone
-     * meant the second of two headings in one section was a navigation the plane ignored.
-     */
-    const { section, anchor } = this.#scrollTarget
-    const asked = anchor ? `${section}#${anchor}` : section
-    if (section !== '' && asked !== this.#scrolledId) {
-      this.#scrolledId = asked
-      if (this.#writtenId === this.ui.activeId) {
-        this.#writtenId = undefined
+    const { section, anchor } = scrollTarget(this.store, this.#position)
+    if (this.#sectionsController.arriveAt(section, anchor)) {
+      if (this.#routing.followingAt(this.ui.activeId)) {
+        /* The URL came to the reader. Nothing to do but stop expecting to be told again. */
+        this.#routing.settle()
       } else {
         this.#sectionsController.scrollTo(section, anchor)
       }
     }
 
     /*
-     * In `none` mode the host is the one navigating, so `#onClick` has already sent the request and
-     * this would be announcing the host's own decision back to it.
+     * In `none` mode the host is the one navigating, so the click handler has already sent the
+     * request and this would be announcing the host's own decision back to it.
      */
     if (this.routing !== 'none' && moved) {
       /*
@@ -1400,15 +762,14 @@ export class OpenishApiReference extends LitElement {
        * `none`-mode request carries. A host that echoes what it hears back into `selected` has to
        * get the round trip it expects, and only one of the two spellings can be that.
        */
-      dispatch(this, 'openish-navigate', this.#slugPrefix ? stripFirstSegment(this.ui.activeId) : this.ui.activeId)
+      dispatch(this, 'openish-navigate', this.#routing.urlId)
     }
 
     /*
      * Picking a page is the end of using the navigation, so the disclosure closes behind it - but
-     * scrolling is not picking, and the URL now changes while the reader scrolls. Closing on that
-     * would shut a panel they had just opened.
+     * scrolling is not picking, and the URL now changes while the reader scrolls.
      */
-    if (previous !== undefined && moved && this.#writtenId === undefined && this.navOpen) {
+    if (previous !== undefined && moved && !this.#routing.writing && this.navOpen) {
       this.navOpen = false
     }
   }
@@ -1470,7 +831,7 @@ export class OpenishApiReference extends LitElement {
     return html`
       <div
         class=${classMap({ layout: true, stacked: this.#stacked, 'no-sidebar': !showSidebar })}
-        @click=${this.#onClick}
+        @click=${this.#routing.onClick}
         @openish-color-scheme-change=${this.#onColorSchemeChange}
         @openish-client-change=${this.#onClientChange}
         @openish-server-change=${this.#onServerChange}

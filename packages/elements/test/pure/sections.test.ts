@@ -1,8 +1,8 @@
 import { createDocumentStore, type DocumentStore, type NavNode } from '@openish/core'
 import { describe, expect, it } from 'vitest'
 
-import { documentSections, overviewAnchors, sectionIndex } from '../src/render/sections.js'
-import { SHELL_SPEC } from './fixtures.js'
+import { documentSections, overviewAnchors, sectionIndex } from '../../src/render/sections.js'
+import { SHELL_SPEC } from '../fixtures.js'
 
 const storeFor = (spec: unknown, config?: Parameters<typeof createDocumentStore>[1]): Promise<DocumentStore> =>
   createDocumentStore(JSON.stringify(spec), config)

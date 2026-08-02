@@ -246,16 +246,30 @@ Two behaviours worth knowing:
 ## Design rules
 
 **Properties down, events up.** No two-way binding; children never mutate parent state. Every cross-cutting
-change is a bubbling `CustomEvent` handled at the root element, which re-provides context.
+change is a bubbling `CustomEvent` handled at the root element, which re-provides context. What travels
+down is **data**, never a live object: the reader's credentials arrive as `grants`, a frozen snapshot the
+session replaces wholesale, so "has this changed" is an identity comparison and "may I change it" is a
+type error rather than a comment asking nicely.
+
+**The root is thin, and its controllers are where the work is.** `<openish-api-reference>` owns the four
+`@provide`d contexts and nothing else: the documents and their cache are `SourcesController`, the URL is
+`RoutingController`, the sessions are `AuthController`, the per-document server choice is
+`ServerChoiceController`. Each reads its inputs through thunks rather than snapshots, because `@lit/task`
+reads `args()` from `hostUpdate` and the element derives from the same values in `willUpdate` - a snapshot
+taken in either place is read by the other one update late. The element calls `requestUpdate()` nowhere.
 
 **Declarative components.** Every element describes its shadow tree from the state it holds and does
 nothing else on the side: no `addEventListener` calls, no `querySelector` after rendering, and no
 reads of `window.location` while rendering. External state arrives as a reactive input through a
-`ReactiveController` (`LocationController` for the URL, `HotkeyController` for `/` and Cmd-K).
+`ReactiveController` (`LocationController` for the URL, `HotkeyController` for `/` and Cmd-K, `LazyModuleController` for the
+markdown and highlight pipelines that arrive after first paint).
 Derived values are getters, so there is no second copy to keep in step - the two `willUpdate`s left
 in the project both exist because a context provider pushes its value rather than being asked for
 it. The few genuinely imperative DOM calls a document browser needs - `showModal()`, `focus()`,
-`scrollIntoView()` - happen in `updated()` in response to a property changing, in one place each.
+`scrollIntoView()` - happen in `updated()` in response to a property changing, in one place each. On the
+plane, scrolling to a heading inside `info.description` has exactly one owner: `SectionsController`, which
+can mount the section first and keep correcting while the document settles around it. `<openish-overview>`
+scrolls itself only when a host renders it alone through `renderNodeById`, where nothing else could.
 
 **Component anatomy.** Every component is put together the same way, so a reader of one has read all
 of them and a new one is not a new set of decisions.
@@ -517,10 +531,16 @@ npm run verify     # guards + typecheck + tests
 npm run build      # all packages
 ```
 
-`npm test` runs three projects: `core` and `client` in Node, and `elements` in real Chromium via
-Playwright. The browser is not optional — the reference needs real `history`, real `hashchange`, and a
-`light-dark()` that resolves, so a simulated DOM would only test the shim. Run
-`npx playwright install chromium` once.
+`npm test` runs four projects. `core`, `client` and `elements-pure` run in Node; `elements` runs in real
+Chromium via Playwright. The browser is not optional for that last one — the reference needs real
+`history`, real `hashchange`, and a `light-dark()` that resolves, so a simulated DOM would only test the
+shim. Run `npx playwright install chromium` once.
+
+`elements-pure` is `packages/elements/test/pure/`, and the split is enforcement rather than speed: the URL
+and id maths, the plane's scroll target, the virtualiser convergence arithmetic and the OAuth flow
+precedence rules are pure functions, and running them in Node is what keeps them that way. Every one of
+them was arrived at through a failure rather than derived, and each is now something a test can state a
+case about without mounting anything.
 
 ## Prior art
 

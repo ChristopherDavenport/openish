@@ -10,14 +10,6 @@ import '../elements/openish-tag-section.js'
 /** What a section needs to know that is not a fact about the section. */
 export type SectionContext = {
   /**
-   * A heading inside `info.description` to scroll to, or `''`.
-   *
-   * Only ever set on the overview: description headings live inside `<openish-markdown>`'s shadow
-   * root, out of reach of the browser's own fragment scrolling, so the element that owns them is the
-   * only one that can find them.
-   */
-  readonly overviewHash: string
-  /**
    * Whether this is the section the URL names.
    *
    * Used for one thing: which section the host's per-operation slots are forwarded into. See below.
@@ -44,9 +36,18 @@ export const renderSection = (section: Section, context: SectionContext): Templa
        * one introduction, so `overview-aside` is unambiguous by construction - there is no second
        * section it could land on.
        */
+      /*
+       * No `hash`: on the plane the overview does not scroll itself.
+       *
+       * A description heading is reachable from anywhere in the document, including from a section
+       * that has scrolled the overview out of the rendered range entirely - so the scroll has to be
+       * driven by the thing that can mount a section first, which is `SectionsController`. It also
+       * has to survive several frames of the document settling around it, and two things scrolling
+       * one scroller fight. `renderNodeById` still sets it: a host embedding a single node has
+       * nothing else that could.
+       */
       return html`
         <openish-overview
-          .hash=${context.overviewHash}
           .level=${section.level}
           exportparts="overview-header, overview-docs, overview-aside, aside, code, code-toolbar, copy"
         >

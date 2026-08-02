@@ -1,7 +1,8 @@
 import { LitElement, html, css, nothing, type TemplateResult } from 'lit'
-import { customElement, property, state } from 'lit/decorators.js'
+import { customElement, property } from 'lit/decorators.js'
 import { unsafeHTML } from 'lit/directives/unsafe-html.js'
 
+import { LazyModuleController } from '../controllers/lazy-module.js'
 import { loadMarkdown, markdownNow, type Node } from '../render/highlight.js'
 import { baseStyles, highlightStyles } from '../styles/shared.js'
 
@@ -138,21 +139,13 @@ export class OpenishMarkdown extends LitElement {
   headingIds: readonly string[] = []
 
   /**
-   * Bumped once the pipeline arrives, purely to ask for another render.
+   * The markdown pipeline, once it has arrived.
    *
-   * The load is a module-level cache shared by every instance, so this is not "the module" - it is
-   * this element's record that it is worth trying again. The alternative, a `Task` keyed on the
-   * markdown, would re-await on every property change for a module that is already in memory.
+   * A controller rather than a counter bumped from inside `render()`, which is what this was: the
+   * request belongs to the host's connected lifetime, not to a render pass. See
+   * `controllers/lazy-module.ts`.
    */
-  @state()
-  private loaded = 0
-
-  /** Scrolls to a stamped heading. Returns whether one was found. */
-  scrollToHeading(id: string): boolean {
-    const target = this.renderRoot.querySelector(`[id="${CSS.escape(id)}"]`)
-    target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    return target !== null
-  }
+  readonly #pipeline = new LazyModuleController(this, markdownNow, loadMarkdown)
 
   override render(): TemplateResult | typeof nothing {
     if (!this.markdown.trim()) {
@@ -166,11 +159,8 @@ export class OpenishMarkdown extends LitElement {
      * which reads as a broken document rather than as a loading one. An empty block for the same
      * frame reads as prose that has not arrived, which is what it is.
      */
-    const pipeline = markdownNow()
+    const pipeline = this.#pipeline.value
     if (!pipeline) {
-      void loadMarkdown().then(() => {
-        this.loaded += 1
-      })
       return nothing
     }
 
