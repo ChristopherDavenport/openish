@@ -67,6 +67,13 @@ export { languageForMediaType, mediaTypeExample, renderMediaTypes } from './rend
 export { searchNodes, type SearchResult } from './search/search.js'
 export { renderNode, renderNodeById, renderOverview } from './render/render-node.js'
 export {
+  documentSections,
+  overviewAnchors,
+  sectionIndex,
+  type Section,
+  type SectionKind,
+} from './render/sections.js'
+export {
   additionalPropertiesName,
   asSchema,
   enumDescriptions,
