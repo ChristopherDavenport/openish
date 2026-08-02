@@ -638,7 +638,7 @@ export const openTryIt = async (harness: Harness, id?: string): Promise<Element>
     throw new Error('No try-it panel on the page.')
   }
 
-  panel.shadowRoot.querySelector<HTMLButtonElement>('button.test')!.click()
+  panel.shadowRoot.querySelector<HTMLButtonElement>('button.run')!.click()
   await harness.settle()
   return panel
 }

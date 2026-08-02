@@ -125,15 +125,23 @@ export class OpenishTabs extends LitElement {
   selected = ''
 
   /**
-   * The tab the reader picked, if they have.
+   * The tab the reader picked, and the `selected` it was picked against.
    *
    * `undefined` means "not touched", so the `selected` property decides - the same shape as
    * `expandedByUser` in the sidebar and `openedByUser` in the schema tree. Resolving it in a getter
    * is what lets a tab set with no reader interaction follow its property with no lifecycle hook to
    * copy one into the other.
+   *
+   * The second half is what makes a *controlled* tab set possible without a second mechanism. A
+   * request body's media types are also chosen by the try-it panel's picker, and a reader's click
+   * here is an answer to the question as it stood when they clicked: once `selected` has moved on,
+   * something newer than their click has answered it, and the tab has to follow or the page holds
+   * two opinions - which is the whole reason the operation owns that choice. A parent that sets
+   * `selected` once and leaves it, which is what the property is documented for, changes nothing:
+   * `against` keeps matching, so the reader's pick governs exactly as before.
    */
   @state()
-  private chosenByUser: string | undefined = undefined
+  private chosenByUser: { id: string; against: string } | undefined = undefined
 
   /**
    * The selected tab button, kept by `ref()` rather than found again with a query.
@@ -153,7 +161,9 @@ export class OpenishTabs extends LitElement {
    * exists resolves to the first tab, without anything having to notice that the list changed.
    */
   get #activeIndex(): number {
-    const index = this.tabs.findIndex((tab) => tab.id === (this.chosenByUser ?? this.selected))
+    const chosen = this.chosenByUser
+    const showing = chosen && chosen.against === this.selected ? chosen.id : this.selected
+    const index = this.tabs.findIndex((tab) => tab.id === showing)
     return index === -1 ? 0 : index
   }
 
@@ -170,7 +180,7 @@ export class OpenishTabs extends LitElement {
       return
     }
     this.#focusOnUpdate = focus
-    this.chosenByUser = tab.id
+    this.chosenByUser = { id: tab.id, against: this.selected }
     /*
      * Announced for the same reason `<openish-disclosure>` announces a toggle: a parent that renders
      * different content for a different tab has to know which one, and asking it to read a private

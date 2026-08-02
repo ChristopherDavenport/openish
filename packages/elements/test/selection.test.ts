@@ -142,7 +142,7 @@ describe('the selected border', () => {
     await harness.settle()
 
     const tryIt = deepQuery(sectionOf(harness), 'openish-try-it')!
-    const primary = tryIt.shadowRoot!.querySelector('button.test')!
+    const primary = tryIt.shadowRoot!.querySelector('button.run')!
     const style = computed(harness, primary)
 
     /* The fill is the selected colour, which is exactly why the ring may not be. */

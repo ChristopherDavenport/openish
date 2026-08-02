@@ -1,10 +1,14 @@
-import { getResolvedRef, mediaTypeExamples } from '@openish/core'
+import { getResolvedRef, mediaTypeExamples, type VariantChoices } from '@openish/core'
 import { html, nothing } from 'lit'
 import { ifDefined } from 'lit/directives/if-defined.js'
 
+import { pickMediaType } from './responses.js'
 import type { OpenishTab } from '../elements/openish-tabs.js'
 import '../elements/openish-schema-preview.js'
 import '../elements/openish-tabs.js'
+
+export { languageForMediaType } from './media-language.js'
+export { hasRenderableContent } from './responses.js'
 
 type MediaType = {
   schema?: unknown
@@ -14,33 +18,6 @@ type MediaType = {
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
-
-/**
- * The highlight language for a media type.
- *
- * Only consulted for an example the author wrote as a *string*: anything openish generates is
- * serialised as JSON whatever the media type claims, and highlighting that as XML would produce
- * confident nonsense.
- */
-export const languageForMediaType = (mediaType: string): string => {
-  const type = mediaType.toLowerCase()
-  if (type.includes('json')) {
-    return 'json'
-  }
-  if (type.includes('yaml') || type.includes('yml')) {
-    return 'yaml'
-  }
-  if (type.includes('html')) {
-    return 'html'
-  }
-  if (type.includes('xml')) {
-    return 'xml'
-  }
-  if (type.includes('javascript')) {
-    return 'javascript'
-  }
-  return 'plaintext'
-}
 
 /**
  * The example to show for a media type, when only one of them can be shown.
@@ -55,28 +32,36 @@ export const languageForMediaType = (mediaType: string): string => {
 export const mediaTypeExample = (media: MediaType | undefined): unknown =>
   mediaTypeExamples(media).find((example) => example.value !== undefined)?.value
 
-/**
- * Whether a body has anything for an examples column to show.
- *
- * Asked before a heading is written, not after: `renderMediaTypes` on an empty `content` renders
- * nothing, so a section that assumed otherwise printed "Response examples" over a blank half-page.
- * A `204` is the usual reason and a complete answer in the documentation column, and a webhook whose
- * payload is described in prose alone is the other.
- *
- * Takes the containing object - a Response Object, a Request Body Object, either possibly a `$ref` -
- * because `content` is the key both of them hold it under.
- */
-export const hasRenderableContent = (container: unknown): boolean => {
-  const content = (getResolvedRef(container) as { content?: unknown } | undefined)?.content
-  return isPlainObject(content) && Object.keys(content).length > 0
-}
-
 /** How to render a `content` map. */
 export type MediaTypesOptions = {
   /** Show the schema only. For a body the reader can already see filled in and edit. */
   noExample?: boolean
   /** Show the example only. For an examples column beside the page that documents the schema. */
   noSchema?: boolean
+  /**
+   * Which media type to show, for a caller that holds the choice rather than leaving it here.
+   *
+   * A request body's tabs are not only a way to read the schema: what a reader picks there is what
+   * the sample beside them should be a sample *of*. That answer lives on the operation, because two
+   * controls ask the same question - these tabs and the try-it panel's picker - and a page with two
+   * answers to it was the bug this exists to fix.
+   */
+  selected?: string
+  /** Told when the reader picks a tab. Responses leave it unset: nothing outside them follows. */
+  onSelect?: (mediaType: string) => void
+  /**
+   * Render one media type and no tabs at all.
+   *
+   * The examples column asks for this. Which content type an operation is being read in is a
+   * question with one answer per section, and it is asked in the documentation column - so repeating
+   * the control beside the example gave the reader two of them to keep in agreement. What is left
+   * here is the example itself, under a caption naming the type it is in.
+   */
+  pick?: string
+  /** Which shape these previews are, so a variant choice inside one can be addressed. */
+  scope?: string
+  /** The `oneOf`/`anyOf` branches the reader picked, for the example to honour. */
+  variants?: VariantChoices
 }
 
 /**
@@ -103,11 +88,24 @@ export const renderMediaTypes = (content: unknown, label: string, options: Media
         ?no-example=${options.noExample === true}
         ?no-schema=${options.noSchema === true}
         label=${ifDefined(showLabel ? mediaType : undefined)}
-        language=${languageForMediaType(mediaType)}
+        media-type=${mediaType}
+        scope=${ifDefined(options.scope || undefined)}
         .schema=${media?.schema}
         .examples=${mediaTypeExamples(media)}
+        .variants=${options.variants}
       ></openish-schema-preview>
     `
+  }
+
+  /*
+   * One media type, chosen elsewhere. Falls back to the first the document declares, because a
+   * response that does not offer the type the reader picked for its neighbours still has to show
+   * the one it does offer.
+   */
+  if (options.pick !== undefined) {
+    const name = pickMediaType(content, options.pick)
+    const picked = entries.find(([mediaType]) => mediaType === name) ?? entries[0]!
+    return preview(picked[0], picked[1], true)
   }
 
   const [only] = entries
@@ -121,5 +119,12 @@ export const renderMediaTypes = (content: unknown, label: string, options: Media
     content: () => preview(mediaType, raw, false),
   }))
 
-  return html`<openish-tabs label=${label} .tabs=${tabs}></openish-tabs>`
+  return html`
+    <openish-tabs
+      label=${label}
+      selected=${ifDefined(options.selected || undefined)}
+      .tabs=${tabs}
+      @openish-tab-change=${(event: CustomEvent<string>) => options.onSelect?.(event.detail)}
+    ></openish-tabs>
+  `
 }

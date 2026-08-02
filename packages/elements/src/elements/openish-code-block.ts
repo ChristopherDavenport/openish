@@ -48,8 +48,15 @@ export class OpenishCodeBlock extends LitElement {
 
       /*
        * One bar, and the order in it is the order of the questions a reader asks: what is this, then
-       * what language do I want it in, then give it to me. The picker used to sit in a bar of its own
-       * above this one, which put a control between the reader and the thing it controls.
+       * what language do I want it in, then give it to me, then run it. The picker used to sit in a
+       * bar of its own above this one, which put a control between the reader and the thing it
+       * controls.
+       *
+       * The actions slot is last on purpose. Everything before it adjusts the block - the label
+       * describes it, the toolbar slot configures it, the copy takes it away - and whatever a host
+       * slots into actions is the thing to *do* with it, which is the end of that sentence and the
+       * end of the bar. It sat in front of both controls before, so the primary action was the one
+       * thing a reader had to look past two secondary ones to reach.
        */
       .heading {
         display: flex;
@@ -191,6 +198,7 @@ export class OpenishCodeBlock extends LitElement {
                     .source=${this.#source}
                   ></openish-copy-button>
                 `}
+            <slot name="actions"></slot>
           </div>
         </div>
         ${this.code === ''

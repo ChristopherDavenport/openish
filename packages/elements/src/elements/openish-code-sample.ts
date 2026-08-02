@@ -10,6 +10,7 @@ import {
   type DocumentStore,
   type NavOperationNode,
   type SnippetClient,
+  type VariantChoices,
 } from '@openish/core'
 import { LitElement, html, css, nothing, type TemplateResult } from 'lit'
 import { customElement, property } from 'lit/decorators.js'
@@ -17,7 +18,7 @@ import { repeat } from 'lit/directives/repeat.js'
 
 import { documentContext, uiContext, type OpenishUiState } from '../context/contexts.js'
 import { dispatch } from '../events.js'
-import { baseStyles, controlStyles, methodStyles, visuallyHidden } from '../styles/shared.js'
+import { baseStyles, controlStyles, visuallyHidden } from '../styles/shared.js'
 import './openish-code-block.js'
 
 /**
@@ -26,9 +27,12 @@ import './openish-code-block.js'
  * The request itself is built by `@openish/core` from the same reads the parameter table makes, so
  * the sample and the documentation beside it cannot disagree about what an operation takes.
  *
- * Anything slotted into `actions` is placed in the toolbar beside the client picker - which is the
- * code block's own toolbar now, not a second bar above it. The bar reads left to right as the
- * questions a reader asks: what call is this, what language do I want it in, give it to me.
+ * Anything slotted into `actions` is forwarded straight through to the code block's own toolbar,
+ * where it lands after the copy button: the picker and the copy are things a reader adjusts, and the
+ * action is the thing they came to press, so it sits at the end of the bar rather than in front of
+ * them. The call this is a sample *of* is named under the operation's title now, a decision that
+ * belongs to `<openish-operation>` - it was the title of this card, which put the identity of the
+ * call in the far column from the prose describing it.
  *
  * Picking a client dispatches `openish-client-change` and changes nothing locally. The root handles
  * it and re-provides `uiContext.selectedClient`, so every sample on the page follows - which is the
@@ -41,31 +45,10 @@ export class OpenishCodeSample extends LitElement {
   static override styles = [
     baseStyles,
     controlStyles,
-    methodStyles,
     visuallyHidden,
     css`
       :host {
         display: block;
-      }
-
-      /*
-       * The title of the card is the call it is a sample of. It was prose in the operation's intro,
-       * a column away from the thing it described.
-       */
-      .target {
-        display: flex;
-        align-items: center;
-        gap: var(--openish-space-2xs);
-        min-width: 0;
-      }
-
-      .path {
-        font: var(--openish-font-code-small);
-        font-family: var(--openish-font-family-mono);
-        color: var(--openish-color-text-muted);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
       }
 
       .tools {
@@ -108,6 +91,29 @@ export class OpenishCodeSample extends LitElement {
    */
   @property({ attribute: false })
   request: ReturnType<typeof operationToHar> | undefined = undefined
+
+  /**
+   * Which media type to send the body as, when this derives the request itself.
+   *
+   * The document's first one otherwise, which is what a sample beside a tab set showing a different
+   * one was: a `--data '{...}'` under a `Content-Type: application/xml` the reader had just asked
+   * for. Ignored when `request` is set, because then the panel has already built it.
+   */
+  @property({ type: String, attribute: 'media-type' })
+  mediaType = ''
+
+  /** The variant branches picked in the request body's tree, so the snippet posts what it shows. */
+  @property({ attribute: false })
+  variants: VariantChoices | undefined = undefined
+
+  /**
+   * The media type to ask for back.
+   *
+   * The one the examples column is showing, so a reader reading the XML response copies a request
+   * that would receive XML. Ignored when `request` is set: the panel built that one.
+   */
+  @property({ type: String })
+  accept = ''
 
   /** The offered clients. A getter: nothing outside this render needs the list to persist. */
   get #clients(): readonly SnippetClient[] {
@@ -166,6 +172,9 @@ export class OpenishCodeSample extends LitElement {
       NavOperationNode | undefined,
       string,
       string,
+      string,
+      string,
+      string,
     ]) => {
       const resolved = resolveOperationNode(store?.document, node)
       if (!store || !resolved?.operation || clientId === '') {
@@ -179,13 +188,20 @@ export class OpenishCodeSample extends LitElement {
 
       const request =
         this.request ??
-        operationToHar({
-          document: store.document,
-          operation: resolved.operation,
-          pathItem: resolved.pathItem,
-          path: resolved.path,
-          method: resolved.method,
-        })
+        operationToHar(
+          {
+            document: store.document,
+            operation: resolved.operation,
+            pathItem: resolved.pathItem,
+            path: resolved.path,
+            method: resolved.method,
+          },
+          {
+            ...(this.mediaType ? { contentType: this.mediaType } : {}),
+            ...(this.accept ? { accept: this.accept } : {}),
+            ...(this.variants ? { variants: this.variants, variantScope: 'request' } : {}),
+          },
+        )
 
       return generateSnippet(request, clientId)
     },
@@ -194,7 +210,16 @@ export class OpenishCodeSample extends LitElement {
      * regenerating a snippet for a request that has not changed is work nobody asked for.
      */
     args: () =>
-      [this.store, this.node, this.#selectedId, this.request ? JSON.stringify(this.request) : ''] as const,
+      [
+        this.store,
+        this.node,
+        this.#selectedId,
+        this.request ? JSON.stringify(this.request) : '',
+        this.mediaType,
+        this.accept,
+        /* Serialised, because the map is rebuilt whenever any choice on the section changes. */
+        this.variants ? JSON.stringify([...this.variants]) : '',
+      ] as const,
   })
 
   #onChange(event: Event): void {
@@ -280,14 +305,8 @@ export class OpenishCodeSample extends LitElement {
         language=${language}
         label=${label}
       >
-        <div class="target" slot="title">
-          <span class="method" data-method=${this.node.method}>${this.node.method}</span>
-          <code class="path">${this.node.path}</code>
-        </div>
-        <div class="tools" slot="toolbar">
-          <slot name="actions"></slot>
-          ${this.#renderPicker()}
-        </div>
+        <div class="tools" slot="toolbar">${this.#renderPicker()}</div>
+        <slot name="actions" slot="actions"></slot>
       </openish-code-block>
     `
   }

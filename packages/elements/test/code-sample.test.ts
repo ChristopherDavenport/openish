@@ -81,31 +81,75 @@ describe('code samples', () => {
   })
 
   /*
-   * One bar, reading left to right as the questions a reader asks: what call is this, what language
-   * do I want it in, give it to me. The client's name is on the picker rather than on a label of its
-   * own, which is what the second bar above this one used to be for.
+   * One bar, reading left to right as the questions a reader asks: what language do I want this in,
+   * give it to me, run it. The client's name is on the picker rather than on a label of its own,
+   * which is what the second bar above this one used to be for. What call this is a sample *of* is
+   * said under the operation's title, in the column with the prose about it.
    */
-  it('titles the block with the call, and puts the picker beside the copy', async () => {
+  it('titles the block with its client, not with the call, and orders the bar picker, copy, action', async () => {
     const { element } = await settledSample('/tags/accounts/getAccount')
     const sample = deepQuery(sectionOf(element), 'openish-code-sample')!
     const block = deepQuery(sectionOf(element), 'openish-code-block')!
 
-    const target = sample.shadowRoot!.querySelector('[slot="title"]')!
-    expect(textOf(target.querySelector('.method'))).toBe('get')
-    expect(textOf(target.querySelector('.path'))).toBe('/accounts/{accountId}')
+    expect(sample.shadowRoot!.querySelector('[slot="title"]')).toBeNull()
+    expect(textOf(block.shadowRoot!.querySelector('.label'))).toContain('curl')
 
     const picker = sample.shadowRoot!.querySelector<HTMLSelectElement>('select')!
     expect(textOf(picker.selectedOptions[0]!)).toBe('curl')
 
-    /* Both in the block's one toolbar, and the picker ahead of the button it belongs with. */
+    /* All three in the block's one toolbar, in the order a reader works through them. */
     const toolbar = block.shadowRoot!.querySelector('.tools')!
-    expect(toolbar.querySelector('slot[name="toolbar"]')).not.toBeNull()
+    const configure = toolbar.querySelector('slot[name="toolbar"]')!
+    const copy = deepQuery(block.shadowRoot!, 'openish-copy-button')!
+    const actions = toolbar.querySelector('slot[name="actions"]')!
+
     expect(deepQuery(block.shadowRoot!, 'button[part="copy"]')).not.toBeNull()
-    expect(
-      toolbar.querySelector('slot[name="toolbar"]')!.compareDocumentPosition(
-        deepQuery(block.shadowRoot!, 'openish-copy-button')!,
-      ) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy()
+    expect(configure.compareDocumentPosition(copy) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(copy.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('says which call it is under the operation title, beside the prose describing it', async () => {
+    const { element } = await settledSample('/tags/accounts/getAccount')
+    const operation = deepQuery(sectionOf(element), 'openish-operation')!
+    const target = operation.shadowRoot!.querySelector('.target')!
+
+    expect(textOf(target.querySelector('.method'))).toBe('get')
+    expect(textOf(target.querySelector('.path'))).toBe('/accounts/{accountId}')
+
+    /* In the documentation column, which is what "beside the prose" means in markup. */
+    expect(operation.shadowRoot!.querySelector('.docs')!.contains(target)).toBe(true)
+  })
+
+  it('names a webhook by its event, which is what it has instead of a route', async () => {
+    const { element } = await settledSample('/webhooks/post-accountcreated')
+    const operation = deepQuery(sectionOf(element), 'openish-operation')!
+    const target = operation.shadowRoot!.querySelector('.target')!
+
+    expect(textOf(target.querySelector('.method'))).toBe('post')
+    expect(textOf(target.querySelector('.path'))).toBe('accountCreated')
+  })
+
+  /*
+   * The tab and the sample are two halves of one answer. Picking a media type on the left used to
+   * change the schema there and nothing else, so the reader read `application/xml` and copied a
+   * curl that sent JSON under an `application/xml` header.
+   */
+  it('follows the media type the request body tabs are showing', async () => {
+    const harness = await settledSample('/tags/accounts/replaceAccount')
+    const body = deepQuery(sectionOf(harness.element), 'openish-request-body')!
+    const tabs = deepQuery(body.shadowRoot!, 'openish-tabs')!
+
+    const xml = [...tabs.shadowRoot!.querySelectorAll<HTMLButtonElement>('button[role="tab"]')].find(
+      (tab) => textOf(tab) === 'application/xml',
+    )!
+    xml.click()
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    await harness.settle()
+
+    const code = codeOf(sectionOf(harness.element))
+    expect(code).toContain('application/xml')
+    expect(code).toContain('<Account>')
+    expect(code).not.toContain('"id"')
   })
 
   it('renders no sample for a webhook, which the reader does not call', async () => {

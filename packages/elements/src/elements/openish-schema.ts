@@ -1,5 +1,14 @@
 import { consume, provide } from '@lit/context'
-import { joinId, resolveLocalPointer, type DocumentStore } from '@openish/core'
+import {
+  joinId,
+  resolveLocalPointer,
+  VARIANT_PATH_ROOT,
+  variantAdditional,
+  variantAside,
+  variantBranch,
+  variantProperty,
+  type DocumentStore,
+} from '@openish/core'
 import { LitElement, html, css, nothing, type TemplateResult } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
 import { classMap } from 'lit/directives/class-map.js'
@@ -53,6 +62,9 @@ import './openish-tabs.js'
 const MAX_DEPTH = 12
 
 const EMPTY_STATE: OpenishSchemaState = { depth: 0, seenRefs: new Set(), expandAll: false, anchors: new Map() }
+
+/** Which `oneOf`/`anyOf` a reader answered, and how. See `variant-path.ts` for the addressing. */
+export type OpenishVariantChange = { scope: string; path: string; index: number }
 
 /**
  * Whether a re-derived traversal state actually says anything new.
@@ -278,6 +290,26 @@ export class OpenishSchema extends LitElement {
   @property({ type: Boolean, attribute: 'inline-properties' })
   inlineProperties = false
 
+  /**
+   * Which shape on the page this tree describes - `request`, or `response:404`.
+   *
+   * Set by whatever put the tree on the page, and passed down every nesting unchanged. Empty is a
+   * tree nobody is listening to, which is what a model page is: the variant tabs still work, they
+   * just have no example on the other side of the section to move.
+   */
+  @property({ type: String })
+  scope = ''
+
+  /**
+   * Where this tree sits inside the shape named by `scope`, in `variant-path.ts`'s spelling.
+   *
+   * The root is empty and every nesting extends it. It exists so a `oneOf` deep in a tree can say
+   * *which* `oneOf` the reader answered, in terms the example generator resolves independently -
+   * neither side holds the other's state, and `core` owns the spelling so they cannot drift.
+   */
+  @property({ type: String })
+  path = VARIANT_PATH_ROOT
+
   /** `undefined` until the reader takes control; `expandAll` decides until then. */
   @state()
   private openedByUser: boolean | undefined = undefined
@@ -406,7 +438,12 @@ export class OpenishSchema extends LitElement {
           ${this.#renderFlags(property.schema)}
         </div>
         ${hasBody(property.schema)
-          ? html`<openish-schema .schema=${property.schema} hide-header></openish-schema>`
+          ? html`<openish-schema
+              .schema=${property.schema}
+              scope=${this.scope}
+              path=${variantProperty(this.path, property.name)}
+              hide-header
+            ></openish-schema>`
           : nothing}
       </li>
     `
@@ -472,7 +509,14 @@ export class OpenishSchema extends LitElement {
           <span class="type">${schemaTypeLabel(additional)}</span>
           <span class="flag">any other property</span>
         </div>
-        ${hasBody(additional) ? html`<openish-schema .schema=${additional} hide-header></openish-schema>` : nothing}
+        ${hasBody(additional)
+          ? html`<openish-schema
+              .schema=${additional}
+              scope=${this.scope}
+              path=${variantAdditional(this.path)}
+              hide-header
+            ></openish-schema>`
+          : nothing}
       </li>
     `
   }
@@ -486,9 +530,35 @@ export class OpenishSchema extends LitElement {
           <span class="type">${schemaTypeLabel(schema)}</span>
           <span class="flag">any matching property</span>
         </div>
-        ${hasBody(schema) ? html`<openish-schema .schema=${schema} hide-header></openish-schema>` : nothing}
+        ${hasBody(schema)
+          ? html`<openish-schema
+              .schema=${schema}
+              scope=${this.scope}
+              path=${variantAside(this.path, 'patternProperties', pattern)}
+              hide-header
+            ></openish-schema>`
+          : nothing}
       </li>
     `
+  }
+
+  /**
+   * Says which branch the reader took, and where.
+   *
+   * Composed, unlike `<openish-tabs>`' own event, because of how far it has to travel: a tree sits
+   * inside a schema preview, inside a tab panel, inside a request body or response list, and the
+   * thing that owns the choice is the operation above all of them. Every one of those is a shadow
+   * boundary. Nothing outside openish is expected to act on it - but a host that wants to know which
+   * variant a reader is reading is welcome to.
+   */
+  #announceVariant(index: number): void {
+    this.dispatchEvent(
+      new CustomEvent<OpenishVariantChange>('openish-variant-change', {
+        detail: { scope: this.scope, path: this.path, index },
+        bubbles: true,
+        composed: true,
+      }),
+    )
   }
 
   #renderVariants(variants: SchemaVariants): TemplateResult {
@@ -514,6 +584,8 @@ export class OpenishSchema extends LitElement {
         <openish-schema
           .schema=${branch}
           pointer=${pointerAt(branch, index)}
+          scope=${this.scope}
+          path=${variantBranch(this.path, variants.keyword, index)}
           inline-properties
         ></openish-schema>
       `,
@@ -524,7 +596,11 @@ export class OpenishSchema extends LitElement {
         ${variants.keyword === 'oneOf' ? 'One of' : 'Any of'}
         ${variants.discriminator ? html`— by <code>${variants.discriminator}</code>` : nothing}
       </div>
-      <openish-tabs label=${`${variants.keyword} variants`} .tabs=${tabs}></openish-tabs>
+      <openish-tabs
+        label=${`${variants.keyword} variants`}
+        .tabs=${tabs}
+        @openish-tab-change=${(event: CustomEvent<string>) => this.#announceVariant(Number(event.detail))}
+      ></openish-tabs>
     `
   }
 
@@ -612,7 +688,13 @@ export class OpenishSchema extends LitElement {
         (entry) => html`
           <div class="rule">
             <div class="rule-label">When <code>${entry.property}</code> is present</div>
-            <openish-schema .schema=${entry.schema} hide-header inline-properties></openish-schema>
+            <openish-schema
+              .schema=${entry.schema}
+              scope=${this.scope}
+              path=${variantAside(this.path, 'dependentSchemas', entry.property)}
+              hide-header
+              inline-properties
+            ></openish-schema>
           </div>
         `,
       )}
@@ -638,18 +720,36 @@ export class OpenishSchema extends LitElement {
           ? html`<div class="rule-label">If ${conditional.summary}</div>`
           : html`
               <div class="rule-label">If it matches</div>
-              <openish-schema .schema=${conditional.condition} hide-header inline-properties></openish-schema>
+              <openish-schema
+                .schema=${conditional.condition}
+                scope=${this.scope}
+                path=${variantAside(this.path, 'if', '')}
+                hide-header
+                inline-properties
+              ></openish-schema>
             `}
         ${conditional.then !== undefined
           ? html`
               <div class="rule-label">then</div>
-              <openish-schema .schema=${conditional.then} hide-header inline-properties></openish-schema>
+              <openish-schema
+                .schema=${conditional.then}
+                scope=${this.scope}
+                path=${variantAside(this.path, 'then', '')}
+                hide-header
+                inline-properties
+              ></openish-schema>
             `
           : nothing}
         ${conditional.otherwise !== undefined
           ? html`
               <div class="rule-label">otherwise</div>
-              <openish-schema .schema=${conditional.otherwise} hide-header inline-properties></openish-schema>
+              <openish-schema
+                .schema=${conditional.otherwise}
+                scope=${this.scope}
+                path=${variantAside(this.path, 'else', '')}
+                hide-header
+                inline-properties
+              ></openish-schema>
             `
           : nothing}
       </div>
@@ -676,7 +776,7 @@ export class OpenishSchema extends LitElement {
       `
     }
 
-    return html`<openish-schema .schema=${bound}></openish-schema>`
+    return html`<openish-schema .schema=${bound} scope=${this.scope} path=${this.path}></openish-schema>`
   }
 
   override render(): TemplateResult | typeof nothing {
@@ -760,5 +860,9 @@ export class OpenishSchema extends LitElement {
 declare global {
   interface HTMLElementTagNameMap {
     'openish-schema': OpenishSchema
+  }
+
+  interface HTMLElementEventMap {
+    'openish-variant-change': CustomEvent<OpenishVariantChange>
   }
 }

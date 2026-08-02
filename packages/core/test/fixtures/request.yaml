@@ -78,6 +78,50 @@ paths:
       responses:
         '201':
           description: Created
+  /notes/accepted:
+    get:
+      summary: Read a note in the version the author pinned
+      operationId: acceptsNote
+      tags: [notes]
+      # An `Accept` the document itself declares: a builder that added its own would be overruling
+      # a decision the author already made.
+      parameters:
+        - name: Accept
+          in: header
+          required: true
+          schema:
+            type: string
+          example: application/vnd.notes.v2+json
+      responses:
+        '200':
+          description: OK
+  /notes.xml:
+    post:
+      summary: Create a note as XML
+      operationId: createNoteXml
+      tags: [notes]
+      # A body that is not JSON, so the generated sample has to be written in the syntax the
+      # Content-Type it sets announces.
+      requestBody:
+        required: true
+        content:
+          application/xml:
+            schema:
+              type: object
+              xml:
+                name: note
+              properties:
+                id:
+                  type: string
+                  example: n_1
+                  xml:
+                    attribute: true
+                title:
+                  type: string
+                  example: Groceries
+      responses:
+        '201':
+          description: Created
 components:
   securitySchemes:
     bearerAuth:

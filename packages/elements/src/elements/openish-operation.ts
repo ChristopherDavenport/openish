@@ -5,6 +5,7 @@ import {
   operationBadges,
   resolveOperationNode,
   securityRequirements,
+  variantKey,
   type DocumentStore,
   type NavOperationNode,
   type NavWebhookNode,
@@ -13,7 +14,7 @@ import {
   type SecurityRequirement,
 } from '@openish/core'
 import { LitElement, html, css, nothing, type TemplateResult } from 'lit'
-import { customElement, property } from 'lit/decorators.js'
+import { customElement, property, state } from 'lit/decorators.js'
 import { keyed } from 'lit/directives/keyed.js'
 import { repeat } from 'lit/directives/repeat.js'
 
@@ -21,7 +22,8 @@ import { documentContext, uiContext, type OpenishUiState } from '../context/cont
 import { externalDocsStyles, renderExternalDocs } from '../render/external-docs.js'
 import { heading } from '../render/heading.js'
 import { hasRenderableContent } from '../render/media-types.js'
-import { baseStyles, planeColumnStyles, titleRowStyles } from '../styles/shared.js'
+import { shownResponseMediaType } from '../render/responses.js'
+import { baseStyles, methodStyles, planeColumnStyles, titleRowStyles } from '../styles/shared.js'
 import './openish-callbacks.js'
 import './openish-code-sample.js'
 import './openish-disclosure.js'
@@ -31,6 +33,7 @@ import './openish-try-it.js'
 import './openish-parameters.js'
 import './openish-request-body.js'
 import './openish-response-list.js'
+import type { OpenishVariantChange } from './openish-schema.js'
 
 /**
  * One operation: what it is, what it takes, and what it answers with.
@@ -47,6 +50,7 @@ export class OpenishOperation extends LitElement {
   static override styles = [
     baseStyles,
     externalDocsStyles,
+    methodStyles,
     planeColumnStyles,
     titleRowStyles,
     css`
@@ -138,6 +142,38 @@ export class OpenishOperation extends LitElement {
       .title.deprecated {
         text-decoration: line-through;
         color: var(--openish-color-text-muted);
+      }
+
+      /*
+       * Which call this is, under the name of it.
+       *
+       * It was the title of the code sample, which reads well until the two columns are side by side:
+       * the reader is on the left with the name and the description, and the one line saying *what
+       * gets called* was over on the right, level with the sample rather than with the prose it
+       * belongs to. The sample is titled by the client it is written in now, which is the other thing
+       * a reader wants to know about a block of code.
+       *
+       * Spaced on the section's own rhythm rather than tucked under the title, which is not only a
+       * matter of taste: section heights feed the virtualiser's estimate for the sections it has not
+       * measured, and a document of three hundred short models multiplies a dozen pixels here into
+       * ten thousand across the scrollbar. The plane test that walks a hundred thousand pixels back
+       * up the document is the one that says so.
+       */
+      .target {
+        display: flex;
+        align-items: center;
+        gap: var(--openish-space-2xs);
+        min-width: 0;
+        margin: 0 0 var(--openish-space-md);
+      }
+
+      .path {
+        font: var(--openish-font-code-small);
+        font-family: var(--openish-font-family-mono);
+        color: var(--openish-color-text-muted);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
       .section-title {
@@ -253,6 +289,80 @@ export class OpenishOperation extends LitElement {
    */
   @property({ type: Number })
   level = 1
+
+  /**
+   * Which media type this operation's request is being shown in.
+   *
+   * Held here because two controls ask the question - the request body's tab set and the try-it
+   * panel's picker - and the answer decides a third thing neither of them owns: what the code sample
+   * is a sample of. With the choice inside the tab set, picking `application/xml` moved the schema
+   * on the left and left a JSON body under a `Content-Type: application/xml` on the right.
+   *
+   * Empty until the reader picks, which leaves every consumer on the document's first media type -
+   * the behaviour of a page nobody has touched, and the one the sample already assumed.
+   */
+  @state()
+  private requestMediaType = ''
+
+  /**
+   * Which response the reader is on, and in which media type.
+   *
+   * Held for the same reason as the request's: the documentation column and the examples column each
+   * showed the status, and moving one left the other behind - a schema for the `200` beside an
+   * example of the `404`. The examples column now offers nothing but the status, and that status is
+   * this one.
+   */
+  @state()
+  private responseStatus = ''
+
+  @state()
+  private responseMediaType = ''
+
+  /**
+   * The `oneOf`/`anyOf` branches the reader picked, across every tree in the section.
+   *
+   * Keyed by shape and path - see `variant-path.ts` - because an operation has several schemas on
+   * screen at once and a choice in one says nothing about the others. The trees are in the
+   * documentation column and the examples they change are in the other one, so the choice has to
+   * live somewhere that can see both, and this is the only element that does.
+   */
+  @state()
+  private variants: ReadonlyMap<string, number> = new Map()
+
+  /**
+   * Either control reporting the reader's choice. A bound field: a new arrow function every render
+   * would make the binding change identity on every update for no change in behaviour.
+   */
+  readonly #onMediaType = (event: CustomEvent<string>): void => {
+    this.requestMediaType = event.detail
+  }
+
+  readonly #onResponseMediaType = (event: CustomEvent<string>): void => {
+    this.responseMediaType = event.detail
+  }
+
+  /**
+   * The media type the examples column is showing an answer in, for the sample to ask for.
+   *
+   * Derived rather than stored, and derived by the same rules the response list renders by, so the
+   * `Accept` in the sample names the response the reader is actually looking at - including before
+   * they have touched anything, when both are on the first status the operation answers with.
+   */
+  #accept(operation: ResolvedOperation['operation'] | undefined): string {
+    return shownResponseMediaType(operation?.responses, this.responseStatus, this.responseMediaType) ?? ''
+  }
+
+  readonly #onStatus = (event: CustomEvent<string>): void => {
+    this.responseStatus = event.detail
+  }
+
+  /** A new map rather than a mutation: `@state` compares by identity, and a mutated Map is the same. */
+  readonly #onVariant = (event: CustomEvent<OpenishVariantChange>): void => {
+    const { scope, path, index } = event.detail
+    const next = new Map(this.variants)
+    next.set(variantKey(scope, path), index)
+    this.variants = next
+  }
 
   /**
    * One way to satisfy the operation: every scheme in it applies together.
@@ -395,6 +505,10 @@ export class OpenishOperation extends LitElement {
             ${heading(this.level, node.title, { title: true, deprecated })}
             <openish-copy-markdown exportparts="copy" .node=${node}></openish-copy-markdown>
           </div>
+          <div class="target" part="operation-target">
+            <span class="method" data-method=${node.method}>${node.method}</span>
+            <code class="path">${node.type === 'webhook' ? node.name : node.path}</code>
+          </div>
           ${deprecated || badges.length > 0
             ? html`
                 <div class="badges">
@@ -428,7 +542,11 @@ export class OpenishOperation extends LitElement {
                   ${heading(this.level + 1, 'Request body', { 'section-title': true })}
                   <openish-request-body
                     ?no-example=${tryIt || payload !== undefined}
+                    media-type=${this.requestMediaType}
                     .requestBody=${operation.requestBody}
+                    .variants=${this.variants}
+                    @openish-media-type-change=${this.#onMediaType}
+                    @openish-variant-change=${this.#onVariant}
                   ></openish-request-body>
                 </section>
               `
@@ -438,7 +556,16 @@ export class OpenishOperation extends LitElement {
                 <section part="response-section">
                   ${heading(this.level + 1, 'Responses', { 'section-title': true })}
                   <slot name="response-start"></slot>
-                  <openish-response-list no-example .responses=${operation.responses}></openish-response-list>
+                  <openish-response-list
+                    no-example
+                    status=${this.responseStatus}
+                    media-type=${this.responseMediaType}
+                    .responses=${operation.responses}
+                    .variants=${this.variants}
+                    @openish-status-change=${this.#onStatus}
+                    @openish-media-type-change=${this.#onResponseMediaType}
+                    @openish-variant-change=${this.#onVariant}
+                  ></openish-response-list>
                   <slot name="response-end"></slot>
                 </section>
               `
@@ -468,8 +595,24 @@ export class OpenishOperation extends LitElement {
                        * about a different operation - a response to GET /planets shown under
                        * GET /planets/{id} is not untidy, it is wrong.
                        */
-                      keyed(`${node.method} ${node.path}`, html`<openish-try-it exportparts="dialog, dialog-toolbar, code, code-toolbar, copy" .node=${node}></openish-try-it>`)
-                    : html`<openish-code-sample exportparts="code, code-toolbar, copy" .node=${node}></openish-code-sample>`}
+                      keyed(
+                        `${node.method} ${node.path}`,
+                        html`<openish-try-it
+                          exportparts="dialog, dialog-toolbar, code, code-toolbar, copy"
+                          media-type=${this.requestMediaType}
+                          accept=${this.#accept(operation)}
+                          .node=${node}
+                          .variants=${this.variants}
+                          @openish-media-type-change=${this.#onMediaType}
+                        ></openish-try-it>`,
+                      )
+                    : html`<openish-code-sample
+                        exportparts="code, code-toolbar, copy"
+                        media-type=${this.requestMediaType}
+                        accept=${this.#accept(operation)}
+                        .node=${node}
+                        .variants=${this.variants}
+                      ></openish-code-sample>`}
                   <slot name="request-end"></slot>
                 </section>
               `
@@ -478,7 +621,12 @@ export class OpenishOperation extends LitElement {
             ? html`
                 <section part="payload-section">
                   ${heading(this.level + 1, 'Payload', { 'section-title': true })}
-                  <openish-request-body examples-only .requestBody=${payload}></openish-request-body>
+                  <openish-request-body
+                    examples-only
+                    media-type=${this.requestMediaType}
+                    .requestBody=${payload}
+                    .variants=${this.variants}
+                  ></openish-request-body>
                 </section>
               `
             : nothing}
@@ -486,7 +634,14 @@ export class OpenishOperation extends LitElement {
             ? html`
                 <section part="examples-section">
                   ${heading(this.level + 1, 'Response examples', { 'section-title': true })}
-                  <openish-response-list examples-only .responses=${operation?.responses}></openish-response-list>
+                  <openish-response-list
+                    examples-only
+                    status=${this.responseStatus}
+                    media-type=${this.responseMediaType}
+                    .responses=${operation?.responses}
+                    .variants=${this.variants}
+                    @openish-status-change=${this.#onStatus}
+                  ></openish-response-list>
                 </section>
               `
             : nothing}

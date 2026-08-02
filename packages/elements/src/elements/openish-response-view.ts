@@ -3,7 +3,7 @@ import { LitElement, html, css, nothing, type TemplateResult } from 'lit'
 import { customElement, property } from 'lit/decorators.js'
 import { ifDefined } from 'lit/directives/if-defined.js'
 
-import { languageForMediaType } from '../render/media-types.js'
+import { languageForMediaType } from '../render/media-language.js'
 import { baseStyles } from '../styles/shared.js'
 import type { OpenishTableRow } from './openish-table.js'
 import './openish-code-block.js'
