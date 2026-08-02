@@ -26,8 +26,11 @@ numbers. Read this file for how the code is meant to be written and what has alr
 | M10 scale | Done — virtualised sidebar, deeper search index, lazy highlight pipeline, config coverage |
 | M11 host integration | Done — parts and slots, the remaining OAuth grants, credential store, slug hooks |
 | M12 multi-document | Done — `sources`, namespaced ids, a picker, lazy loading with idle prefetch, cross-document search |
+| M13 document fidelity II | Done — named examples, per-operation security, callbacks, `externalDocs`, the rest of `info`, OAuth flows read-only, parameter serialization, `links` |
+| M14 one layout | Done — `classic` removed, `layout` gone from the config and the element, samples in a column of their own on a wide page |
+| M15 schema edges | Done — `contentMediaType`/`contentEncoding`, `dependentRequired`/`dependentSchemas`, `if`/`then`/`else`, and `$dynamicRef`/`$dynamicAnchor` in both the tree and the example |
 
-`npm run verify` runs guards → typecheck → tests. 402 tests today across three projects: `core` and
+`npm run verify` runs guards → typecheck → tests. 533 tests today across three projects: `core` and
 `client` in Node, `elements` in real Chromium via Playwright (`npx playwright install chromium`
 once). A `.browser.test.ts` suffix inside `packages/client/test` puts a file in the Chromium project
 instead - that is where the two OAuth transports are tested, and the suffix is what keeps the rest of
@@ -49,8 +52,8 @@ paid for.
 The root re-dispatches what it handles, because some of it is the host's business — only the host can swap
 the Jack Henry theme, which is declared at `:root`.
 
-**Context carries the graph downward.** `documentContext` (the store) and `uiContext` (config, layout,
-colour scheme, selected client, base path) come from the root. `schemaContext` is the third, and the
+**Context carries the graph downward.** `documentContext` (the store) and `uiContext` (config, colour
+scheme, selected client, base path) come from the root. `schemaContext` is the third, and the
 one the rule was written for: `<openish-schema>` consumes it, adds its own `$ref` to the path, and
 re-provides it to everything it renders. An element may consume and provide the same context -
 `ContextProvider` compares the request's target against its own host and refuses to answer itself.
@@ -407,8 +410,9 @@ Extensions real documents carry, and constraints a reference has to be able to s
   resolve a background through nested shadow roots.
 - **Mobile.** The sidebar was `display: none` under 48rem - hidden, still focusable, unreachable. It
   is a disclosure now, driven by `MediaQueryController` so the element renders a different thing
-  rather than painting the same thing differently. `layout="classic"` is that same composition at any
-  width, which is why it cost nothing to implement.
+  rather than painting the same thing differently. (`layout="classic"` was that same composition at
+  any width; M14 removed it, because "the narrow composition on purpose" is a debugging affordance,
+  not a design.)
 - **Bundle.** `scripts/measure-bundle.mjs`, numbers in the README - as a budget, not as a claim.
   openish is not trying to be a smaller API reference; it is trying to be one without Vue, and most
   of what it ships is Scalar's own Vue-free tooling on purpose. Of 285 kB gzipped, 176 kB is
@@ -466,13 +470,103 @@ Extensions real documents carry, and constraints a reference has to be able to s
   needs a real disclosure.
 - **`layout="classic"`.** The property exists and currently renders as `modern`. Implement it as a
   different composition of the same primitives — single column, stacked — or drop the value if it earns
-  nothing.
+  nothing. *(Resolved at M14: dropped.)*
 - **Bundle budget.** Record gzip size of `@openish/elements` + `@openish/core` and compare with
   `@scalar/api-reference`. The premise is "without the overhead", so the number belongs in the README.
 - **Docs.** A published reference for every element's properties, slots, events, and CSS hooks. Consider
   emitting a `custom-elements.json` — it is what jh-ui does, and what tooling expects.
 
 ---
+
+## M13 — document fidelity II (done)
+
+Everything in this milestone was already in the store and not on the page. That is the shape to look
+for: the parser has been right for a long time, and the gaps are in what the renderer says out loud.
+
+- **Named examples.** `mediaTypeExamples` in core, a picker in `<openish-schema-preview>`. The old
+  reader took `Object.values(examples)[0].value` and discarded the author's names, summaries,
+  descriptions and `externalValue`. An external example is **linked, not fetched** - a documentation
+  page that issues a request the reader did not ask for has decided something about their network on
+  their behalf.
+- **Per-operation security.** `securityRequirements()` has been correct since M7 and was consumed
+  only by the try-it panel. The page now says which alternatives satisfy an operation, which schemes
+  go together, and which scopes each asks for - including "required, but this document never declares
+  it", which the reference document in this repo needs.
+- **Callbacks**, behind a disclosure, rendered by the same parameter/body/response elements the
+  operation itself uses. A callback *is* an operation; only the two levels of key above it are new.
+- **`externalDocs`** at all four levels, **the rest of `info`** (summary, contact, licence, terms),
+  and **OAuth flows read-only** - `describeSecurityScheme` answered `oauth2` with the bare string
+  `OAuth 2.0`, so the flows, endpoints and scope descriptions existed only inside the auth *form*,
+  which a reader who is not signing in never opens.
+- **Parameter serialization.** `style`, `explode`, `allowReserved`, `allowEmptyValue`, parameter-level
+  examples, and a type for a `content`-described parameter, which used to render an empty cell.
+- **`links`**, which neither Redoc nor Scalar renders. It is the only thing in OpenAPI that says how
+  two operations join up, and that is probably why so few documents bother writing one.
+
+Two things worth keeping from the sweep:
+
+- **A hand-built `{ $ref }` does not resolve.** Inferring `oneOf` variants from `discriminator.mapping`
+  needs the *schema*, and building a reference object to get one produced a branch that rendered its
+  name and nothing else - `getResolvedRef` reads a property the magic proxy installs, and an object
+  made here has never been through the proxy. `resolveLocalPointer` walks the document by key
+  instead, which keeps every value proxied. This is the same trap as the identity one at the top of
+  this file, from the other direction.
+- **The settle loop needed three stable passes, not one.** Six new test files pushed the browser
+  suite past what one unchanged pass could distinguish from a half-built tree: a full run failed
+  twelve to twenty-four assertions, a different set every time, while every file passed alone. See
+  `STABLE_PASSES` in `test/helpers.ts` for the measurements.
+
+## M15 — the JSON Schema edges (done)
+
+The keywords a 3.1 document may use that M13 left out. Three were pure rendering; the fourth was not.
+
+- **`contentMediaType` / `contentEncoding`.** `{ type: 'string', contentMediaType: 'image/png',
+  contentEncoding: 'base64' }` is a PNG, and rendering it as `string` tells the reader to send the
+  wrong thing.
+- **`dependentRequired` / `dependentSchemas`.** The first is prose - a property that becomes required
+  given another one - and joins the constraint line. The second attaches a whole schema, so it needs
+  the renderer.
+- **`if` / `then` / `else`,** as the rule the author meant rather than three anonymous schemas. The
+  condition is summarised only where it is a plain discriminant on one property, which is nearly
+  every real use; anything more involved renders the `if` schema in full rather than being
+  paraphrased into something that might not be true.
+- **`$dynamicRef` / `$dynamicAnchor`.** Worth being precise about: **the Scalar core this project
+  shares does not do this.** The parser's only mention is swapping `$dynamicRef` for `$ref` in its
+  own v3.2 meta-schema for AJV; Scalar's real support lives in `@scalar/workspace-store`, which is
+  Vue-tainted and therefore out of reach. So this one is ours.
+
+  It is the one place the renderer needs the **dynamic** scope rather than the lexical one, which is
+  why the anchors travel through `schemaContext` beside the `$ref` path: `PaginatedResource` declares
+  `itemType` as an unbound placeholder and cannot know what it is, while `PaginatedPlanets` above it
+  binds the same name to `Planet`. The outermost binding wins, so a name already in scope is kept.
+
+Two things worth keeping:
+
+- **Anchors compare by name, never by identity.** `sameState` is a `hasChanged` hook, and the magic
+  proxy hands back a fresh wrapper for the same `$defs` entry on every read - comparing the schemas
+  would report "changed" every update and put the element in a re-render loop. Same trap as the cycle
+  guard, from the other end.
+- **The example generator needed it too.** `schemaExample` tracks the dynamic scope the same way, or
+  the tree said `Planet[]` while the example beside it said `[{}]` - two answers to one question, on
+  one page. On the galaxy document it now generates the whole planet.
+
+## M14 — one layout (done)
+
+`layout` is gone: the property, the config key, the `Layout` type, and the `classic` value with them.
+
+- **`classic` was never a design.** It rendered the narrow-viewport composition at full width, which
+  is a debugging affordance with a config key on it. Scalar's `classic` is a Swagger-UI accordion and
+  shares nothing with it but the name, so the value was also actively misleading to anyone moving
+  over. Nothing consumed `uiContext.layout` - the removal was a deletion, not a refactor.
+- **Three width bands, two mechanisms.** The navigation switch stays a `MediaQueryController`,
+  because it changes the element *tree* - a sidebar becomes a disclosure, and a hidden tree that is
+  still focusable was the M6 bug. The examples column is the same DOM in a different place, so it is
+  a **container query** on the content pane, which is also the only correct thing: the pane's width
+  depends on whether the sidebar is showing, and a media query cannot see that.
+- **The seam already existed.** `<openish-schema-preview>` has taken `no-example` since M6, so the
+  try-it editor could own the request body's example. `<openish-response-list>` gained the same
+  property and the same threading through `renderMediaTypes`, and that is the whole of moving
+  response examples out of the documentation column.
 
 ## The loop
 
@@ -486,7 +580,14 @@ At the end of every milestone:
    Numbers to compare against, headless Chromium, `?url=`: M2 measured file → rendered page 2.7 s,
    navigation 0.5 s, 21 sidebar DOM elements for 853 navigation nodes, no console errors. M3 measured
    1.2 s to first render, 66 ms to a tag and 73 ms to an operation in-app, the same 21 sidebar
-   elements, no console errors. A regression against those is a finding.
+   elements, no console errors. **M14 measured 320 ms to first render, 18 ms to a tag and 26 ms to an
+   operation, the same 21 sidebar elements over the same 853 nodes, no console errors** - so the
+   two-pane operation page costs nothing measurable, and the earlier numbers were mostly the cold
+   pipelines that are now deferred. A regression against these is a finding.
+
+   Serving it is the fiddly part: the file is gitignored at the repo root, so `?url=` needs a path
+   Vite will actually serve. `/@fs/<absolute path>` works and stays same-origin; a separate static
+   server does not, because it sends no CORS header and the fetch fails silently into an empty page.
 4. Anything it breaks becomes a small committed fixture, then a fix. Never encode its contents in a test.
 
 ### The panel is a client, not a section of the page

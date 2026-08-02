@@ -1,5 +1,6 @@
 import type { Document as OpenApiDocument } from '@scalar/openapi-types/3.1'
 
+import { asExternalDocs } from '../external-docs.js'
 import { getResolvedRef } from '../ref.js'
 import {
   HTTP_METHODS,
@@ -19,6 +20,7 @@ import { collectOperations, operationSlugSource, operationTitle, type OperationE
 type DeclaredTag = {
   name?: string
   description?: string
+  externalDocs?: unknown
   'x-displayName'?: string
 }
 
@@ -172,6 +174,10 @@ export const traverseTags = (
     }
     if (declaration?.description) {
       node.description = declaration.description
+    }
+    const externalDocs = asExternalDocs(declaration?.externalDocs)
+    if (externalDocs) {
+      node.externalDocs = externalDocs
     }
     nodes.push(node)
   }

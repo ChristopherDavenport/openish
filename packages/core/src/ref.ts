@@ -55,6 +55,38 @@ export const getResolvedRef = <T>(value: T): T => {
   return { ...(resolved as object), ...siblings } as T
 }
 
+/**
+ * Walks a local JSON pointer against the document, keeping the proxy intact.
+ *
+ * For the one case a `$ref` object cannot serve: code that holds a *pointer string* rather than a
+ * reference the document wrote - `discriminator.mapping` is the example, since it names schemas
+ * without ever pointing at them. Building `{ $ref: pointer }` by hand does not work, because
+ * {@link getResolvedRef} reads a property the magic proxy installs, and a hand-built object has
+ * never been near the proxy. Walking the document by key does work, because every read of a proxied
+ * object returns a proxied value.
+ *
+ * Only local pointers (`#/…`) resolve; an external one returns `undefined`, because by the time a
+ * document reaches here `bundle()` has already inlined everything it could reach.
+ */
+export const resolveLocalPointer = (root: unknown, pointer: string): unknown => {
+  if (!pointer.startsWith('#/')) {
+    return undefined
+  }
+
+  let current: unknown = root
+
+  for (const rawSegment of pointer.slice(2).split('/')) {
+    if (current === null || typeof current !== 'object') {
+      return undefined
+    }
+    /* `~1` is `/` and `~0` is `~`, and the order matters - unescaping `~0` first would eat a `~01`. */
+    const segment = decodeURIComponent(rawSegment).replace(/~1/g, '/').replace(/~0/g, '~')
+    current = (current as Record<string, unknown>)[segment]
+  }
+
+  return current
+}
+
 /** Reads a property and resolves it in one step, for the very common `getResolvedRef(obj[key])`. */
 export const resolveProperty = <T, K extends keyof T>(target: T | undefined, key: K): T[K] | undefined => {
   if (target === undefined || target === null) {

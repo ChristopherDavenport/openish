@@ -20,8 +20,15 @@ highlighted code block.
 
 Every element reads `--openish-*` custom properties and nothing else. The full list, and what each
 one binds to in the Jack Henry Design System, is `packages/theme/css/tokens.css` — override any of
-them on a host element or at `:root` and the components follow. Elements expose no `part` or `slot`
-API beyond `<openish-disclosure>`'s default slot; the styling contract is the token layer.
+them on a host element or at `:root` and the components follow. The token layer is the primary
+styling contract, and it is the one that travels: a custom property crosses a shadow boundary, and a
+selector does not.
+
+Where a token is not enough, the layout, sidebar, tree, operation panes and sections, code blocks and
+dialogs expose **CSS parts**, chained through `exportparts` so a rule on the host page reaches four
+shadow roots down — `::part(operation-examples)`, `::part(code-head)`, and the rest. The operation
+page also forwards **slots** (`request-start`, `request-end`, `response-start`, `response-end`) so a
+host can put its own markup inside a page it did not render.
 
 Colour is checked, not assumed: `packages/elements/test/contrast.test.ts` measures every text pair,
 the HTTP method chips, and the syntax palette against WCAG AA in both schemes, and
@@ -46,7 +53,6 @@ The root of an API reference.
 | `spec` | — | `string \| Record<string, unknown> \| undefined` | `undefined` | An inline document: a YAML/JSON string, or an already-parsed object. Property only. |
 | `sources` | — | `SourceConfig[] \| undefined` | `undefined` | Several documents, with a picker to move between them. Takes precedence over `url` and `spec`. |
 | `config` | — | `OpenishConfig \| undefined` | `undefined` | Presentation options. Property only, because it is an object. |
-| `layout` | `layout` | `Layout` | `'modern'` | `modern` puts the navigation in a column beside the page. `classic` stacks it into a disclosure above the page - the same composition a narrow viewport gets, because "one column with the navigation folded away" is one design, not two, and a second implementation of it would only be a second thing to keep correct. |
 | `basePath` | `base-path` | `string` | `''` | URL prefix this reference is mounted under, e.g. `/docs`. Only `routing="history"` reads it. |
 | `routing` | `routing` | `RoutingMode` | `'hash'` | How the reference reads and writes the URL. |
 | `selected` | `selected` | `string` | `''` | The active node id when `routing="none"`. Ignored otherwise. |
@@ -73,6 +79,14 @@ What the reader has to supply before an operation will answer.
 | Event | |
 |---|---|
 | `openish-auth-change` | The reader signed in, signed out, or pasted a credential. |
+
+### `<openish-callbacks>`
+
+The requests this operation will make back, behind a disclosure.
+
+| Property | Attribute | Type | Default | |
+|---|---|---|---|---|
+| `callbacks` | — | `unknown` | `undefined` | An operation's `callbacks` map, unresolved. |
 
 ### `<openish-code-block>`
 
@@ -203,6 +217,8 @@ An operation's responses.
 |---|---|---|---|---|
 | `ui` | — | `OpenishUiState \| undefined` | — | Presentation state. Provided by `<openish-api-reference>` through context. |
 | `responses` | — | `unknown` | `undefined` | A Responses Object: status codes to Response Objects. |
+| `noExample` | `no-example` | `boolean` | `false` | Document the response schemas without their examples. |
+| `examplesOnly` | `examples-only` | `boolean` | `false` | Render only the example bodies, status by status. |
 
 ### `<openish-response-view>`
 
@@ -221,7 +237,7 @@ A schema, rendered as a property tree that expands a level at a time.
 | `store` | — | `DocumentStore \| undefined` | — | The parsed document. Provided by `<openish-api-reference>` through context. |
 | `ui` | — | `OpenishUiState \| undefined` | — | Presentation state. Provided by `<openish-api-reference>` through context. |
 | `inherited` | — | `OpenishSchemaState \| undefined` | — | The state an ancestor `<openish-schema>` left, or `undefined` at the top of a tree. |
-| `provided` | — | `OpenishSchemaState` | `{ depth: 0, seenRefs: new Set(), expandAll: false }` | What every schema rendered below this one sees: one level deeper, with this one's `$ref` added to the path. Public because it is the element's half of the recursion contract, and readable in a test without reaching through a shadow root. |
+| `provided` | — | `OpenishSchemaState` | `{ depth: 0, seenRefs: new Set(), expandAll: false, anchors: new Map() }` | What every schema rendered below this one sees: one level deeper, with this one's `$ref` added to the path. Public because it is the element's half of the recursion contract, and readable in a test without reaching through a shadow root. |
 | `schema` | — | `unknown` | `undefined` | The schema to render. May be a `$ref`; it resolves on access through the proxy. |
 | `pointer` | `pointer` | `string` | `''` | The JSON pointer this schema was reached by, when it is not itself a `$ref`. |
 | `hideHeader` | `hide-header` | `boolean` | `false` | Skip the type line, for a caller that has already printed it - a property row does. |
@@ -236,8 +252,10 @@ A schema and an example of it, side by side.
 | `schema` | — | `unknown` | `undefined` | The schema to render beside its example. |
 | `label` | `label` | `string` | `''` | A caption above the schema, e.g. the media type this one describes. |
 | `language` | `language` | `string` | `'json'` | Highlight language for a string example. A generated one is always JSON. |
-| `example` | — | `unknown` | `undefined` | An example the author supplied. Generated from the schema when absent. |
+| `example` | — | `unknown` | `undefined` | One example the author supplied, for a caller that has only one to give. |
+| `examples` | — | `readonly MediaTypeExample[]` | `[]` | Every example the author wrote, in document order. More than one becomes a picker. |
 | `noExample` | `no-example` | `boolean` | `false` | Hide the example block, for callers that show one of their own. |
+| `noSchema` | `no-schema` | `boolean` | `false` | Hide the property tree, keeping only the example. |
 
 ### `<openish-search>`
 

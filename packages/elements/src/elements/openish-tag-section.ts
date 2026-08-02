@@ -6,6 +6,7 @@ import { classMap } from 'lit/directives/class-map.js'
 import { repeat } from 'lit/directives/repeat.js'
 
 import { uiContext, type OpenishUiState } from '../context/contexts.js'
+import { externalDocsStyles, renderExternalDocs } from '../render/external-docs.js'
 import { hrefFor } from '../router/urls.js'
 import { baseStyles, methodStyles } from '../styles/shared.js'
 import './openish-markdown.js'
@@ -19,9 +20,12 @@ export class OpenishTagSection extends LitElement {
   static override styles = [
     baseStyles,
     methodStyles,
+    externalDocsStyles,
     css`
       :host {
         display: block;
+        /* Prose, so it caps itself at the reading measure however wide the page around it is. */
+        max-width: var(--openish-content-max-width);
       }
 
       h1 {
@@ -95,12 +99,14 @@ export class OpenishTagSection extends LitElement {
     }
 
     const description = this.node.type === 'tag' ? this.node.description : undefined
+    const externalDocs = this.node.type === 'tag' ? this.node.externalDocs : undefined
 
     return html`
       <h1>${this.node.title}</h1>
       ${description
         ? html`<openish-markdown .markdown=${description} .headingOffset=${1}></openish-markdown>`
         : nothing}
+      ${renderExternalDocs(externalDocs, `More about ${this.node.title}`)}
       <ul>
         ${repeat(
           this.node.children,

@@ -15,12 +15,12 @@ describe('resolveConfig', () => {
     expect(resolveConfig({ hideModels: true, modelsSectionLabel: 'Schemas' })).toMatchObject({
       hideModels: true,
       modelsSectionLabel: 'Schemas',
-      layout: 'modern',
+      untaggedLabel: 'Default',
     })
   })
 
   it('ignores explicitly undefined values rather than blanking the default', () => {
-    expect(resolveConfig({ layout: undefined }).layout).toBe('modern')
+    expect(resolveConfig({ modelsSectionLabel: undefined }).modelsSectionLabel).toBe('Models')
   })
 
   it('returns a frozen config, since the store is immutable by contract', () => {

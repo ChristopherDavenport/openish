@@ -64,9 +64,39 @@ export const SNIPPET_CLIENTS: readonly SnippetClient[] = Object.entries(GROUPED_
     })),
 )
 
+/**
+ * Which clients `config.hiddenClients` hides, in the three shapes a host may write it.
+ *
+ * - `['shell/curl']` - a flat list of ids, which is what openish has always taken.
+ * - `true` - hide the generated clients entirely. An author's own samples are unaffected, so a
+ *   document with `x-codeSamples` still shows those and nothing else, which is the point.
+ * - `{ js: true, shell: ['httpie'] }` - by target, either all of it or named clients within it.
+ *
+ * The last two are Scalar's spellings. Accepting them costs a few lines and means a host moving over
+ * does not have to rewrite a config that already says what it means.
+ */
+export type HiddenClients = readonly string[] | boolean | Readonly<Record<string, boolean | readonly string[]>>
+
+const isClientHidden = (client: SnippetClient, hidden: HiddenClients): boolean => {
+  if (typeof hidden === 'boolean') {
+    return hidden
+  }
+
+  if (Array.isArray(hidden)) {
+    /* An id (`shell/curl`), or a whole target named on its own (`shell`). */
+    return hidden.includes(client.id) || hidden.includes(client.target)
+  }
+
+  const byTarget = (hidden as Record<string, boolean | readonly string[]>)[client.target]
+  if (byTarget === undefined) {
+    return false
+  }
+  return typeof byTarget === 'boolean' ? byTarget : byTarget.includes(client.client)
+}
+
 /** The clients a document offers, with `config.hiddenClients` removed. */
-export const snippetClients = (hidden: readonly string[] = []): SnippetClient[] =>
-  SNIPPET_CLIENTS.filter((client) => !hidden.includes(client.id))
+export const snippetClients = (hidden: HiddenClients = []): SnippetClient[] =>
+  SNIPPET_CLIENTS.filter((client) => !isClientHidden(client, hidden))
 
 export const findSnippetClient = (id: string): SnippetClient | undefined =>
   SNIPPET_CLIENTS.find((client) => client.id === id)

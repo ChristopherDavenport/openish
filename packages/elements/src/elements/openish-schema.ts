@@ -1,5 +1,5 @@
 import { consume, provide } from '@lit/context'
-import { joinId, type DocumentStore } from '@openish/core'
+import { joinId, resolveLocalPointer, type DocumentStore } from '@openish/core'
 import { LitElement, html, css, nothing, type TemplateResult } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
 import { classMap } from 'lit/directives/class-map.js'
@@ -12,6 +12,7 @@ import {
   type OpenishSchemaState,
   type OpenishUiState,
 } from '../context/contexts.js'
+import { externalDocsStyles, renderExternalDocs } from '../render/external-docs.js'
 import { hrefFor } from '../router/urls.js'
 import {
   asSchema,
@@ -19,9 +20,19 @@ import {
   refName,
   refPointer,
   additionalPropertiesName,
+  collectDynamicAnchors,
+  dynamicRefName,
+  ENUM_INLINE_LIMIT,
   enumDescriptions,
+  enumValues,
+  isUnboundAnchor,
+  modelNameFromPointer,
   orderProperties,
+  schemaConditional,
   schemaConstraints,
+  schemaDependentSchemas,
+  schemaPatternProperties,
+  schemaPrefixItems,
   schemaProperties,
   schemaTypeLabel,
   schemaVariants,
@@ -41,7 +52,7 @@ import './openish-tabs.js'
  */
 const MAX_DEPTH = 12
 
-const EMPTY_STATE: OpenishSchemaState = { depth: 0, seenRefs: new Set(), expandAll: false }
+const EMPTY_STATE: OpenishSchemaState = { depth: 0, seenRefs: new Set(), expandAll: false, anchors: new Map() }
 
 /**
  * Whether a re-derived traversal state actually says anything new.
@@ -55,7 +66,18 @@ const sameState = (left: OpenishSchemaState, right: OpenishSchemaState | undefin
   left.depth === right.depth &&
   left.expandAll === right.expandAll &&
   left.seenRefs.size === right.seenRefs.size &&
-  [...left.seenRefs].every((ref) => right.seenRefs.has(ref))
+  [...left.seenRefs].every((ref) => right.seenRefs.has(ref)) &&
+  /*
+   * Anchors compare by *name*, never by the schema behind one.
+   *
+   * The document is a magic proxy, so reading the same `$defs` entry twice can hand back two
+   * different wrappers - an identity comparison here would report "changed" on every update and put
+   * the element in a re-render loop. This is the same trap the cycle guard avoids by tracking
+   * pointers, from the other end. Names are enough: a comparison is only ever between two successive
+   * updates of one element, and that element's scope does not silently rebind a name it already had.
+   */
+  left.anchors.size === right.anchors.size &&
+  [...left.anchors.keys()].every((name) => right.anchors.has(name))
 
 /**
  * A schema, rendered as a property tree that expands a level at a time.
@@ -77,6 +99,7 @@ const sameState = (left: OpenishSchemaState, right: OpenishSchemaState | undefin
 export class OpenishSchema extends LitElement {
   static override styles = [
     baseStyles,
+    externalDocsStyles,
     css`
       :host {
         display: block;
@@ -160,6 +183,26 @@ export class OpenishSchema extends LitElement {
         font: var(--openish-font-micro);
       }
 
+      .rule {
+        margin-top: var(--openish-space-sm);
+        padding-left: var(--openish-space-sm);
+        border-left: 1px solid var(--openish-color-border);
+      }
+
+      .rule-label {
+        margin-bottom: var(--openish-space-3xs);
+        font: var(--openish-font-micro);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--openish-color-text-muted);
+      }
+
+      .rule-label code {
+        font-family: var(--openish-font-family-mono);
+        text-transform: none;
+        letter-spacing: normal;
+      }
+
       .variants-label {
         margin-bottom: var(--openish-space-2xs);
         font: var(--openish-font-micro);
@@ -239,6 +282,15 @@ export class OpenishSchema extends LitElement {
   @state()
   private openedByUser: boolean | undefined = undefined
 
+  /**
+   * Whether the full list of a long enum is showing.
+   *
+   * Its own flag rather than sharing `openedByUser`: the values of an enum and the properties of an
+   * object are two different questions, and `expandAllSchemaProperties` is about the second one.
+   */
+  @state()
+  private enumOpen = false
+
   /** The state this element was rendered under, with `expandAll` filled in from config. */
   get #state(): OpenishSchemaState {
     return this.inherited ?? { ...EMPTY_STATE, expandAll: this.ui?.config.expandAllSchemaProperties ?? false }
@@ -246,6 +298,17 @@ export class OpenishSchema extends LitElement {
 
   get #open(): boolean {
     return this.openedByUser ?? this.#state.expandAll
+  }
+
+  /**
+   * Resolves a pointer against the proxied document.
+   *
+   * Only `discriminator.mapping` needs this, and it needs it because the mapping holds pointer
+   * *strings*: a `$ref` object built here would never resolve, since the magic proxy is what makes
+   * `$ref` readable and a hand-built object has never been through it.
+   */
+  get #resolvePointer(): (pointer: string) => unknown {
+    return (pointer) => resolveLocalPointer(this.store?.document, pointer)
   }
 
   /** The pointer this schema is known by: its own `$ref`, or the one the caller supplied. */
@@ -271,10 +334,30 @@ export class OpenishSchema extends LitElement {
     const state = this.#state
     const ref = this.#ref
 
+    /*
+     * Anchors this schema brings into scope, with the outermost binding winning.
+     *
+     * That is the JSON Schema rule and it is the whole point: `PaginatedResource` declares
+     * `itemType` as an unbound placeholder, and a `PaginatedPlanets` above it binds the same name to
+     * `Planet`. Adding only names that are *not* already in scope keeps the outer one.
+     */
+    const declared = collectDynamicAnchors(unwrapArray(this.schema).schema)
+    let anchors = state.anchors
+    if (declared.size > 0) {
+      const merged = new Map(state.anchors)
+      for (const [name, schema] of declared) {
+        if (!merged.has(name)) {
+          merged.set(name, schema)
+        }
+      }
+      anchors = merged
+    }
+
     this.provided = {
       depth: state.depth + 1,
       seenRefs: ref === undefined ? state.seenRefs : new Set(state.seenRefs).add(ref),
       expandAll: state.expandAll,
+      anchors,
     }
   }
 
@@ -330,27 +413,53 @@ export class OpenishSchema extends LitElement {
   }
 
   /**
-   * What each enum value means, where the document says.
+   * The enum, in full, with what each value means where the document says.
    *
-   * The values themselves are already in the constraint line - this is the half a bare
-   * `one of PENDING, SETTLED, REVERSED` cannot express, and it is usually the half the reader came
-   * for. Rendered as a definition list because that is what it is.
+   * The constraint line above caps itself at {@link ENUM_INLINE_LIMIT} values, so this is where a
+   * long enum is actually readable - and it is behind a disclosure for exactly the enums that needed
+   * capping, because a hundred currency codes is a page, not an annotation. A short enum is already
+   * on the constraint line and only appears here if the values have descriptions to add.
    */
-  #renderEnumDescriptions(target: unknown): TemplateResult | typeof nothing {
+  #renderEnumValues(target: unknown): TemplateResult | typeof nothing {
     const described = enumDescriptions(target)
-    if (described.size === 0) {
+    const values = enumValues(target)
+    const overflows = values.length > ENUM_INLINE_LIMIT
+
+    if (described.size === 0 && !overflows) {
       return nothing
     }
 
-    return html`
+    /* Every value when there are too many to have been listed above; otherwise just the described. */
+    const rows: Array<[string, string | undefined]> = overflows
+      ? values.map((value) => [value, described.get(value)])
+      : [...described].map(([value, text]) => [value, text])
+
+    const list = html`
       <dl class="enum">
         ${repeat(
-          [...described],
+          rows,
           ([value]) => value,
           ([value, text]) => html`<dt><code>${value}</code></dt>
-            <dd>${text}</dd>`,
+            <dd>${text ?? nothing}</dd>`,
         )}
       </dl>
+    `
+
+    if (!overflows) {
+      return list
+    }
+
+    return html`
+      <openish-disclosure
+        summary="Values"
+        hint=${`${values.length}`}
+        .open=${this.enumOpen}
+        @openish-toggle=${(event: CustomEvent<boolean>) => {
+          this.enumOpen = event.detail
+        }}
+      >
+        ${this.enumOpen ? list : nothing}
+      </openish-disclosure>
     `
   }
 
@@ -368,17 +477,46 @@ export class OpenishSchema extends LitElement {
     `
   }
 
+  /** A rule for every key matching one regular expression, which is `additionalProperties` with an if. */
+  #renderPatternProperty(pattern: string, schema: unknown): TemplateResult {
+    return html`
+      <li>
+        <div class="head">
+          <code class="name">[key matching /${pattern}/]</code>
+          <span class="type">${schemaTypeLabel(schema)}</span>
+          <span class="flag">any matching property</span>
+        </div>
+        ${hasBody(schema) ? html`<openish-schema .schema=${schema} hide-header></openish-schema>` : nothing}
+      </li>
+    `
+  }
+
   #renderVariants(variants: SchemaVariants): TemplateResult {
+    /* An inferred branch is a resolved schema, so its pointer travels beside it rather than on it. */
+    const pointerAt = (branch: unknown, index: number): string =>
+      refPointer(branch) ?? variants.pointers?.[index] ?? ''
+
     const label = (branch: unknown, index: number): string => {
-      const mapped = variants.mapping?.get(refPointer(branch) ?? '')
+      const mapped = variants.mapping?.get(pointerAt(branch, index))
       const title = asSchema(branch)?.['title']
-      return mapped ?? refName(branch) ?? (typeof title === 'string' ? title : `Option ${index + 1}`)
+      return (
+        mapped ??
+        refName(branch) ??
+        modelNameFromPointer(variants.pointers?.[index]) ??
+        (typeof title === 'string' ? title : `Option ${index + 1}`)
+      )
     }
 
     const tabs: OpenishTab[] = variants.branches.map((branch, index) => ({
       id: `${index}`,
       label: label(branch, index),
-      content: () => html`<openish-schema .schema=${branch} inline-properties></openish-schema>`,
+      content: () => html`
+        <openish-schema
+          .schema=${branch}
+          pointer=${pointerAt(branch, index)}
+          inline-properties
+        ></openish-schema>
+      `,
     }))
 
     return html`
@@ -397,24 +535,40 @@ export class OpenishSchema extends LitElement {
    * has not opened. That is the whole reason `<openish-disclosure>` reports its state upward.
    */
   #renderProperties(target: unknown, isArray: boolean): TemplateResult | typeof nothing {
+    /*
+     * A tuple's positions come first and are never reordered: `[0]` before `[1]` is the whole
+     * meaning of `prefixItems`, so alphabetising them would describe a different type.
+     */
+    const positions = schemaPrefixItems(target)
     const properties = orderProperties(schemaProperties(target), {
       by: this.ui?.config.orderSchemaPropertiesBy ?? 'document',
       requiredFirst: this.ui?.config.orderRequiredPropertiesFirst ?? false,
     })
+    const patterns = schemaPatternProperties(target)
     const resolved = asSchema(target)
     const additional = resolved?.['additionalProperties']
     const hasAdditional = typeof additional === 'object' && additional !== null && !Array.isArray(additional)
 
-    if (properties.length === 0 && !hasAdditional) {
+    if (positions.length === 0 && properties.length === 0 && patterns.length === 0 && !hasAdditional) {
       return nothing
     }
 
     const list = html`
       <ul>
         ${repeat(
+          positions,
+          (position) => position.name,
+          (position) => this.#renderProperty(position),
+        )}
+        ${repeat(
           properties,
           (property) => property.name,
           (property) => this.#renderProperty(property),
+        )}
+        ${repeat(
+          patterns,
+          (entry) => entry.pattern,
+          (entry) => this.#renderPatternProperty(entry.pattern, entry.schema),
         )}
         ${hasAdditional ? this.#renderAdditional(additional, target) : nothing}
       </ul>
@@ -424,10 +578,10 @@ export class OpenishSchema extends LitElement {
       return list
     }
 
-    const count = properties.length + (hasAdditional ? 1 : 0)
+    const count = positions.length + properties.length + patterns.length + (hasAdditional ? 1 : 0)
     return html`
       <openish-disclosure
-        summary=${isArray ? 'Item properties' : 'Properties'}
+        summary=${positions.length > 0 ? 'Elements' : isArray ? 'Item properties' : 'Properties'}
         hint=${`${count}`}
         .open=${this.#open}
         @openish-toggle=${(event: CustomEvent<boolean>) => {
@@ -439,6 +593,92 @@ export class OpenishSchema extends LitElement {
     `
   }
 
+  /**
+   * Extra shape that one property's mere presence brings with it.
+   *
+   * `dependentSchemas` is the half of the dependency keywords that carries a schema rather than a
+   * list of names, so it cannot be a constraint line the way `dependentRequired` is.
+   */
+  #renderDependentSchemas(target: unknown): TemplateResult | typeof nothing {
+    const dependent = schemaDependentSchemas(target)
+    if (dependent.length === 0) {
+      return nothing
+    }
+
+    return html`
+      ${repeat(
+        dependent,
+        (entry) => entry.property,
+        (entry) => html`
+          <div class="rule">
+            <div class="rule-label">When <code>${entry.property}</code> is present</div>
+            <openish-schema .schema=${entry.schema} hide-header inline-properties></openish-schema>
+          </div>
+        `,
+      )}
+    `
+  }
+
+  /**
+   * `if`/`then`/`else`, as the rule the author meant rather than three anonymous schemas.
+   *
+   * The condition is summarised where it is a plain discriminant on one property, which is nearly
+   * every real use. Anything more involved renders the `if` schema in full rather than being
+   * paraphrased into something that might not be true.
+   */
+  #renderConditional(target: unknown): TemplateResult | typeof nothing {
+    const conditional = schemaConditional(target)
+    if (!conditional) {
+      return nothing
+    }
+
+    return html`
+      <div class="rule">
+        ${conditional.summary
+          ? html`<div class="rule-label">If ${conditional.summary}</div>`
+          : html`
+              <div class="rule-label">If it matches</div>
+              <openish-schema .schema=${conditional.condition} hide-header inline-properties></openish-schema>
+            `}
+        ${conditional.then !== undefined
+          ? html`
+              <div class="rule-label">then</div>
+              <openish-schema .schema=${conditional.then} hide-header inline-properties></openish-schema>
+            `
+          : nothing}
+        ${conditional.otherwise !== undefined
+          ? html`
+              <div class="rule-label">otherwise</div>
+              <openish-schema .schema=${conditional.otherwise} hide-header inline-properties></openish-schema>
+            `
+          : nothing}
+      </div>
+    `
+  }
+
+  /**
+   * A `$dynamicRef`, resolved against the anchors in scope.
+   *
+   * This is the one place the renderer needs the *dynamic* scope rather than the lexical one: the
+   * schema saying `$dynamicRef: "#itemType"` cannot know what `itemType` is, because the whole point
+   * is that a schema above it decides. Unbound, the honest answer is to say so - the placeholder is
+   * `not: {}`, which matches nothing, and rendering that as an ordinary `not` would tell the reader
+   * the value may be anything except everything.
+   */
+  #renderDynamicRef(name: string): TemplateResult {
+    const bound = this.#state.anchors.get(name)
+
+    if (bound === undefined || isUnboundAnchor(bound)) {
+      return html`
+        <p class="recursive">
+          Decided by the schema that specialises this one, as <code>${name}</code>.
+        </p>
+      `
+    }
+
+    return html`<openish-schema .schema=${bound}></openish-schema>`
+  }
+
   override render(): TemplateResult | typeof nothing {
     if (this.schema === undefined) {
       return nothing
@@ -448,6 +688,19 @@ export class OpenishSchema extends LitElement {
     const { schema: target, isArray } = unwrapArray(this.schema)
     const resolved = asSchema(target)
     const ref = this.#ref
+
+    /*
+     * A dynamic reference stands in for a schema rather than being one, so it is answered before
+     * anything else here would try to describe it - there are no properties or constraints of its
+     * own to render, only whatever it resolved to.
+     */
+    const dynamicName = dynamicRefName(target)
+    if (dynamicName !== undefined) {
+      return html`
+        ${this.hideHeader ? nothing : html`<div class="type">${schemaTypeLabel(this.schema)}</div>`}
+        ${this.#renderDynamicRef(dynamicName)}
+      `
+    }
 
     const header = this.hideHeader
       ? nothing
@@ -485,7 +738,7 @@ export class OpenishSchema extends LitElement {
       ? [...schemaConstraints(this.schema), ...schemaConstraints(target)]
       : schemaConstraints(target)
     const not = resolved?.['not']
-    const variants = schemaVariants(target)
+    const variants = schemaVariants(target, this.#resolvePointer)
 
     return html`
       ${header}
@@ -493,11 +746,13 @@ export class OpenishSchema extends LitElement {
         ? html`<openish-markdown .markdown=${description} .headingOffset=${4}></openish-markdown>`
         : nothing}
       ${constraints.length > 0 ? html`<div class="constraints">${constraints.join(' · ')}</div>` : nothing}
-      ${this.#renderEnumDescriptions(target)}
+      ${renderExternalDocs(resolved?.['externalDocs'])}
+      ${this.#renderEnumValues(target)}
       ${not !== undefined
         ? html`<div class="constraints">not ${schemaTypeLabel(not) || 'the schema below'}</div>`
         : nothing}
       ${variants ? this.#renderVariants(variants) : this.#renderProperties(target, isArray)}
+      ${this.#renderDependentSchemas(target)} ${this.#renderConditional(target)}
     `
   }
 }

@@ -7,7 +7,6 @@ import {
   resolveSources,
   type ColorSchemePreference,
   type DocumentStore,
-  type Layout,
   type OpenishConfig,
   type ResolvedSource,
   type SourceConfig,
@@ -41,6 +40,7 @@ import {
 import { LocationController } from '../controllers/location.js'
 import { MediaQueryController } from '../controllers/media-query.js'
 import { SourcePrefetchController } from '../controllers/source-prefetch.js'
+import { readStoredClient, writeStoredClient } from '../storage/client-choice.js'
 import { dispatch } from '../events.js'
 import { renderNodeById } from '../render/render-node.js'
 import { navigate } from '../router/navigate.js'
@@ -125,8 +125,16 @@ export class OpenishApiReference extends LitElement {
         padding: var(--openish-space-xl) var(--openish-space-lg);
       }
 
+      /*
+       * The page decides its own measure, not this wrapper.
+       *
+       * The wide value is a ceiling rather than a width: the overview, tag and model pages cap
+       * themselves at the prose measure, and only the operation page - which puts two columns side
+       * by side - uses the room. Capping here instead meant the operation page could never be wider
+       * than one column's worth, so its container query could never fire.
+       */
       .content {
-        max-width: var(--openish-content-max-width);
+        max-width: var(--openish-content-max-width-wide);
         margin: 0 auto;
       }
 
@@ -219,15 +227,6 @@ export class OpenishApiReference extends LitElement {
   @property({ attribute: false })
   config: OpenishConfig | undefined = undefined
 
-  /**
-   * `modern` puts the navigation in a column beside the page. `classic` stacks it into a disclosure
-   * above the page - the same composition a narrow viewport gets, because "one column with the
-   * navigation folded away" is one design, not two, and a second implementation of it would only be
-   * a second thing to keep correct.
-   */
-  @property({ type: String })
-  layout: Layout = 'modern'
-
   /** URL prefix this reference is mounted under, e.g. `/docs`. Only `routing="history"` reads it. */
   @property({ type: String, attribute: 'base-path' })
   basePath = ''
@@ -278,7 +277,6 @@ export class OpenishApiReference extends LitElement {
   @state({ hasChanged: (value: OpenishUiState, old: OpenishUiState | undefined) => !sameUiState(value, old) })
   private ui: OpenishUiState = {
     config: resolveConfig(),
-    layout: 'modern',
     colorScheme: 'auto',
     selectedClient: resolveConfig().defaultHttpClient,
     basePath: '',
@@ -292,6 +290,9 @@ export class OpenishApiReference extends LitElement {
   /** Set once the reader picks a client, so a later config change does not silently override them. */
   @state()
   private clientChosenByUser: string | undefined = undefined
+
+  /** Whether the stored client choice has been consulted. Once only, and only if asked for. */
+  #clientRestored = false
 
   /**
    * Credentials a host already has - after its own login, say.
@@ -679,6 +680,9 @@ export class OpenishApiReference extends LitElement {
   readonly #onClientChange = (event: CustomEvent<string>): void => {
     event.stopPropagation()
     this.clientChosenByUser = event.detail
+    if (this.ui.config.persistClient) {
+      writeStoredClient(event.detail)
+    }
   }
 
   readonly #onServerChange = (event: CustomEvent<{ url: string; variables: Record<string, string> }>): void => {
@@ -847,6 +851,21 @@ export class OpenishApiReference extends LitElement {
     const activeSlug = this.#activeSlug
 
     /*
+     * The reader's last client choice, if the host asked for it to be remembered.
+     *
+     * Read here rather than at connect because the config that permits it arrives as a property, and
+     * assigned here rather than in `updated()` for the reason the server swap above gives: this
+     * joins the update in flight instead of scheduling a second one.
+     */
+    if (!this.#clientRestored && config.persistClient) {
+      this.#clientRestored = true
+      const stored = readStoredClient()
+      if (stored !== undefined) {
+        this.clientChosenByUser = stored
+      }
+    }
+
+    /*
      * The server the reader picked follows the document it was picked for. Assigned here rather
      * than watched for in `updated()`: this joins the update already in flight, where a second
      * assignment would schedule a second render.
@@ -889,7 +908,6 @@ export class OpenishApiReference extends LitElement {
 
     this.ui = {
       config,
-      layout: this.layout,
       colorScheme: this.colorScheme,
       selectedClient: this.clientChosenByUser ?? config.defaultHttpClient,
       basePath: base,
@@ -1110,7 +1128,7 @@ export class OpenishApiReference extends LitElement {
 
   /** One column when the host asked for it, or when there is not room for two. */
   get #stacked(): boolean {
-    return this.layout === 'classic' || this.#narrow.matches
+    return this.#narrow.matches
   }
 
   /**

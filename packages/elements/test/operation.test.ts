@@ -90,9 +90,16 @@ describe('parameters', () => {
     const operation = shadowOf(element.shadowRoot!, 'openish-operation')
 
     expect(deepQuery(operation, 'openish-parameters')).toBeNull()
+    /*
+     * Authorization is present because the document declares `security`, which this operation
+     * inherits. The order is documentation pane then examples pane, which is source order - the two
+     * only sit side by side once the page is wide enough for the container query.
+     */
     expect([...operation.querySelectorAll('h2')].map((heading) => textOf(heading))).toEqual([
-      'Request',
+      'Authorization',
       'Responses',
+      'Request',
+      'Response examples',
     ])
   })
 })

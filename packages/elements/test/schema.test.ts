@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
 import '../src/index.js'
-import { COMPOSITION_SPEC, CYCLIC_SPEC } from './fixtures.js'
+import { COMPOSITION_SPEC, CYCLIC_SPEC, SCALAR_REGRESSIONS_SPEC } from './fixtures.js'
 import {
   deepQuery,
   deepQueryAll,
@@ -163,6 +163,54 @@ describe('expandAllSchemaProperties', () => {
 
     expect(payload.shadowRoot!.querySelector('openish-disclosure')!.hasAttribute('open')).toBe(false)
     expect(schemaRows(payload)).toEqual([])
+  })
+})
+
+/*
+ * Shapes that are open bugs in Scalar. The evaluation claims openish does not share them, and this
+ * is where that claim is either earned or withdrawn - see SCALAR_REGRESSIONS_SPEC for the reports.
+ */
+describe('shapes Scalar gets wrong', () => {
+  it('flattens a variant that composes a discriminated base, without re-expanding the base', async () => {
+    const { schema } = await modelSchema(SCALAR_REGRESSIONS_SPEC, 'Cat')
+
+    /* One row per field, once each. The base contributed `petType` and kept it required. */
+    expect(schemaRows(schema)).toEqual([
+      { name: 'petType', type: 'string', required: 'required' },
+      { name: 'huntingSkill', type: 'string', required: 'optional' },
+    ])
+    /* The base is merged, not offered as a variant: a discriminator alone is not a choice. */
+    expect(deepQuery(schema.shadowRoot!, 'openish-tabs')).toBeNull()
+  })
+
+  it('applies a sibling description over a $ref, in both spellings', async () => {
+    const { schema } = await modelSchema(SCALAR_REGRESSIONS_SPEC, 'Described')
+
+    for (const [name, description] of [
+      ['viaAllOf', 'Overridden through allOf.'],
+      ['viaSibling', 'Overridden through a sibling key.'],
+    ] as const) {
+      const property = schemaFor(schema, name)
+      if (!property) {
+        throw new Error(`No nested schema for ${name}.`)
+      }
+      const text = deepTextOf(property.shadowRoot!)
+      expect(text).toContain(description)
+      /* The referenced schema still resolved - the override replaces the prose, not the shape. */
+      expect(text).not.toContain('The base.')
+    }
+  })
+
+  it('offers the variant selector when a discriminated union is the item type of an array', async () => {
+    const { schema } = await modelSchema(SCALAR_REGRESSIONS_SPEC, 'ChoiceList')
+    const tabs = deepQuery(schema.shadowRoot!, 'openish-tabs')
+
+    expect(tabs).not.toBeNull()
+    expect(
+      [...tabs!.shadowRoot!.querySelectorAll<HTMLButtonElement>('button[role="tab"]')].map((tab) => textOf(tab)),
+    ).toEqual(['cat', 'dog'])
+    /* Named by the discriminator mapping, and the property said which key decides. */
+    expect(deepTextOf(schema.shadowRoot!)).toContain('petType')
   })
 })
 

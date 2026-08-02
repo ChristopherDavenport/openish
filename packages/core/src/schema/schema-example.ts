@@ -46,6 +46,45 @@ const isPlainObject = (value: unknown): value is AnySchema =>
 
 const asArray = (value: unknown): unknown[] | undefined => (Array.isArray(value) ? value : undefined)
 
+/**
+ * The `$dynamicAnchor`s a schema brings into scope, by name.
+ *
+ * Deliberately duplicated rather than shared with the element layer's copy: this package has no DOM
+ * and no dependency on the renderer, and the reading is four lines. The two are tested separately
+ * against the same fixture shape.
+ */
+const dynamicAnchorsIn = (schema: AnySchema): Map<string, unknown> => {
+  const anchors = new Map<string, unknown>()
+
+  const own = schema['$dynamicAnchor']
+  if (typeof own === 'string') {
+    anchors.set(own, schema)
+  }
+
+  const defs = schema['$defs']
+  if (isPlainObject(defs)) {
+    for (const entry of Object.values(defs)) {
+      const child = getResolvedRef(entry)
+      const name = isPlainObject(child) ? child['$dynamicAnchor'] : undefined
+      if (typeof name === 'string') {
+        anchors.set(name, entry)
+      }
+    }
+  }
+
+  return anchors
+}
+
+/** `not: {}` matches nothing: a generic's type parameter that no specialising schema has bound. */
+const isUnboundAnchor = (value: unknown): boolean => {
+  const schema = getResolvedRef(value)
+  if (!isPlainObject(schema)) {
+    return false
+  }
+  const not = schema['not']
+  return isPlainObject(not) && Object.keys(not).length === 0
+}
+
 const firstType = (schema: AnySchema): string | undefined => {
   const type = schema['type']
   if (Array.isArray(type)) {
@@ -104,6 +143,7 @@ export const schemaExample = (schema: unknown, options: SchemaExampleOptions = {
     depth: number,
     seenRefs: ReadonlySet<string>,
     seenObjects: ReadonlySet<object>,
+    anchors: ReadonlyMap<string, unknown>,
   ): unknown => {
     if (depth >= maxDepth) {
       return null
@@ -121,6 +161,33 @@ export const schemaExample = (schema: unknown, options: SchemaExampleOptions = {
 
     if (!isPlainObject(resolved) || seenObjects.has(resolved)) {
       return null
+    }
+
+    /*
+     * The dynamic scope, carried down the same way the `$ref` path is.
+     *
+     * A generic schema refers to `$dynamicRef: "#itemType"` and a specialising schema above it binds
+     * that name - so an example for the specialisation has to know what the outer schema decided.
+     * Without this the tree said `Planet[]` and the example beside it said `[{}]`, which is two
+     * answers to one question. The outermost binding wins, so a name already in scope is kept.
+     */
+    let scope = anchors
+    const declared = dynamicAnchorsIn(resolved)
+    if (declared.size > 0) {
+      const merged = new Map(anchors)
+      for (const [name, schema] of declared) {
+        if (!merged.has(name)) {
+          merged.set(name, schema)
+        }
+      }
+      scope = merged
+    }
+
+    const dynamicRef = resolved['$dynamicRef']
+    if (typeof dynamicRef === 'string' && dynamicRef.startsWith('#')) {
+      const bound = scope.get(dynamicRef.slice(1))
+      /* Unbound is `not: {}` - nothing validates, so there is no example to give. */
+      return bound === undefined || isUnboundAnchor(bound) ? null : visit(bound, depth + 1, refs, seenObjects, scope)
     }
 
     if (resolved['example'] !== undefined) {
@@ -142,7 +209,7 @@ export const schemaExample = (schema: unknown, options: SchemaExampleOptions = {
     }
 
     const nestedObjects = new Set(seenObjects).add(resolved)
-    const descend = (value: unknown) => visit(value, depth + 1, refs, nestedObjects)
+    const descend = (value: unknown) => visit(value, depth + 1, refs, nestedObjects, scope)
 
     /* `allOf` is an intersection, so merge the branches. Non-object branches cannot merge; last wins. */
     const allOf = asArray(resolved['allOf'])
@@ -208,5 +275,5 @@ export const schemaExample = (schema: unknown, options: SchemaExampleOptions = {
     return primitive(resolved)
   }
 
-  return visit(schema, 0, new Set(), new Set())
+  return visit(schema, 0, new Set(), new Set(), new Map())
 }

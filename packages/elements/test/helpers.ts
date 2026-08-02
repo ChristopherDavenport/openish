@@ -96,7 +96,24 @@ const deepSignature = (root: Element | ShadowRoot): string => {
   return signature
 }
 
-const settleTree = async (element: Element, rounds = 8): Promise<void> => {
+/**
+ * How many consecutive unchanged passes count as settled.
+ *
+ * One is not enough, and the reason is load rather than logic. A pass ends on a frame boundary, and
+ * when several test files run at once their pages compete for frames - so an update can be queued,
+ * measured and not yet painted across a whole pass, leaving the signature identical for a beat in
+ * the middle of the work. One stable pass then reads as "finished" and the assertions run against a
+ * half-built tree, which is why a full run failed a different dozen tests every time while every
+ * file passed on its own.
+ *
+ * Three was measured, not guessed. At one, a full run failed twelve to twenty-four assertions and a
+ * different set each time; at two it was down to roughly one in four runs; at three, five
+ * consecutive full runs were clean. The cost is two extra frame pairs on the settled path, which is
+ * about three seconds across the suite - cheap next to a suite nobody can trust.
+ */
+const STABLE_PASSES = 3
+
+const settleTree = async (element: Element, rounds = 12): Promise<void> => {
   /*
    * The markdown and highlight pipelines are loaded on demand, so an element that renders prose
    * renders nothing on its first pass and fills in when the import resolves. A settle loop that only
@@ -104,6 +121,8 @@ const settleTree = async (element: Element, rounds = 8): Promise<void> => {
    * than reliably - so the load is awaited up front and the rest of the loop stays about rendering.
    */
   await Promise.all([loadMarkdown(), loadCode()])
+
+  let stable = 0
 
   for (let round = 0; round < rounds; round += 1) {
     const before = element.shadowRoot ? deepSignature(element.shadowRoot) : ''
@@ -126,7 +145,8 @@ const settleTree = async (element: Element, rounds = 8): Promise<void> => {
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
 
     const after = element.shadowRoot ? deepSignature(element.shadowRoot) : ''
-    if (before === after && round > 0) {
+    stable = before === after ? stable + 1 : 0
+    if (stable >= STABLE_PASSES && round > 0) {
       return
     }
   }
@@ -170,7 +190,6 @@ export const mountReference = async (
     path: string
     basePath: string
     routing: RoutingMode
-    layout: 'modern' | 'classic'
     selected: string
     config: OpenishConfig
     /** A document other than the shell fixture. */
@@ -261,9 +280,6 @@ export const mountReference = async (
   }
   if (attributes.routing !== undefined) {
     element.routing = attributes.routing
-  }
-  if (attributes.layout !== undefined) {
-    element.layout = attributes.layout
   }
   if (attributes.selected !== undefined) {
     element.selected = attributes.selected

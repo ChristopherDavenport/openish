@@ -112,7 +112,10 @@
   --openish-sidebar-width: 18rem;
   /* How tall a code block grows before it scrolls on its own. */
   --openish-code-max-height: 24rem;
+  /* The measure for prose: how wide a paragraph gets before it is tiring to read. */
   --openish-content-max-width: 48rem;
+  /* The measure for a page that puts two columns side by side, which is only the operation page. */
+  --openish-content-max-width-wide: 82rem;
   --openish-z-overlay: 800;
   --openish-z-dialog: 900;
 

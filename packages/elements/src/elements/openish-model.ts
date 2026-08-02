@@ -24,6 +24,8 @@ export class OpenishModel extends LitElement {
     css`
       :host {
         display: block;
+        /* Prose, so it caps itself at the reading measure however wide the page around it is. */
+        max-width: var(--openish-content-max-width);
       }
 
       h1 {

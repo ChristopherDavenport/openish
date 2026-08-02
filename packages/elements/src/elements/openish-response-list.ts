@@ -20,6 +20,7 @@ type Response = {
   description?: string
   headers?: Record<string, unknown>
   content?: unknown
+  links?: Record<string, unknown>
 }
 
 type Header = {
@@ -31,6 +32,8 @@ type Header = {
 
 /** Hoisted so the binding does not hand `openish-table` a new array on every render. */
 const HEADER_COLUMNS = ['Name', 'Type', 'Description']
+
+const LINK_COLUMNS = ['Name', 'Operation', 'Description']
 
 /** 2xx reads as success, 3xx as information, everything else as a failure the caller must handle. */
 const toneFor = (status: string): OpenishTab['tone'] => {
@@ -89,6 +92,17 @@ export class OpenishResponseList extends LitElement {
         color: var(--openish-color-danger);
       }
 
+      ul.link-parameters {
+        margin: var(--openish-space-3xs) 0 0;
+        padding: 0;
+        list-style: none;
+        font: var(--openish-font-micro);
+      }
+
+      ul.link-parameters code {
+        font-family: var(--openish-font-family-mono);
+      }
+
       .stacked {
         padding-bottom: var(--openish-space-md);
         border-bottom: 1px solid var(--openish-color-border);
@@ -118,6 +132,26 @@ export class OpenishResponseList extends LitElement {
   @property({ attribute: false })
   responses: unknown = undefined
 
+  /**
+   * Document the response schemas without their examples.
+   *
+   * Set when the examples are shown in a column of their own beside the page. The same property
+   * `<openish-request-body>` has taken since M6, for the same reason: two copies of the same
+   * generated JSON is not twice as informative, it is twice as long.
+   */
+  @property({ type: Boolean, attribute: 'no-example' })
+  noExample = false
+
+  /**
+   * Render only the example bodies, status by status.
+   *
+   * What the examples column shows: the same tabs, with the schema tree, the headers, the links and
+   * the description all left to the documentation column beside it. Reusing this element rather than
+   * writing a second one keeps one answer to "which status codes are there, and in what order".
+   */
+  @property({ type: Boolean, attribute: 'examples-only' })
+  examplesOnly = false
+
   /** Status codes in document order, with `default` moved to the end. */
   get #entries(): Array<[string, unknown]> {
     const responses = this.responses
@@ -125,7 +159,20 @@ export class OpenishResponseList extends LitElement {
       return []
     }
 
-    const entries = Object.entries(responses as Record<string, unknown>)
+    /*
+     * A `204` has a description and no body, which is a complete answer in the documentation column
+     * and an empty tab in the examples one. So the examples column shows only the statuses that
+     * actually carry a body - the reader is not missing anything, because the status is still on a
+     * tab beside the description.
+     */
+    const entries = Object.entries(responses as Record<string, unknown>).filter(([, raw]) => {
+      if (!this.examplesOnly) {
+        return true
+      }
+      const content = (getResolvedRef(raw) as Response | undefined)?.content
+      return typeof content === 'object' && content !== null && Object.keys(content).length > 0
+    })
+
     return [
       ...entries.filter(([status]) => status !== 'default'),
       ...entries.filter(([status]) => status === 'default'),
@@ -164,6 +211,66 @@ export class OpenishResponseList extends LitElement {
   }
 
   /**
+   * What this response lets the reader do next.
+   *
+   * A Link Object says "the `id` in this body is the `accountId` of that operation" - the one place
+   * OpenAPI describes how two operations join up. Neither Redoc nor Scalar renders it, which is
+   * probably why so few documents bother writing it; a reference that shows it is the reason to.
+   *
+   * `operationId` and `operationRef` are alternatives, and either identifies the target well enough
+   * to name. The parameter map is the substance: without it a link is only a cross-reference.
+   */
+  #renderLinks(links: Record<string, unknown> | undefined): TemplateResult | typeof nothing {
+    const entries = Object.entries(links ?? {})
+    if (entries.length === 0) {
+      return nothing
+    }
+
+    const rows = entries.map(([name, raw]) => {
+      const link = (getResolvedRef(raw) ?? {}) as {
+        operationId?: string
+        operationRef?: string
+        description?: string
+        parameters?: Record<string, unknown>
+      }
+      const target = link.operationId ?? link.operationRef ?? ''
+      const parameters = Object.entries(link.parameters ?? {})
+
+      return {
+        key: name,
+        cells: [
+          html`<code>${name}</code>`,
+          target ? html`<code>${target}</code>` : nothing,
+          html`
+            ${link.description
+              ? html`<openish-markdown .markdown=${link.description} .headingOffset=${3}></openish-markdown>`
+              : nothing}
+            ${parameters.length > 0
+              ? html`
+                  <ul class="link-parameters">
+                    ${repeat(
+                      parameters,
+                      ([parameter]) => parameter,
+                      ([parameter, expression]) => html`
+                        <li><code>${parameter}</code> ← <code>${String(expression)}</code></li>
+                      `,
+                    )}
+                  </ul>
+                `
+              : nothing}
+          `,
+        ],
+      }
+    })
+
+    return html`
+      <openish-disclosure summary="Links" hint=${`${rows.length}`} ?open=${this.ui?.config.expandAllResponses}>
+        <openish-table .columns=${LINK_COLUMNS} .rows=${rows} caption="Response links"></openish-table>
+      </openish-disclosure>
+    `
+  }
+
+  /**
    * One response.
    *
    * A response with no `content` is a complete answer - `204 No Content` says everything by saying
@@ -172,11 +279,17 @@ export class OpenishResponseList extends LitElement {
   #renderResponse(raw: unknown): TemplateResult {
     const response = (getResolvedRef(raw) as Response | undefined) ?? {}
 
+    if (this.examplesOnly) {
+      return html`${renderMediaTypes(response.content, 'Response media types', { noSchema: true })}`
+    }
+
     return html`
       ${response.description
         ? html`<openish-markdown .markdown=${response.description} .headingOffset=${2}></openish-markdown>`
         : nothing}
-      ${this.#renderHeaders(response.headers)} ${renderMediaTypes(response.content, 'Response media types')}
+      ${this.#renderHeaders(response.headers)}
+      ${renderMediaTypes(response.content, 'Response media types', { noExample: this.noExample })}
+      ${this.#renderLinks(response.links)}
     `
   }
 

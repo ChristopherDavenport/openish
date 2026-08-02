@@ -57,10 +57,11 @@ describe('createDocumentStore', () => {
   })
 
   it('carries the resolved config', async () => {
-    const store = await storeFromFixture('composition.yaml', { config: { layout: 'classic' } })
+    const store = await storeFromFixture('composition.yaml', { config: { modelsSectionLabel: 'Schemas' } })
 
-    expect(store.config.layout).toBe('classic')
-    expect(store.config.modelsSectionLabel).toBe('Models')
+    expect(store.config.modelsSectionLabel).toBe('Schemas')
+    /* Everything the caller did not name is filled in, so no component has to handle `undefined`. */
+    expect(store.config.untaggedLabel).toBe('Default')
   })
 
   it('reports an unresolvable external reference instead of failing the whole document', async () => {

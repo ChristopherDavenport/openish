@@ -117,6 +117,81 @@ export const describeSecurityScheme = (
 }
 
 /**
+ * One OAuth flow a scheme offers, flattened for display.
+ *
+ * `scopes` is a list rather than the document's object because it is rendered in order and the
+ * description is the half that matters - a scope name without one is a string the reader has to
+ * guess the meaning of, and guessing is what this section exists to prevent.
+ */
+export type OAuthFlowDetail = {
+  /** The key the document used, e.g. `authorizationCode`. */
+  key: string
+  /** That key as prose, e.g. `Authorization code`. */
+  label: string
+  authorizationUrl?: string | undefined
+  tokenUrl?: string | undefined
+  refreshUrl?: string | undefined
+  scopes: ReadonlyArray<{ name: string; description?: string | undefined }>
+}
+
+/** The flow keys OpenAPI defines, and what to call each one on a page a person reads. */
+const FLOW_LABELS: Readonly<Record<string, string>> = {
+  authorizationCode: 'Authorization code',
+  clientCredentials: 'Client credentials',
+  implicit: 'Implicit',
+  password: 'Password',
+}
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+const asUrl = (value: unknown): string | undefined =>
+  typeof value === 'string' && value.trim() !== '' ? value : undefined
+
+/**
+ * Every flow an `oauth2` scheme declares, with its endpoints and its scopes.
+ *
+ * {@link describeSecurityScheme} answers `oauth2` with the bare string `OAuth 2.0`, which is true and
+ * useless: the flows, the endpoints, and above all the scopes are the part a reader needs, and until
+ * now they existed only inside the auth form - a control, not documentation, and one a reader who is
+ * not signing in never opens.
+ *
+ * An unknown flow key is kept rather than dropped. A document declaring a flow OpenAPI has not
+ * standardised is telling the reader something, and the endpoints under it still resolve.
+ */
+export const securitySchemeFlows = (scheme: unknown): OAuthFlowDetail[] => {
+  const flows = isPlainObject(scheme) ? scheme['flows'] : undefined
+  if (!isPlainObject(flows)) {
+    return []
+  }
+
+  const details: OAuthFlowDetail[] = []
+
+  for (const [key, raw] of Object.entries(flows)) {
+    const flow = getResolvedRef(raw)
+    if (!isPlainObject(flow)) {
+      continue
+    }
+
+    const scopes = isPlainObject(flow['scopes']) ? flow['scopes'] : {}
+
+    details.push({
+      key,
+      label: FLOW_LABELS[key] ?? key,
+      authorizationUrl: asUrl(flow['authorizationUrl']),
+      tokenUrl: asUrl(flow['tokenUrl']),
+      refreshUrl: asUrl(flow['refreshUrl']),
+      scopes: Object.entries(scopes).map(([name, description]) => ({
+        name,
+        description: typeof description === 'string' && description.trim() !== '' ? description : undefined,
+      })),
+    })
+  }
+
+  return details
+}
+
+/**
  * Which alternative to satisfy, given what the reader is holding.
  *
  * `applySecurity` has always taken a `securityIndex` and nothing has ever passed one, so a document

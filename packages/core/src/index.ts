@@ -6,6 +6,7 @@ export {
   generateSnippet,
   snippetClients,
   SNIPPET_CLIENTS,
+  type HiddenClients,
   type SnippetClient,
 } from './har/snippet.js'
 export { joinId, SlugRegistry } from './navigation/ids.js'
@@ -22,6 +23,9 @@ export {
   collectParameters,
   groupParameters,
   PARAMETER_LOCATIONS,
+  parameterContentSchema,
+  parameterContentType,
+  parameterSerialization,
   type ParameterEntry,
   type ParameterLocation,
   type ParameterSource,
@@ -31,15 +35,19 @@ export {
   preferredSecurityIndex,
   resolveSecurityScheme,
   securityRequirements,
+  securitySchemeFlows,
   securitySchemesFor,
   type DescribableSecurityScheme,
+  type OAuthFlowDetail,
   type SecurityEntry,
   type SecurityRequirement,
 } from './operation/security.js'
 export { authorSamples, type AuthorSample } from './har/author-samples.js'
+export { asExternalDocs } from './external-docs.js'
+export { mediaTypeExamples, type MediaTypeExample } from './operation/examples.js'
 export { operationBadges, type OperationBadge } from './operation/badges.js'
 export { isHidden } from './navigation/hidden.js'
-export { getResolvedRef, isRefObject, resolveProperty, type RefObject } from './ref.js'
+export { getResolvedRef, isRefObject, resolveLocalPointer, resolveProperty, type RefObject } from './ref.js'
 export { schemaExample, type SchemaExampleOptions } from './schema/schema-example.js'
 export { resolveSources } from './sources.js'
 export {
@@ -58,8 +66,8 @@ export type {
   ColorScheme,
   ColorSchemePreference,
   DocumentStore,
+  ExternalDocs,
   HttpMethod,
-  Layout,
   NavGroupNode,
   NavModelNode,
   NavNode,

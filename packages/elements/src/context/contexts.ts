@@ -3,7 +3,6 @@ import type { AuthSession } from '@openish/client'
 import type {
   ColorSchemePreference,
   DocumentStore,
-  Layout,
   ResolvedOpenishConfig,
   ResolvedSource,
 } from '@openish/core'
@@ -74,7 +73,6 @@ export const sameSourcesState = (
  */
 export type OpenishUiState = {
   readonly config: ResolvedOpenishConfig
-  readonly layout: Layout
   readonly colorScheme: ColorSchemePreference
   /** The snippetz client, as `target/client`. Shared so every code sample on the page agrees. */
   readonly selectedClient: string
@@ -127,7 +125,6 @@ export const uiContext = createContext<OpenishUiState>(Symbol('openish-ui'))
 export const sameUiState = (left: OpenishUiState, right: OpenishUiState | undefined): boolean =>
   right !== undefined &&
   left.config === right.config &&
-  left.layout === right.layout &&
   left.colorScheme === right.colorScheme &&
   left.selectedClient === right.selectedClient &&
   left.basePath === right.basePath &&
@@ -202,6 +199,16 @@ export type OpenishSchemaState = {
   readonly seenRefs: ReadonlySet<string>
   /** Open every level at once, from `config.expandAllSchemaProperties`. */
   readonly expandAll: boolean
+  /**
+   * The `$dynamicAnchor`s in scope, by name — what a `$dynamicRef` resolves against.
+   *
+   * This is the *dynamic scope* of JSON Schema 2020-12, which is why it travels as context rather
+   * than being read off the schema at hand: `PaginatedResource` says its items are `$dynamicRef`
+   * `#itemType` and cannot know what that is, while `PaginatedPlanets` binds `itemType` to `Planet`
+   * one level above. The outermost binding wins, so an entry is only ever added when the name is not
+   * already in scope.
+   */
+  readonly anchors: ReadonlyMap<string, unknown>
 }
 
 export const schemaContext = createContext<OpenishSchemaState>(Symbol('openish-schema'))

@@ -1,5 +1,7 @@
 import type { Document as OpenApiDocument } from '@scalar/openapi-types/3.1'
 
+import type { HiddenClients } from './har/snippet.js'
+
 /** The HTTP methods an OpenAPI Path Item can define an operation for. */
 export const HTTP_METHODS = ['get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace'] as const
 
@@ -7,6 +9,17 @@ export type HttpMethod = (typeof HTTP_METHODS)[number]
 
 export const isHttpMethod = (value: string): value is HttpMethod =>
   (HTTP_METHODS as readonly string[]).includes(value)
+
+/**
+ * An External Documentation Object: somewhere else that explains this.
+ *
+ * `url` is the only required half, so a link with nothing to say about itself has to be labelled by
+ * whatever renders it rather than by the document.
+ */
+export type ExternalDocs = {
+  url: string
+  description?: string | undefined
+}
 
 /**
  * A node in the navigation tree.
@@ -41,6 +54,8 @@ export type NavTagNode = {
   /** The tag name exactly as it appears in the document, for matching `operation.tags`. */
   name: string
   description?: string
+  /** Where the tag says the rest of the story is. */
+  externalDocs?: ExternalDocs
   children: NavNode[]
   /** True for the synthetic tag collecting operations that declare no tags of their own. */
   isUntagged?: boolean
@@ -76,9 +91,6 @@ export type NavWebhookNode = {
   pointer: string
 }
 
-/** Layout mode. Only `modern` renders today; `classic` is reserved and falls back to `modern`. */
-export type Layout = 'modern' | 'classic'
-
 export type ColorScheme = 'light' | 'dark'
 
 /**
@@ -96,7 +108,6 @@ export type ColorSchemePreference = ColorScheme | 'auto'
  * concept exists, so a Scalar config is mostly portable.
  */
 export type OpenishConfig = {
-  layout?: Layout
   /** Hide `components.schemas` from the navigation and search. */
   hideModels?: boolean
   /** Label for the models section. */
@@ -153,8 +164,23 @@ export type OpenishConfig = {
   tagSort?: 'document' | 'alpha'
   /** Default snippetz client, as `target/client` (e.g. `shell/curl`). */
   defaultHttpClient?: string
-  /** Snippetz clients to omit from the picker, as `target/client`. */
-  hiddenClients?: string[]
+  /**
+   * Remember which code-sample client the reader picked, across reloads.
+   *
+   * Off by default, and deliberately: openish persists nothing on its own, because how long anything
+   * survives on a reader's machine is the host's decision. A client choice is not a credential, so
+   * this is safe to switch on - it is opt-in because storing *anything* silently is the part that
+   * should never happen, not because the value is sensitive.
+   */
+  persistClient?: boolean
+  /**
+   * Snippetz clients to omit from the picker.
+   *
+   * A list of `target/client` ids (or bare targets), `true` to hide the generated clients
+   * altogether, or a record naming targets and the clients within them. Author-supplied samples are
+   * never hidden by this - it is about which of snippetz's clients to generate.
+   */
+  hiddenClients?: HiddenClients
   colorScheme?: ColorSchemePreference
   /**
    * Which formats the overview offers the document in, if any.
@@ -322,7 +348,7 @@ export type OAuthSchemeConfig = {
 export type ResolvedOpenishConfig = Required<
   Omit<OpenishConfig, 'hiddenClients' | 'oauth' | 'preferredSecurityScheme' | 'slugs' | 'redirect' | 'servers'>
 > & {
-  readonly hiddenClients: readonly string[]
+  readonly hiddenClients: HiddenClients
   readonly oauth: Readonly<Record<string, OAuthSchemeConfig>>
   /** `''` when the host named nothing, so the resolved shape has no `undefined` in it. */
   readonly preferredSecurityScheme: string | readonly string[]

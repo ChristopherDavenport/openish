@@ -18,6 +18,14 @@ type AnySchema = Record<string, unknown>
 /** How far the shallow readers below will follow composition or item schemas. A backstop. */
 const MAX_DEPTH = 4
 
+/**
+ * How many enum members a one-line constraint prints before it starts counting instead.
+ *
+ * Above this the full list still renders below the line, so the cap costs the reader nothing and
+ * saves them a paragraph where they expected a sentence.
+ */
+export const ENUM_INLINE_LIMIT = 6
+
 const isPlainObject = (value: unknown): value is AnySchema =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
@@ -63,6 +71,21 @@ export const schemaTypeLabel = (value: unknown, depth = 0): string => {
     label = itemLabel === '' ? 'array' : `${itemLabel}[]`
   }
 
+  /*
+   * A tuple names its positions, because that is the whole of what it is: `prefixItems` says the
+   * first element is a string and the second a number, and rendering that as `array` throws away the
+   * only interesting thing about it.
+   */
+  if (named === undefined && Array.isArray(schema['prefixItems'])) {
+    const positions =
+      depth >= MAX_DEPTH
+        ? []
+        : schema['prefixItems'].map((item) => schemaTypeLabel(item, depth + 1) || 'any')
+    if (positions.length > 0) {
+      label = `[${positions.join(', ')}]`
+    }
+  }
+
   if (label === '') {
     if (Array.isArray(schema['enum'])) {
       label = 'enum'
@@ -89,14 +112,16 @@ export const schemaTypeLabel = (value: unknown, depth = 0): string => {
   return label
 }
 
+/** The model a pointer names, for code holding the string rather than a `$ref` object. */
+export const modelNameFromPointer = (pointer: string | undefined): string | undefined => {
+  const match = pointer === undefined ? null : /#\/components\/schemas\/(.+)$/.exec(pointer)
+  return match?.[1] ? decodeURIComponent(match[1].replace(/~1/g, '/').replace(/~0/g, '~')) : undefined
+}
+
 /** The model name a `$ref` points at, so a type cell can say `Account` instead of `object`. */
 export const refName = (value: unknown): string | undefined => {
   const ref = isPlainObject(value) ? value['$ref'] : undefined
-  if (typeof ref !== 'string') {
-    return undefined
-  }
-  const match = /#\/components\/schemas\/(.+)$/.exec(ref)
-  return match?.[1] ? decodeURIComponent(match[1].replace(/~1/g, '/').replace(/~0/g, '~')) : undefined
+  return typeof ref === 'string' ? modelNameFromPointer(ref) : undefined
 }
 
 const asText = (value: unknown): string => {
@@ -124,9 +149,29 @@ export const schemaConstraints = (value: unknown): string[] => {
   const number = (key: string): number | undefined =>
     typeof schema[key] === 'number' ? (schema[key] as number) : undefined
 
+  /*
+   * A long enum is capped rather than printed in full.
+   *
+   * A constraint line is one line, and a currency enum with 180 members turns it into the page.
+   * `<openish-schema>` renders every value underneath, so nothing is lost - this is the summary, and
+   * the summary of 180 things is not 180 things.
+   */
   const enumValues = schema['enum']
   if (Array.isArray(enumValues) && enumValues.length > 0) {
-    constraints.push(`one of ${enumValues.map(asText).join(', ')}`)
+    const shown = enumValues.slice(0, ENUM_INLINE_LIMIT).map(asText).join(', ')
+    const rest = enumValues.length - ENUM_INLINE_LIMIT
+    constraints.push(rest > 0 ? `one of ${shown} and ${rest} more` : `one of ${shown}`)
+  }
+  /* What the *keys* of an object may be, which `additionalProperties` says nothing about. */
+  const propertyNames = asSchema(schema['propertyNames'])
+  if (propertyNames) {
+    const allowed = Array.isArray(propertyNames['enum']) ? propertyNames['enum'] : undefined
+    const pattern = propertyNames['pattern']
+    if (allowed && allowed.length > 0) {
+      constraints.push(`keys: one of ${allowed.map(asText).join(', ')}`)
+    } else if (typeof pattern === 'string') {
+      constraints.push(`keys match ${pattern}`)
+    }
   }
   /* `const` is `enum` with one member, and a document that uses it means the value is fixed. */
   if (schema['const'] !== undefined) {
@@ -191,7 +236,168 @@ export const schemaConstraints = (value: unknown): string[] => {
     constraints.push(`max ${schema['maxProperties']} properties`)
   }
 
+  /*
+   * What a string actually carries.
+   *
+   * `{ type: 'string', contentMediaType: 'image/png', contentEncoding: 'base64' }` is a PNG, and
+   * rendering it as `string` tells the reader to send the wrong thing. These are the two keywords
+   * that change what a caller has to *do*, which is the rule this whole function follows.
+   */
+  if (typeof schema['contentMediaType'] === 'string') {
+    constraints.push(`${schema['contentMediaType']} content`)
+  }
+  if (typeof schema['contentEncoding'] === 'string') {
+    constraints.push(`${schema['contentEncoding']}-encoded`)
+  }
+
+  /*
+   * `dependentRequired` is prose, not shape: it makes a property required *given another one*. A
+   * reader who sends `billingAddress` without `billingPostcode` gets a 400 the type never mentioned.
+   */
+  const dependentRequired = schema['dependentRequired']
+  if (isPlainObject(dependentRequired)) {
+    for (const [name, required] of Object.entries(dependentRequired)) {
+      if (Array.isArray(required) && required.length > 0) {
+        constraints.push(`with ${name}: also requires ${required.join(', ')}`)
+      }
+    }
+  }
+
   return constraints
+}
+
+/**
+ * `dependentSchemas`: extra shape a property's mere presence brings with it.
+ *
+ * Unlike `dependentRequired`, which only names more required properties, this attaches a whole
+ * schema - so it needs the renderer rather than a constraint line.
+ */
+export const schemaDependentSchemas = (value: unknown): Array<{ property: string; schema: unknown }> => {
+  const dependent = asSchema(value)?.['dependentSchemas']
+  if (!isPlainObject(dependent)) {
+    return []
+  }
+
+  return Object.entries(dependent).map(([property, schema]) => ({ property, schema }))
+}
+
+/** An `if`/`then`/`else` triple, when a schema has one. */
+export type SchemaConditional = {
+  condition: unknown
+  then?: unknown
+  otherwise?: unknown
+  /** A one-line reading of the condition, where it is a plain discriminant on one property. */
+  summary?: string | undefined
+}
+
+/**
+ * The conditional subschema, and a readable summary of what it tests.
+ *
+ * Rendered as a rule rather than three anonymous schemas, because that is how an author means it:
+ * "if `type` is `card`, then these fields apply". The summary is only attempted for the shape that
+ * carries almost all real uses - a `const` or single-member `enum` on one property - and is left off
+ * rather than guessed at for anything more involved, where the `if` schema is rendered in full.
+ */
+export const schemaConditional = (value: unknown): SchemaConditional | undefined => {
+  const schema = asSchema(value)
+  const condition = schema?.['if']
+  if (condition === undefined) {
+    return undefined
+  }
+
+  const result: SchemaConditional = { condition }
+  if (schema?.['then'] !== undefined) {
+    result.then = schema['then']
+  }
+  if (schema?.['else'] !== undefined) {
+    result.otherwise = schema['else']
+  }
+
+  const properties = asSchema(condition)?.['properties']
+  if (isPlainObject(properties)) {
+    const entries = Object.entries(properties)
+    const [only] = entries
+    if (entries.length === 1 && only) {
+      const [name, test] = only
+      const discriminant = asSchema(test)
+      const constant =
+        discriminant?.['const'] ??
+        (Array.isArray(discriminant?.['enum']) && discriminant['enum'].length === 1
+          ? discriminant['enum'][0]
+          : undefined)
+      if (constant !== undefined) {
+        result.summary = `${name} is ${asText(constant)}`
+      }
+    }
+  }
+
+  return result
+}
+
+/**
+ * The `$dynamicAnchor`s a schema brings into scope, by name.
+ *
+ * Read from `$defs`, which is where the specification puts them and where every real document does.
+ * A schema that carries `$dynamicAnchor` on itself counts too.
+ */
+export const collectDynamicAnchors = (value: unknown): Map<string, unknown> => {
+  const schema = asSchema(value)
+  const anchors = new Map<string, unknown>()
+  if (!schema) {
+    return anchors
+  }
+
+  const own = schema['$dynamicAnchor']
+  if (typeof own === 'string') {
+    anchors.set(own, schema)
+  }
+
+  const defs = schema['$defs']
+  if (isPlainObject(defs)) {
+    for (const entry of Object.values(defs)) {
+      const child = asSchema(entry)
+      const name = child?.['$dynamicAnchor']
+      if (typeof name === 'string') {
+        anchors.set(name, entry)
+      }
+    }
+  }
+
+  return anchors
+}
+
+/** The anchor name a `$dynamicRef` names, e.g. `#itemType` becomes `itemType`. */
+export const dynamicRefName = (value: unknown): string | undefined => {
+  const ref = asSchema(value)?.['$dynamicRef']
+  return typeof ref === 'string' && ref.startsWith('#') ? ref.slice(1) : undefined
+}
+
+/**
+ * Whether a resolved anchor is the unbound placeholder.
+ *
+ * A generic schema declares its type parameter as `{ $dynamicAnchor: 'itemType', not: {} }` - `not`
+ * of the empty schema matches nothing, which is JSON Schema's way of saying "a specializing schema
+ * has to bind this". Rendering that as an ordinary `not` would tell the reader the item may be
+ * anything except everything, which is true and useless.
+ */
+export const isUnboundAnchor = (value: unknown): boolean => {
+  const schema = asSchema(value)
+  if (!schema) {
+    return false
+  }
+  const not = schema['not']
+  return isPlainObject(not) && Object.keys(not).length === 0
+}
+
+/**
+ * An enum's members, rendered the way the constraint line renders them.
+ *
+ * The same `asText` as everywhere else, so a value here matches the key {@link enumDescriptions}
+ * files its prose under - two different spellings of `1` would silently fail to join up.
+ */
+export const enumValues = (value: unknown): string[] => {
+  const members = asSchema(value)?.['enum']
+  return Array.isArray(members) ? members.map(asText) : []
 }
 
 /**
@@ -380,9 +586,76 @@ export type SchemaVariants = {
   discriminator?: string | undefined
   /** `discriminator.mapping` inverted: `$ref` pointer to the value that selects it. */
   mapping?: ReadonlyMap<string, string> | undefined
+  /**
+   * The pointer each branch was reached by, aligned with `branches`.
+   *
+   * Only set for variants inferred from a mapping, where the branch is a schema resolved out of the
+   * document rather than a `$ref` object - so `refPointer` has nothing to read and the cycle guard
+   * would have no identity to track. A `oneOf` branch carries its own `$ref` and needs none of this.
+   */
+  pointers?: ReadonlyArray<string | undefined> | undefined
 }
 
-export const schemaVariants = (value: unknown): SchemaVariants | undefined => {
+/** Resolves a local JSON pointer against the document. See {@link schemaVariants}. */
+export type PointerResolver = (pointer: string) => unknown
+
+/**
+ * Variants read out of `discriminator.mapping` alone, for a base schema that declares no `oneOf`.
+ *
+ * A document that writes a discriminator with a mapping has described a union - it has named the
+ * property that decides and the schemas each value selects - and is simply not using `oneOf` to say
+ * so. Rendering only the base's own properties leaves the reader on a page about `Animal` with no
+ * route to `Cat`, which is the shape they actually receive.
+ *
+ * The one hazard here is the bug this deliberately avoids (scalar#9771): the mapped schemas usually
+ * compose the base with `allOf`, so inferring variants for *them* too would expand the base inside
+ * every one of its own branches, forever. A branch is a schema with no discriminator of its own, so
+ * the recursion cannot start - and `<openish-schema>`'s pointer path stops it regardless.
+ *
+ * `resolve` is required rather than optional because a hand-built `{ $ref }` object does **not**
+ * resolve. `getResolvedRef` reads a property the magic proxy installs, so only a value that came out
+ * of the proxied document resolves at all - fabricating the reference here produced a branch that
+ * rendered its name and nothing else. The pointer therefore has to be looked up against the
+ * document, and the pointer is carried separately so the cycle guard still has an identity.
+ */
+const inferredVariants = (schema: AnySchema, resolve: PointerResolver | undefined): SchemaVariants | undefined => {
+  const discriminator = isPlainObject(schema['discriminator']) ? schema['discriminator'] : undefined
+  const rawMapping = isPlainObject(discriminator?.['mapping']) ? discriminator['mapping'] : undefined
+  if (!rawMapping || !resolve) {
+    return undefined
+  }
+
+  const branches: unknown[] = []
+  const pointers: Array<string | undefined> = []
+  const mapping = new Map<string, string>()
+
+  for (const [name, pointer] of Object.entries(rawMapping)) {
+    if (typeof pointer !== 'string') {
+      continue
+    }
+    const branch = resolve(pointer)
+    if (branch === undefined) {
+      continue
+    }
+    branches.push(branch)
+    pointers.push(pointer)
+    mapping.set(pointer, name)
+  }
+
+  if (branches.length === 0) {
+    return undefined
+  }
+
+  return {
+    keyword: 'oneOf',
+    branches,
+    discriminator: typeof discriminator?.['propertyName'] === 'string' ? discriminator['propertyName'] : undefined,
+    mapping,
+    pointers,
+  }
+}
+
+export const schemaVariants = (value: unknown, resolve?: PointerResolver): SchemaVariants | undefined => {
   const schema = asSchema(value)
   if (!schema) {
     return undefined
@@ -390,7 +663,7 @@ export const schemaVariants = (value: unknown): SchemaVariants | undefined => {
 
   const keyword = Array.isArray(schema['oneOf']) ? 'oneOf' : Array.isArray(schema['anyOf']) ? 'anyOf' : undefined
   if (!keyword) {
-    return undefined
+    return inferredVariants(schema, resolve)
   }
 
   const branches = schema[keyword] as unknown[]
@@ -416,6 +689,48 @@ export const schemaVariants = (value: unknown): SchemaVariants | undefined => {
 }
 
 /**
+ * The positional element schemas of a tuple, as rows a property list can render.
+ *
+ * Named `[0]`, `[1]` because that is how they are addressed. A tuple is an array whose positions
+ * mean different things, so `items` does not describe it and the property list is the closest shape
+ * openish already has for "these named things, in this order".
+ */
+export const schemaPrefixItems = (value: unknown): SchemaProperty[] => {
+  const schema = asSchema(value)
+  const prefixItems = schema?.['prefixItems']
+  if (!Array.isArray(prefixItems)) {
+    return []
+  }
+
+  return prefixItems.map((item, index) => {
+    const child = asSchema(item)
+    return {
+      name: `[${index}]`,
+      schema: item,
+      /* Every declared position is required unless `minItems` says the tail may be dropped. */
+      required: typeof schema?.['minItems'] !== 'number' || (schema['minItems'] as number) > index,
+      deprecated: child?.['deprecated'] === true,
+      description: typeof child?.['description'] === 'string' ? child['description'] : undefined,
+    }
+  })
+}
+
+/**
+ * `patternProperties`, as one row per pattern.
+ *
+ * The same shape as `additionalProperties` and rendered the same way, except that the key is a
+ * regular expression rather than anything - so the row names the pattern instead of saying `string`.
+ */
+export const schemaPatternProperties = (value: unknown): Array<{ pattern: string; schema: unknown }> => {
+  const patterns = asSchema(value)?.['patternProperties']
+  if (!isPlainObject(patterns)) {
+    return []
+  }
+
+  return Object.entries(patterns).map(([pattern, schema]) => ({ pattern, schema }))
+}
+
+/**
  * Whether a schema has anything to say beyond its type.
  *
  * A property row already prints the name, the type, and whether it is required, so a schema with
@@ -437,6 +752,14 @@ export const hasBody = (value: unknown): boolean => {
    * plain strings - and because this function decides whether a nested `<openish-schema>` is created
    * at all, missing it meant the constraint was never rendered anywhere.
    */
+  /*
+   * A discriminated base whose variants are only inferable needs a body too, and inferring them
+   * needs the document - which this function does not have. Testing for the mapping answers the only
+   * question asked here, which is whether there will be something to render.
+   */
+  const discriminator = resolved['discriminator']
+  const hasMapping = isPlainObject(discriminator) && isPlainObject(discriminator['mapping'])
+
   const description = resolved['description']
   return (
     (typeof description === 'string' && description.trim() !== '') ||
@@ -445,7 +768,18 @@ export const hasBody = (value: unknown): boolean => {
     (isArray && schemaConstraints(value).length > 0) ||
     enumDescriptions(schema).size > 0 ||
     schemaVariants(schema) !== undefined ||
+    hasMapping ||
     schemaProperties(schema).length > 0 ||
+    schemaPrefixItems(schema).length > 0 ||
+    schemaPatternProperties(schema).length > 0 ||
+    schemaDependentSchemas(schema).length > 0 ||
+    schemaConditional(schema) !== undefined ||
+    /*
+     * A `$dynamicRef` has a body because it resolves to one - and the resolution needs the dynamic
+     * scope, which this function does not have. The reference itself is the evidence that there is
+     * something to render, so `hasBody` says yes and the element decides what.
+     */
+    dynamicRefName(schema) !== undefined ||
     isPlainObject(resolved['additionalProperties'])
   )
 }

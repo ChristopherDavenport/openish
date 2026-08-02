@@ -2,7 +2,7 @@ import axeSource from 'axe-core/axe.min.js?raw'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import '../src/index.js'
-import { deepQuery, disposeAll, mountReference, openTryIt, type Harness } from './helpers.js'
+import { deepQuery, disposeAll, mountReference, openTryIt, shadowOf, type Harness } from './helpers.js'
 
 afterEach(() => {
   disposeAll()
@@ -68,6 +68,45 @@ describe('accessibility', () => {
     expectClean(await audit(harness))
   })
 
+  /*
+   * The two-pane arrangement, which the other operation tests never reach.
+   *
+   * The harness frame is 1024px, and with a sidebar beside it the content pane never crosses the
+   * container query's threshold - so every axe run over an operation until now saw the *stacked*
+   * panes. Splitting a page into two columns is exactly the change that can produce two competing
+   * heading sequences a screen reader reads as one, so it needs auditing in the arrangement that
+   * actually has two columns.
+   */
+  it('has no violations on an operation split into two columns', async () => {
+    const harness = await mountReference({ path: '/tags/accounts/getAccount' })
+    harness.frame.style.width = '1600px'
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    await harness.settle()
+
+    expectClean(await audit(harness))
+  })
+
+  it('keeps one heading sequence when the operation is split into two columns', async () => {
+    const harness = await mountReference({ path: '/tags/accounts/getAccount' })
+    harness.frame.style.width = '1600px'
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    await harness.settle()
+
+    const operation = shadowOf(harness.element.shadowRoot!, 'openish-operation')
+    const levels = [...operation.querySelectorAll('h1, h2, h3')].map((heading) =>
+      Number(heading.tagName.slice(1)),
+    )
+
+    /* One h1, and nothing that skips a level - two columns must not read as two documents. */
+    expect(levels.filter((level) => level === 1)).toHaveLength(1)
+    expect(levels[0]).toBe(1)
+    levels.forEach((level, index) => {
+      if (index > 0) {
+        expect(level - levels[index - 1]!).toBeLessThanOrEqual(1)
+      }
+    })
+  })
+
   it('has no violations on a model, with the schema tree expanded', async () => {
     const harness = await mountReference({ path: '/models/Account', config: { expandAllSchemaProperties: true } })
 
@@ -102,7 +141,12 @@ describe('accessibility', () => {
   })
 
   it('has no violations with the navigation stacked into its disclosure', async () => {
-    const harness = await mountReference({ path: '/tags/accounts', layout: 'classic' })
+    const harness = await mountReference({ path: '/tags/accounts' })
+    /* The stacked navigation is what a narrow viewport gets; there is no second layout to ask for. */
+    harness.frame.style.width = '380px'
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    await harness.settle()
+
     harness.element.shadowRoot!.querySelector<HTMLButtonElement>('.menu')!.click()
     await harness.settle()
 

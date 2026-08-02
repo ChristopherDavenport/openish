@@ -71,17 +71,33 @@ export class OpenishCodeBlock extends LitElement {
       }
 
       /*
-       * Capped, because a generated request body can run to a thousand lines and a reader should
-       * not have to scroll past all of it to reach the button that sends it. The cap is a token, so
-       * a host that would rather show everything can say so.
+       * The scroller is a wrapper element, not the pre itself, and it is focusable.
+       *
+       * A region that scrolls has to be reachable by keyboard, or the only way to read the rest of a
+       * long line is a pointer - axe calls this scrollable-region-focusable and it is a serious
+       * violation. The table element has always wrapped its own overflow this way; the code block did
+       * not, and nothing caught it until an operation page put a sample in a narrow column where the
+       * lines actually overflow.
+       *
+       * Capped, too, because a generated request body can run to a thousand lines and a reader should
+       * not have to scroll past all of it to reach the button that sends it. The cap is a token, so a
+       * host that would rather show everything can say so.
        */
+      .scroll {
+        max-height: var(--openish-code-max-height, 24rem);
+        overflow: auto;
+      }
+
+      .scroll:focus-visible {
+        outline: none;
+        box-shadow: var(--openish-focus-ring);
+      }
+
       pre {
         margin: 0;
         padding: var(--openish-space-md);
-        max-height: var(--openish-code-max-height, 24rem);
         color: var(--openish-color-code-content);
         font: var(--openish-font-code);
-        overflow: auto;
       }
 
       code {
@@ -183,9 +199,11 @@ export class OpenishCodeBlock extends LitElement {
               `
             : nothing}
         </div>
-        ${highlighted === ''
-          ? html`<pre><code>${this.code}</code></pre>`
-          : html`${unsafeHTML(highlighted)}`}
+        <div class="scroll" tabindex="0" role="group" aria-label=${`${this.label || this.language} code`}>
+          ${highlighted === ''
+            ? html`<pre><code>${this.code}</code></pre>`
+            : html`${unsafeHTML(highlighted)}`}
+        </div>
       </div>
       <span class="visually-hidden" role="status">${this.copied ? 'Copied to clipboard' : ''}</span>
     `

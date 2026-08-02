@@ -6,6 +6,7 @@
  */
 import './elements/openish-api-reference.js'
 import './elements/openish-auth-form.js'
+import './elements/openish-callbacks.js'
 import './elements/openish-code-block.js'
 import './elements/openish-code-sample.js'
 import './elements/openish-disclosure.js'
@@ -33,6 +34,7 @@ import './elements/openish-try-it.js'
 
 export { OpenishApiReference } from './elements/openish-api-reference.js'
 export { OpenishAuthForm } from './elements/openish-auth-form.js'
+export { OpenishCallbacks } from './elements/openish-callbacks.js'
 export { OpenishCodeBlock } from './elements/openish-code-block.js'
 export { OpenishCodeSample } from './elements/openish-code-sample.js'
 export { OpenishDisclosure } from './elements/openish-disclosure.js'

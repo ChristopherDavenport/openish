@@ -1,4 +1,4 @@
-import { getResolvedRef } from '@openish/core'
+import { getResolvedRef, mediaTypeExamples } from '@openish/core'
 import { html, nothing } from 'lit'
 import { ifDefined } from 'lit/directives/if-defined.js'
 
@@ -43,25 +43,24 @@ export const languageForMediaType = (mediaType: string): string => {
 }
 
 /**
- * The example to show for a media type, preferring what the author wrote.
+ * The example to show for a media type, when only one of them can be shown.
  *
- * `example` first, then the first entry of `examples` - which is an object of
- * `{ summary, description, value }`, so the value has to be unwrapped. Returning `undefined` lets
- * `<openish-schema-preview>` generate one from the schema instead.
+ * Kept for callers that have nowhere to put a picker - the code sample and the try-it editor both
+ * need a single body to fill in. Everything that renders a *reader-facing* example goes through
+ * `mediaTypeExamples` instead and offers all of them. An entry that is only an `externalValue` has
+ * no inline value to hand back, so this skips to the next one that does.
+ *
+ * Returning `undefined` lets `<openish-schema-preview>` generate one from the schema instead.
  */
-export const mediaTypeExample = (media: MediaType | undefined): unknown => {
-  if (media?.example !== undefined) {
-    return media.example
-  }
-
-  const first = getResolvedRef(Object.values(media?.examples ?? {})[0])
-  return isPlainObject(first) ? first['value'] : undefined
-}
+export const mediaTypeExample = (media: MediaType | undefined): unknown =>
+  mediaTypeExamples(media).find((example) => example.value !== undefined)?.value
 
 /** How to render a `content` map. */
 export type MediaTypesOptions = {
   /** Show the schema only. For a body the reader can already see filled in and edit. */
   noExample?: boolean
+  /** Show the example only. For an examples column beside the page that documents the schema. */
+  noSchema?: boolean
 }
 
 /**
@@ -86,10 +85,11 @@ export const renderMediaTypes = (content: unknown, label: string, options: Media
     return html`
       <openish-schema-preview
         ?no-example=${options.noExample === true}
+        ?no-schema=${options.noSchema === true}
         label=${ifDefined(showLabel ? mediaType : undefined)}
         language=${languageForMediaType(mediaType)}
         .schema=${media?.schema}
-        .example=${mediaTypeExample(media)}
+        .examples=${mediaTypeExamples(media)}
       ></openish-schema-preview>
     `
   }

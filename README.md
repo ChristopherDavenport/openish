@@ -41,7 +41,6 @@ No bundler? One script tag, with the stylesheet already inside it:
 | `spec` | — | An inline document: YAML/JSON string or object (property only) |
 | `sources` | — | Several documents, with a picker (property only). See below |
 | `config` | — | An `OpenishConfig` (property only) |
-| `layout` | `modern` | `classic` stacks the navigation into a disclosure above the page |
 | `routing` | `hash` | `history` for real paths, `none` to hand navigation to the host |
 | `base-path` | `''` | Mount under a sub-path, e.g. `/docs`. Only `routing="history"` reads it |
 | `color-scheme` | `auto` | `light` or `dark` to decide it; `auto` follows the reader |
@@ -120,9 +119,11 @@ Light and dark are chosen in CSS, not in script. Every colour is declared once a
 `openish-color-scheme-change` is still re-dispatched, so a host can persist the choice and match its
 own UI — but the reference no longer needs anything done for it.
 
-Below 48rem the navigation stacks into the same disclosure `layout="classic"` uses, rather than being
-hidden by a media query: a sidebar that CSS has hidden is still in the tab order and still read out,
-and there was no way to reach it at all.
+There is one layout, and it answers the viewport rather than a config value. Below 48rem the
+navigation stacks into a disclosure rather than being hidden by a media query: a sidebar that CSS has
+hidden is still in the tab order and still read out, and there was no way to reach it at all. Above
+that it is a column beside the page, and on a wide enough page the code samples move into a column of
+their own — see [Reading layout](#reading-layout).
 
 **Give it a height.** The element fills its container and does not decide how tall it is, so the
 chain has to reach it — every ancestor from `html` down needs a height, or the reference is as tall
@@ -334,12 +335,17 @@ a throwaway directory — installing it here would put Vue in the graph and fail
 
 | Bundle | Raw | gzip |
 |---|---|---|
-| **Entry chunk — what arrives before first paint** | 237.2 kB | **65.6 kB** |
+| **Entry chunk — what arrives before first paint** | 269.7 kB | **73.4 kB** |
 | Deferred chunks, fetched when first needed | 803.3 kB | 242.3 kB |
-| `@openish/elements`, everything | 1048.4 kB | 306.1 kB |
-| `@openish/core` alone | 252.6 kB | 80.3 kB |
+| `@openish/elements`, everything | 1081.0 kB | 313.9 kB |
+| `@openish/core` alone | 255.7 kB | 81.3 kB |
 | `@openish/client` alone | 10.3 kB | 3.8 kB |
 | `@scalar/api-reference` 1.64.0, for reference | 1226.8 kB | 334.4 kB |
+
+The entry chunk was 65.6 kB before the document-fidelity pass that added named examples, callbacks,
+per-operation security, `externalDocs`, the rest of the `info` object, the OAuth flow detail, the
+parameter serialization keywords and `links`. That is 7.8 kB gzipped for the things the reference was
+parsing and not saying, which is the trade this project should make every time.
 
 The number that matters is the first row. Three things are deferred, because none of them is needed
 for the page to exist:
@@ -354,7 +360,7 @@ for the page to exist:
 
 What is left in the entry chunk is mostly the parser and the `$ref` machinery, which is shared with
 Scalar because it is the same code. openish's own components, Lit, `@lit/context` and the virtualiser
-together are around 30 kB gzipped — the part that replaced a Vue application.
+together are under 40 kB gzipped — the part that replaced a Vue application.
 
 The runtime dependency list is six entries: `lit`, `@lit/context`, `@lit/task`,
 `@lit-labs/virtualizer`, `@scalar/code-highlight`, and openish's own packages.

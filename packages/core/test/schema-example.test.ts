@@ -120,3 +120,40 @@ describe('schemaExample', () => {
     })
   })
 })
+
+describe('dynamic references', () => {
+  const PAGE = {
+    type: 'object',
+    $defs: { itemType: { $dynamicAnchor: 'itemType', not: {} } },
+    properties: { data: { type: 'array', items: { $dynamicRef: '#itemType' } } },
+  }
+
+  /* Nothing validates against the placeholder, so there is no example to invent. */
+  it('gives an unbound item type no value rather than an empty object', () => {
+    expect(schemaExample(PAGE)).toEqual({ data: [] })
+  })
+
+  it('uses the binding a specialising schema makes', () => {
+    const specialised = {
+      ...PAGE,
+      $defs: { itemType: { $dynamicAnchor: 'itemType', type: 'object', properties: { name: { type: 'string' } } } },
+    }
+
+    expect(schemaExample(specialised)).toEqual({ data: [{ name: 'string' }] })
+  })
+
+  /* The outermost binding wins, which is the whole reason the scope travels rather than being read. */
+  it('keeps the outer binding when an inner schema declares the same name', () => {
+    const inner = {
+      ...PAGE,
+      $defs: { itemType: { $dynamicAnchor: 'itemType', type: 'integer' } },
+    }
+    const outer = {
+      $defs: { itemType: { $dynamicAnchor: 'itemType', type: 'string' } },
+      type: 'object',
+      properties: { page: inner },
+    }
+
+    expect(schemaExample(outer)).toEqual({ page: { data: ['string'] } })
+  })
+})

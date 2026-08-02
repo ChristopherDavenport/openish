@@ -1,7 +1,6 @@
 import type { OpenishConfig, ResolvedOpenishConfig } from './types.js'
 
 export const DEFAULT_CONFIG: ResolvedOpenishConfig = {
-  layout: 'modern',
   hideModels: false,
   modelsSectionLabel: 'Models',
   showSidebar: true,
@@ -20,6 +19,7 @@ export const DEFAULT_CONFIG: ResolvedOpenishConfig = {
   operationSort: 'document',
   tagSort: 'document',
   defaultHttpClient: 'shell/curl',
+  persistClient: false,
   hiddenClients: [],
   colorScheme: 'auto',
   documentDownloadType: 'both',

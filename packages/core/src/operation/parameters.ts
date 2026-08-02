@@ -17,6 +17,14 @@ export type ParameterEntry = {
   example?: unknown
   examples?: Record<string, unknown>
   content?: Record<string, unknown>
+  /** How an array or object is spelled on the wire: `form`, `simple`, `deepObject`, and the rest. */
+  style?: string
+  /** Whether each array element or object property gets its own occurrence of the name. */
+  explode?: boolean
+  /** Query parameters only: whether reserved characters may be sent unescaped. */
+  allowReserved?: boolean
+  /** Query parameters only: whether the name may appear with no value at all. */
+  allowEmptyValue?: boolean
 }
 
 /** The four `in` values, in the order documentation reads best in. */
@@ -56,6 +64,62 @@ export const collectParameters = (
   }
 
   return [...merged.values()]
+}
+
+/**
+ * How a parameter is spelled on the wire, in words, where the document says anything about it.
+ *
+ * Only what the author *declared* is reported. Every parameter has a `style` and an `explode`
+ * whether or not the document mentions them, so restating the defaults would put "form · exploded"
+ * under every query parameter in the world - noise that buries the one parameter where it matters.
+ * An author who wrote `style: deepObject` wrote it because it is surprising, and that is exactly the
+ * case this exists to surface.
+ *
+ * `allowReserved` and `allowEmptyValue` only appear when true, because false is the default and the
+ * absence of a permission is not news.
+ */
+export const parameterSerialization = (parameter: ParameterEntry): string[] => {
+  const notes: string[] = []
+
+  if (typeof parameter.style === 'string' && parameter.style !== '') {
+    notes.push(`style ${parameter.style}`)
+  }
+  if (parameter.explode === true) {
+    notes.push('exploded')
+  }
+  if (parameter.explode === false) {
+    notes.push('not exploded')
+  }
+  if (parameter.allowReserved === true) {
+    notes.push('reserved characters allowed')
+  }
+  if (parameter.allowEmptyValue === true) {
+    notes.push('may be empty')
+  }
+
+  return notes
+}
+
+/**
+ * The media type a `content`-described parameter uses, if it is described that way.
+ *
+ * A parameter carries *either* a `schema` or a `content` map with exactly one entry - the second
+ * form is how a document describes a parameter whose value is, say, a JSON object in a query string.
+ * Without this the type column rendered empty, which read as "this parameter has no type" rather
+ * than "its type is described somewhere this table was not looking".
+ */
+export const parameterContentType = (parameter: ParameterEntry): string | undefined =>
+  parameter.schema === undefined ? Object.keys(parameter.content ?? {})[0] : undefined
+
+/** The schema of a `content`-described parameter, so the type column has something to name. */
+export const parameterContentSchema = (parameter: ParameterEntry): unknown => {
+  const mediaType = parameterContentType(parameter)
+  if (mediaType === undefined) {
+    return undefined
+  }
+
+  const media = getResolvedRef(parameter.content?.[mediaType]) as { schema?: unknown } | undefined
+  return media?.schema
 }
 
 /**

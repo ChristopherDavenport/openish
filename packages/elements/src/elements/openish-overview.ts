@@ -1,10 +1,18 @@
 import { consume } from '@lit/context'
-import { describeSecurityScheme, getResolvedRef, type NavNode, type DocumentStore } from '@openish/core'
+import {
+  describeSecurityScheme,
+  getResolvedRef,
+  securitySchemeFlows,
+  type NavNode,
+  type DocumentStore,
+  type OAuthFlowDetail,
+} from '@openish/core'
 import { LitElement, html, css, nothing, type PropertyValues, type TemplateResult } from 'lit'
 import { customElement, property, query } from 'lit/decorators.js'
 import { repeat } from 'lit/directives/repeat.js'
 
 import { documentContext, uiContext, type OpenishUiState } from '../context/contexts.js'
+import { externalDocsStyles, renderExternalDocs } from '../render/external-docs.js'
 import { stripFirstSegment } from '../router/urls.js'
 import { baseStyles } from '../styles/shared.js'
 import { OpenishMarkdown } from './openish-markdown.js'
@@ -30,9 +38,12 @@ type SecurityScheme = {
 export class OpenishOverview extends LitElement {
   static override styles = [
     baseStyles,
+    externalDocsStyles,
     css`
       :host {
         display: block;
+        /* Prose, so it caps itself at the reading measure however wide the page around it is. */
+        max-width: var(--openish-content-max-width);
       }
 
       h1 {
@@ -93,6 +104,44 @@ export class OpenishOverview extends LitElement {
         list-style: none;
         display: grid;
         gap: var(--openish-space-sm);
+      }
+
+      .summary {
+        margin: 0 0 var(--openish-space-md);
+        color: var(--openish-color-text-muted);
+        font: var(--openish-font-body);
+      }
+
+      .flow {
+        margin-top: var(--openish-space-xs);
+      }
+
+      .flow-name {
+        font: var(--openish-font-body-bold);
+      }
+
+      .endpoint {
+        font-family: var(--openish-font-family-mono);
+        font-size: 0.9em;
+        word-break: break-all;
+      }
+
+      dl.scopes {
+        display: grid;
+        grid-template-columns: minmax(6rem, auto) 1fr;
+        gap: var(--openish-space-3xs) var(--openish-space-sm);
+        margin: var(--openish-space-2xs) 0 0;
+      }
+
+      dl.scopes dt {
+        font: var(--openish-font-micro);
+        font-family: var(--openish-font-family-mono);
+        color: var(--openish-color-text);
+      }
+
+      dl.scopes dd {
+        color: var(--openish-color-text-muted);
+        font: var(--openish-font-small);
       }
     `,
   ]
@@ -214,6 +263,113 @@ export class OpenishOverview extends LitElement {
     `
   }
 
+  /**
+   * Who to talk to, under what licence, on what terms.
+   *
+   * Every one of these is optional and most documents set none, so the section disappears rather
+   * than rendering an empty definition list. `license.identifier` is the 3.1 spelling of an SPDX id
+   * and is shown when there is no URL to link, because the identifier is the answer either way.
+   */
+  #renderAbout(info: Record<string, unknown>): TemplateResult | typeof nothing {
+    const contact = (info['contact'] ?? {}) as { name?: string; url?: string; email?: string }
+    const license = (info['license'] ?? {}) as { name?: string; url?: string; identifier?: string }
+    const terms = typeof info['termsOfService'] === 'string' ? info['termsOfService'] : undefined
+
+    const rows: Array<TemplateResult> = []
+
+    if (contact.name || contact.url || contact.email) {
+      rows.push(html`
+        <dt>Contact</dt>
+        <dd>
+          ${contact.url
+            ? html`<a href=${contact.url} rel="noreferrer noopener">${contact.name ?? contact.url}</a>`
+            : (contact.name ?? nothing)}
+          ${contact.email
+            ? html`<div><a href=${`mailto:${contact.email}`}>${contact.email}</a></div>`
+            : nothing}
+        </dd>
+      `)
+    }
+
+    if (license.name || license.url || license.identifier) {
+      const label = license.name ?? license.identifier ?? license.url ?? ''
+      rows.push(html`
+        <dt>Licence</dt>
+        <dd>
+          ${license.url ? html`<a href=${license.url} rel="noreferrer noopener">${label}</a>` : label}
+          ${license.identifier && license.identifier !== label
+            ? html`<span class="scheme-detail"> (${license.identifier})</span>`
+            : nothing}
+        </dd>
+      `)
+    }
+
+    if (terms) {
+      rows.push(html`
+        <dt>Terms of service</dt>
+        <dd><a href=${terms} rel="noreferrer noopener">${terms}</a></dd>
+      `)
+    }
+
+    if (rows.length === 0) {
+      return nothing
+    }
+
+    return html`
+      <section>
+        <h2>About</h2>
+        <dl>${rows}</dl>
+      </section>
+    `
+  }
+
+  /**
+   * The flows an OAuth scheme offers, and above all the scopes.
+   *
+   * These have always been in the document and only ever been shown inside the auth form, which is a
+   * control a reader who is not signing in never opens. A scope list is documentation.
+   */
+  #renderFlows(flows: readonly OAuthFlowDetail[]): TemplateResult | typeof nothing {
+    if (flows.length === 0) {
+      return nothing
+    }
+
+    return html`
+      ${repeat(
+        flows,
+        (flow) => flow.key,
+        (flow) => html`
+          <div class="flow">
+            <div class="flow-name">${flow.label}</div>
+            ${flow.authorizationUrl
+              ? html`<div class="scheme-detail">Authorize at <span class="endpoint">${flow.authorizationUrl}</span></div>`
+              : nothing}
+            ${flow.tokenUrl
+              ? html`<div class="scheme-detail">Token at <span class="endpoint">${flow.tokenUrl}</span></div>`
+              : nothing}
+            ${flow.refreshUrl
+              ? html`<div class="scheme-detail">Refresh at <span class="endpoint">${flow.refreshUrl}</span></div>`
+              : nothing}
+            ${flow.scopes.length > 0
+              ? html`
+                  <dl class="scopes">
+                    ${repeat(
+                      flow.scopes,
+                      (scope) => scope.name,
+                      (scope) => html`
+                        <dt>${scope.name}</dt>
+                        <dd>${scope.description ?? nothing}</dd>
+                      `,
+                    )}
+                  </dl>
+                `
+              : nothing}
+          </div>
+        `,
+      )}
+    `
+  }
+
   #renderSecurity(): TemplateResult | typeof nothing {
     const schemes = this.store?.document.components?.securitySchemes
     if (!schemes || Object.keys(schemes).length === 0) {
@@ -233,6 +389,7 @@ export class OpenishOverview extends LitElement {
                 ${scheme.description
                   ? html`<openish-markdown .markdown=${scheme.description} .headingOffset=${2}></openish-markdown>`
                   : nothing}
+                ${this.#renderFlows(securitySchemeFlows(scheme))}
               </dd>
             `
           })}
@@ -247,9 +404,13 @@ export class OpenishOverview extends LitElement {
       return nothing
     }
 
+    const fields = info as unknown as Record<string, unknown>
+    const summary = typeof fields['summary'] === 'string' ? fields['summary'] : undefined
+
     return html`
       <h1>${info.title}</h1>
       ${info.version ? html`<div class="version">${info.version}</div>` : nothing}
+      ${summary ? html`<p class="summary">${summary}</p>` : nothing}
       ${info.description
         ? html`
             <openish-markdown
@@ -259,7 +420,8 @@ export class OpenishOverview extends LitElement {
             ></openish-markdown>
           `
         : nothing}
-      ${this.#renderServers()} ${this.#renderSecurity()}
+      ${renderExternalDocs(this.store?.document.externalDocs, `More about ${info.title}`)}
+      ${this.#renderServers()} ${this.#renderSecurity()} ${this.#renderAbout(fields)}
       <section><openish-download></openish-download></section>
     `
   }
