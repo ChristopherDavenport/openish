@@ -5,8 +5,9 @@ import { customElement, property } from 'lit/decorators.js'
 
 import { documentContext } from '../context/contexts.js'
 import { heading } from '../render/heading.js'
-import { baseStyles } from '../styles/shared.js'
+import { baseStyles, titleRowStyles } from '../styles/shared.js'
 import './openish-code-block.js'
+import './openish-copy-markdown.js'
 import './openish-markdown.js'
 import './openish-schema.js'
 
@@ -22,6 +23,7 @@ import './openish-schema.js'
 export class OpenishModel extends LitElement {
   static override styles = [
     baseStyles,
+    titleRowStyles,
     css`
       :host {
         display: block;
@@ -64,7 +66,10 @@ export class OpenishModel extends LitElement {
     const schema = this.store?.document.components?.schemas?.[node.name]
 
     return html`
-      ${heading(this.level, node.title, { title: true })}
+      <div class="title-row">
+        ${heading(this.level, node.title, { title: true })}
+        <openish-copy-markdown exportparts="copy" .node=${node}></openish-copy-markdown>
+      </div>
       <openish-schema .schema=${schema} pointer=${node.pointer}></openish-schema>
       ${heading(this.level + 1, 'Example', { 'section-title': true })}
       <openish-code-block

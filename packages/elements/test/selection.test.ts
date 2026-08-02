@@ -156,7 +156,7 @@ describe('the selected border', () => {
     await harness.settle()
 
     const block = deepQuery(harness.element.shadowRoot!, 'openish-code-block')!
-    const copy = block.shadowRoot!.querySelector('button[part="copy"]')!
+    const copy = deepQuery(block.shadowRoot!, 'button[part="copy"]')!
 
     expect(computed(harness, copy).boxShadow).not.toContain(computed(harness, copy).color)
   })

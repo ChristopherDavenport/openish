@@ -224,7 +224,7 @@ describe('the model page', () => {
     /* An example is code, so it is highlighted and copyable like every other block on the page. */
     const example = deepQuery(model, 'openish-code-block')!
     expect(example.shadowRoot!.querySelector('.hljs-attr')).not.toBeNull()
-    expect(example.shadowRoot!.querySelector('button')).not.toBeNull()
+    expect(deepQuery(example.shadowRoot!, 'button[part="copy"]')).not.toBeNull()
     expect(deepQueryAll(model, 'h1').map((heading) => textOf(heading))).toEqual(['Node'])
   })
 

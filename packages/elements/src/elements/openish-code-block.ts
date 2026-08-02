@@ -4,9 +4,7 @@ import { unsafeHTML } from 'lit/directives/unsafe-html.js'
 
 import { codeNow, loadCode } from '../render/highlight.js'
 import { baseStyles, controlStyles, highlightStyles, visuallyHidden } from '../styles/shared.js'
-
-/** How long the copy button stays confirmed before going back to its label. */
-const COPIED_MS = 2000
+import './openish-copy-button.js'
 
 /**
  * A block of code: highlighted, labelled, and copyable.
@@ -15,9 +13,9 @@ const COPIED_MS = 2000
  * because the input is a string this project generated (a snippet or an example), never document
  * HTML, and because highlight.js escapes what it wraps.
  *
- * The copy button disappears where `navigator.clipboard` does not exist - an insecure origin - so a
- * reader is never offered a control that silently fails. What it copies is the plain source, not
- * the highlighted markup.
+ * The copy control is `<openish-copy-button>`, which is where the clipboard rules live now that two
+ * things in the project are worth copying. What it copies is the plain source, not the highlighted
+ * markup.
  */
 @customElement('openish-code-block')
 export class OpenishCodeBlock extends LitElement {
@@ -51,18 +49,6 @@ export class OpenishCodeBlock extends LitElement {
         font: var(--openish-font-micro);
         font-family: var(--openish-font-family-mono);
         color: var(--openish-color-text-muted);
-      }
-
-      button {
-        display: inline-flex;
-        align-items: center;
-        gap: var(--openish-space-3xs);
-        padding: var(--openish-space-3xs) var(--openish-space-xs);
-        border: 1px solid var(--openish-color-border);
-        border-radius: var(--openish-radius-sm);
-        background: var(--openish-color-surface);
-        color: var(--openish-color-text);
-        font: var(--openish-font-micro);
       }
 
       /*
@@ -110,37 +96,12 @@ export class OpenishCodeBlock extends LitElement {
   @property({ type: String })
   label = ''
 
-  @state()
-  private copied = false
-
   /** Bumped once the highlighter arrives, purely to ask for another render. See `#highlighted`. */
   @state()
   private loaded = 0
 
-  #timer: ReturnType<typeof setTimeout> | undefined
-
-  override disconnectedCallback(): void {
-    clearTimeout(this.#timer)
-    super.disconnectedCallback()
-  }
-
-  get #canCopy(): boolean {
-    return typeof navigator !== 'undefined' && navigator.clipboard !== undefined
-  }
-
-  async #copy(): Promise<void> {
-    try {
-      await navigator.clipboard.writeText(this.code)
-      this.copied = true
-      clearTimeout(this.#timer)
-      this.#timer = setTimeout(() => {
-        this.copied = false
-      }, COPIED_MS)
-    } catch {
-      /* A denied permission is the reader's answer, not an error worth showing them. */
-      this.copied = false
-    }
-  }
+  /** A bound field, so the property the button holds does not change identity on every render. */
+  readonly #source = (): string => this.code
 
   /**
    * The highlighted markup, or `''` to fall back to plain code.
@@ -182,14 +143,11 @@ export class OpenishCodeBlock extends LitElement {
       <div class="frame" part="code">
         <div class="head" part="code-toolbar">
           <span class="label">${this.label || this.language}</span>
-          ${this.#canCopy
-            ? html`
-                <button type="button" part="copy" @click=${this.#copy}>
-                  ${this.copied ? 'Copied' : 'Copy'}
-                  <span class="visually-hidden">${this.label || this.language} sample</span>
-                </button>
-              `
-            : nothing}
+          <openish-copy-button
+            exportparts="copy"
+            .label=${`${this.label || this.language} sample`}
+            .source=${this.#source}
+          ></openish-copy-button>
         </div>
         <div class="scroll" tabindex="0" role="group" aria-label=${`${this.label || this.language} code`}>
           ${highlighted === ''
@@ -197,7 +155,6 @@ export class OpenishCodeBlock extends LitElement {
             : html`${unsafeHTML(highlighted)}`}
         </div>
       </div>
-      <span class="visually-hidden" role="status">${this.copied ? 'Copied to clipboard' : ''}</span>
     `
   }
 }

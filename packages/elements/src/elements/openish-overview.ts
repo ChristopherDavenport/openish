@@ -15,7 +15,8 @@ import { documentContext, uiContext, type OpenishUiState } from '../context/cont
 import { externalDocsStyles, renderExternalDocs } from '../render/external-docs.js'
 import { heading } from '../render/heading.js'
 import { stripFirstSegment } from '../router/urls.js'
-import { baseStyles } from '../styles/shared.js'
+import { baseStyles, titleRowStyles } from '../styles/shared.js'
+import './openish-copy-markdown.js'
 import { OpenishMarkdown } from './openish-markdown.js'
 import './openish-download.js'
 
@@ -40,6 +41,7 @@ export class OpenishOverview extends LitElement {
   static override styles = [
     baseStyles,
     externalDocsStyles,
+    titleRowStyles,
     css`
       :host {
         display: block;
@@ -414,7 +416,10 @@ export class OpenishOverview extends LitElement {
     const summary = typeof fields['summary'] === 'string' ? fields['summary'] : undefined
 
     return html`
-      ${heading(this.level, info.title, { title: true })}
+      <div class="title-row">
+        ${heading(this.level, info.title, { title: true })}
+        <openish-copy-markdown exportparts="copy"></openish-copy-markdown>
+      </div>
       ${info.version ? html`<div class="version">${info.version}</div>` : nothing}
       ${summary ? html`<p class="summary">${summary}</p>` : nothing}
       ${info.description

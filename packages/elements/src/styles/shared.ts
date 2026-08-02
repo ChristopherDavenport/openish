@@ -343,6 +343,29 @@ export const highlightStyles = css`
   }
 `
 
+/**
+ * A section's own title, with the controls that act on the whole section beside it.
+ *
+ * Shared because all four page elements have one and they have to line up: on the plane they are
+ * stacked in a single scroller, so a control that sat a few pixels differently on the overview than
+ * on an operation would read as a wobble down the right-hand edge rather than as a column.
+ *
+ * `align-items: start` rather than centre, because a title can wrap to two lines and the control
+ * should stay level with the first of them - it belongs to the heading, not to the block.
+ */
+export const titleRowStyles = css`
+  .title-row {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: var(--openish-space-md);
+  }
+
+  .title-row > :first-child {
+    min-width: 0;
+  }
+`
+
 /** Visually hidden but available to assistive technology. */
 export const visuallyHidden = css`
   .visually-hidden {

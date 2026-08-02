@@ -85,7 +85,7 @@ describe('code samples', () => {
     const block = deepQuery(element.shadowRoot!, 'openish-code-block')!
 
     expect(textOf(block.shadowRoot!.querySelector('.label'))).toBe('Shell · curl')
-    expect(block.shadowRoot!.querySelector('button')).not.toBeNull()
+    expect(deepQuery(block.shadowRoot!, 'button[part="copy"]')).not.toBeNull()
   })
 
   it('renders no sample for a webhook, which the reader does not call', async () => {

@@ -20,9 +20,10 @@ import { repeat } from 'lit/directives/repeat.js'
 import { documentContext, uiContext, type OpenishUiState } from '../context/contexts.js'
 import { externalDocsStyles, renderExternalDocs } from '../render/external-docs.js'
 import { heading } from '../render/heading.js'
-import { baseStyles, methodStyles } from '../styles/shared.js'
+import { baseStyles, methodStyles, titleRowStyles } from '../styles/shared.js'
 import './openish-callbacks.js'
 import './openish-code-sample.js'
+import './openish-copy-markdown.js'
 import './openish-markdown.js'
 import './openish-try-it.js'
 import './openish-parameters.js'
@@ -45,6 +46,7 @@ export class OpenishOperation extends LitElement {
     baseStyles,
     methodStyles,
     externalDocsStyles,
+    titleRowStyles,
     css`
       :host {
         display: block;
@@ -380,7 +382,10 @@ export class OpenishOperation extends LitElement {
               (badge) => html`<span class="badge" data-tone=${badge.tone}>${badge.label}</span>`,
             )}
           </div>
-          ${heading(this.level, node.title, { title: true, deprecated })}
+          <div class="title-row">
+            ${heading(this.level, node.title, { title: true, deprecated })}
+            <openish-copy-markdown exportparts="copy" .node=${node}></openish-copy-markdown>
+          </div>
           ${operation?.operationId
             ? html`<div class="operation-id">${operation.operationId}</div>`
             : nothing}

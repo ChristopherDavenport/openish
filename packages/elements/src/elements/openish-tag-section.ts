@@ -9,7 +9,8 @@ import { uiContext, type OpenishUiState } from '../context/contexts.js'
 import { externalDocsStyles, renderExternalDocs } from '../render/external-docs.js'
 import { heading } from '../render/heading.js'
 import { hrefFor } from '../router/urls.js'
-import { baseStyles, methodStyles } from '../styles/shared.js'
+import { baseStyles, methodStyles, titleRowStyles } from '../styles/shared.js'
+import './openish-copy-markdown.js'
 import './openish-markdown.js'
 
 /**
@@ -22,6 +23,7 @@ export class OpenishTagSection extends LitElement {
     baseStyles,
     methodStyles,
     externalDocsStyles,
+    titleRowStyles,
     css`
       :host {
         display: block;
@@ -108,7 +110,10 @@ export class OpenishTagSection extends LitElement {
     const externalDocs = this.node.type === 'tag' ? this.node.externalDocs : undefined
 
     return html`
-      ${heading(this.level, this.node.title, { title: true })}
+      <div class="title-row">
+        ${heading(this.level, this.node.title, { title: true })}
+        <openish-copy-markdown exportparts="copy" .node=${this.node}></openish-copy-markdown>
+      </div>
       ${description
         ? html`<openish-markdown .markdown=${description} .headingOffset=${this.level}></openish-markdown>`
         : nothing}
