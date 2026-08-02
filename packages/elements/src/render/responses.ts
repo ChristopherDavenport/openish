@@ -6,8 +6,9 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
 /**
  * Whether a body has anything for an examples column to show.
  *
- * Asked before a heading is written, not after: `renderMediaTypes` on an empty `content` renders
- * nothing, so a section that assumed otherwise printed "Response examples" over a blank half-page.
+ * Asked before the section is written, not after: `renderMediaTypes` on an empty `content` renders
+ * nothing, so a section that assumed otherwise stood over a blank half-page - under a "Response
+ * examples" heading when it had one, and as an empty named region since.
  * A `204` is the usual reason and a complete answer in the documentation column, and a webhook whose
  * payload is described in prose alone is the other.
  *

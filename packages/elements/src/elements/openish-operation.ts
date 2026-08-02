@@ -81,6 +81,21 @@ export class OpenishOperation extends LitElement {
       }
 
       /*
+       * Stacked, the examples column needs the space its headings used to bring.
+       *
+       * The grid has a column gap and no row gap, so below the container query's threshold the
+       * examples column begins immediately under the last section of the documentation - which was
+       * survivable while a heading opened it and is a code block butting against a table now.
+       *
+       * On the column rather than on its first child, because a column has no padding or border for
+       * a top margin to stop at: put it inside and it collapses back out through the column, which
+       * is the fault recorded above.
+       */
+      .examples {
+        margin-top: var(--openish-space-xl);
+      }
+
+      /*
        * The examples column does not stick, and cannot.
        *
        * It used to: the sample stayed beside whichever part of a long schema the reader had scrolled
@@ -101,6 +116,8 @@ export class OpenishOperation extends LitElement {
       @container section (min-width: 56rem) {
         .examples {
           grid-column: 2;
+          /* Beside the documentation rather than after it, so the sample starts level with the title. */
+          margin-top: 0;
         }
       }
 
@@ -476,12 +493,12 @@ export class OpenishOperation extends LitElement {
         : undefined
 
     /*
-     * A heading in the examples column only when something is under it.
+     * A region in the examples column only when something is under it.
      *
      * `<openish-response-list examples-only>` drops the statuses with no body - a `204` is a complete
      * answer in the documentation column and an empty tab here - and an operation whose responses are
-     * *all* like that left the heading standing over nothing. Which is most visible on a webhook,
-     * where it was the only thing in the column.
+     * *all* like that left an empty named region standing over nothing. Which is most visible on a
+     * webhook, where it was the only thing in the column.
      */
     const responseExamples = Object.values(operation?.responses ?? {}).some(hasRenderableContent)
 
@@ -495,6 +512,17 @@ export class OpenishOperation extends LitElement {
      *
      * Which arrangement is used is decided in CSS by a container query, because both panes are the
      * same DOM either way. Only their placement changes, so nothing here needs to know the width.
+     *
+     * The right-hand pane is named rather than titled. Its blocks used to carry headings - "Request"
+     * over a sample already headed by the client it is written in, "Response examples" over a row of
+     * status tabs - and the column is itself the answer to what kind of thing is in it, which is why
+     * the aside a tag or the overview fills the same column with has never written one either.
+     *
+     * The names survive as `aria-label`s, because the boundary a sighted reader gets from the column
+     * is one a screen reader only had from the heading list. Each carries the operation's title,
+     * because a named `<section>` is a landmark and a plane holding forty operations at once would
+     * otherwise offer forty landmarks all called "Request" - which axe's `landmark-unique` says,
+     * correctly, is a list nobody can navigate by.
      */
     const badges = operationBadges(operation, { deprecated })
 
@@ -584,8 +612,7 @@ export class OpenishOperation extends LitElement {
           ${this.#renderSecurity(operation)}
           ${node.type === 'operation'
             ? html`
-                <section part="request-section">
-                  ${heading(this.level + 1, 'Request', { 'section-title': true })}
+                <section part="request-section" aria-label=${`${node.title} request`}>
                   <slot name="request-start"></slot>
                   ${tryIt
                     ? /*
@@ -619,8 +646,7 @@ export class OpenishOperation extends LitElement {
             : nothing}
           ${payload !== undefined
             ? html`
-                <section part="payload-section">
-                  ${heading(this.level + 1, 'Payload', { 'section-title': true })}
+                <section part="payload-section" aria-label=${`${node.title} payload`}>
                   <openish-request-body
                     examples-only
                     media-type=${this.requestMediaType}
@@ -632,8 +658,7 @@ export class OpenishOperation extends LitElement {
             : nothing}
           ${responseExamples
             ? html`
-                <section part="examples-section">
-                  ${heading(this.level + 1, 'Response examples', { 'section-title': true })}
+                <section part="examples-section" aria-label=${`${node.title} response examples`}>
                   <openish-response-list
                     examples-only
                     status=${this.responseStatus}
