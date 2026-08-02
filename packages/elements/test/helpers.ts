@@ -577,6 +577,52 @@ export const schemaRows = (
   }))
 }
 
+/**
+ * The content-type select on a `Body` or `Returns` heading, and picking one from it.
+ *
+ * `<openish-operation>` owns both, because the answer decides what several blocks below it show -
+ * the schema, the example, and the `Accept` in the sample. `kind` is `request` or `response`.
+ */
+export const contentTypePicker = (harness: Harness, kind: 'request' | 'response'): HTMLSelectElement => {
+  const operation = shadowOf(sectionOf(harness), 'openish-operation')
+  const select = operation.querySelector<HTMLSelectElement>(`select#${kind}-content-type`)
+  if (!select) {
+    throw new Error(`No ${kind} content-type picker on this operation.`)
+  }
+  return select
+}
+
+export const pickContentType = async (
+  harness: Harness,
+  kind: 'request' | 'response',
+  mediaType: string,
+): Promise<void> => {
+  const select = contentTypePicker(harness, kind)
+  select.value = mediaType
+  select.dispatchEvent(new Event('change', { bubbles: true }))
+  await harness.settle()
+}
+
+/**
+ * Opens the outermost disclosure of every tree under `root`, and reports how many it opened.
+ *
+ * A body arrives named and closed - see `collapse-root` on `<openish-schema>` - and a closed
+ * disclosure renders nothing inside it, so a test that wants to read a property row has to do what
+ * the reader does first. Only the roots: the levels below are the renderer's own business, and a
+ * test that opened all of them would be asserting against a page no reader has.
+ */
+export const openBodies = async (harness: Harness, root: Element | ShadowRoot): Promise<number> => {
+  const roots = deepQueryAll(root, 'openish-schema').filter((schema) => schema.hasAttribute('collapse-root'))
+
+  for (const schema of roots) {
+    const disclosure = schema.shadowRoot?.querySelector('openish-disclosure')
+    disclosure?.shadowRoot?.querySelector<HTMLButtonElement>('button')?.click()
+  }
+
+  await harness.settle()
+  return roots.length
+}
+
 /** The nested `<openish-schema>` a named property row renders, or null for a leaf. */
 export const schemaFor = (schema: Element | null, name: string): Element | null => {
   if (!schema?.shadowRoot) {

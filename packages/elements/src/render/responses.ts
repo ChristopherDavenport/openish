@@ -75,6 +75,21 @@ export const pickMediaType = (content: unknown, preferred: string): string | und
 }
 
 /**
+ * The `content` of the response the section is showing, whichever status that is.
+ *
+ * Two things ask it. The sample's `Accept` needs the media type inside it, and the picker beside the
+ * `Returns` heading needs the whole map - it offers the types *this* response declares, because a
+ * `404` that is only ever JSON must not be offered the XML its neighbour has.
+ */
+export const shownResponseContent = (responses: unknown, status: string): unknown => {
+  const entries = responseEntries(responses, { withContentOnly: true })
+  const shown = entries.find(([code]) => code === status) ?? entries[0]
+  return shown === undefined
+    ? undefined
+    : (getResolvedRef(shown[1]) as { content?: unknown } | undefined)?.content
+}
+
+/**
  * What the examples column is showing: the response, and the media type it is being read in.
  *
  * Undefined when the operation answers with nothing that has a body - a `204`-only operation has no
@@ -85,12 +100,6 @@ export const shownResponseMediaType = (
   status: string,
   mediaType: string,
 ): string | undefined => {
-  const entries = responseEntries(responses, { withContentOnly: true })
-  const shown = entries.find(([code]) => code === status) ?? entries[0]
-  if (!shown) {
-    return undefined
-  }
-
-  const content = (getResolvedRef(shown[1]) as { content?: unknown } | undefined)?.content
-  return pickMediaType(content, mediaType)
+  const content = shownResponseContent(responses, status)
+  return content === undefined ? undefined : pickMediaType(content, mediaType)
 }

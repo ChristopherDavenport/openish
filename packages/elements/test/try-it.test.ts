@@ -1,7 +1,18 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
 import '../src/index.js'
-import { deepQuery, deepQueryAll, deepTextOf, disposeAll, mountReference, openTryIt, textOf, type Harness, sectionOf } from './helpers.js'
+import {
+  contentTypePicker,
+  deepQuery,
+  deepQueryAll,
+  deepTextOf,
+  disposeAll,
+  mountReference,
+  openTryIt,
+  textOf,
+  type Harness,
+  sectionOf,
+} from './helpers.js'
 
 afterEach(() => {
   disposeAll()
@@ -182,18 +193,12 @@ describe('the sample and the send are one request', () => {
   })
 
   /* The other direction of the same agreement: one choice, two controls showing it. */
-  it('moves the request body tabs when the panel picks a media type', async () => {
+  /* Two controls, one answer: the panel's picker and the one on the `Body` heading above it. */
+  it('moves the content type on the Body heading when the panel picks one', async () => {
     const harness = await client('/tags/accounts/replaceAccount')
     const form = deepQuery(sectionOf(harness), 'openish-request-form')!
-    const tabsOf = () => {
-      const body = deepQuery(sectionOf(harness), 'openish-request-body')!
-      const tabs = deepQuery(body.shadowRoot!, 'openish-tabs')!
-      return [...tabs.shadowRoot!.querySelectorAll<HTMLButtonElement>('button[role="tab"]')]
-    }
 
-    expect(textOf(tabsOf().find((tab) => tab.getAttribute('aria-selected') === 'true') ?? null)).toBe(
-      'application/json',
-    )
+    expect(contentTypePicker(harness, 'request').value).toBe('application/json')
 
     const picker = [...form.shadowRoot!.querySelectorAll<HTMLSelectElement>('select')].find(
       (candidate) => candidate.getAttribute('aria-label') === 'Request media type',
@@ -203,9 +208,7 @@ describe('the sample and the send are one request', () => {
     await new Promise((resolve) => setTimeout(resolve, 150))
     await harness.settle()
 
-    expect(textOf(tabsOf().find((tab) => tab.getAttribute('aria-selected') === 'true') ?? null)).toBe(
-      'application/xml',
-    )
+    expect(contentTypePicker(harness, 'request').value).toBe('application/xml')
   })
 
   it('keeps a body the reader typed when they change the media type', async () => {

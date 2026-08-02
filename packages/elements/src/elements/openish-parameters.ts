@@ -4,6 +4,8 @@ import {
   parameterContentSchema,
   parameterContentType,
   parameterSerialization,
+  schemaConstraints,
+  schemaTypeLabel,
   type MediaTypeExample,
   type ParameterEntry,
   type ParameterLocation,
@@ -13,7 +15,7 @@ import { customElement, property } from 'lit/decorators.js'
 import { classMap } from 'lit/directives/class-map.js'
 import { repeat } from 'lit/directives/repeat.js'
 
-import { schemaConstraints, schemaTypeLabel } from '../schema/summary.js'
+import { heading } from '../render/heading.js'
 import { baseStyles } from '../styles/shared.js'
 import type { OpenishTableRow } from './openish-table.js'
 import './openish-markdown.js'
@@ -22,7 +24,25 @@ import './openish-table.js'
 /** Hoisted so the binding does not hand `openish-table` a new array on every render. */
 const COLUMNS = ['Name', 'Type', 'Required', 'Description']
 
+/**
+ * The heading over each group, and the name of the table under it. They are not the same string.
+ *
+ * The section above says `Parameters` once, so a heading repeating the word for every group prints it
+ * five times on one screen to say what the reader has already been told. Where each input *travels*
+ * is the only thing the group adds, so that is all the heading says.
+ *
+ * The caption is the table's accessible name and stays whole. It is announced when a screen-reader
+ * user enters the table, by which point the heading above it is out of earshot - and `Path` alone,
+ * read there, names nothing.
+ */
 const HEADINGS: Record<ParameterLocation, string> = {
+  path: 'Path',
+  query: 'Query',
+  header: 'Header',
+  cookie: 'Cookie',
+}
+
+const CAPTIONS: Record<ParameterLocation, string> = {
   path: 'Path parameters',
   query: 'Query parameters',
   header: 'Header parameters',
@@ -48,12 +68,19 @@ export class OpenishParameters extends LitElement {
         display: block;
       }
 
-      h3 {
+      /*
+       * Weight from the class, not the tag - the same rule the section titles follow.
+       *
+       * These were h3s under an h4 section title, which read to anything following the outline as a
+       * group *outranking* the section holding it. The level is a property now and the look is this
+       * rule, so a group is a group at whatever depth the document put the operation.
+       */
+      .group {
         font: var(--openish-font-heading-3);
         margin: var(--openish-space-lg) 0 var(--openish-space-xs);
       }
 
-      h3:first-of-type {
+      .group:first-of-type {
         margin-top: 0;
       }
 
@@ -109,6 +136,17 @@ export class OpenishParameters extends LitElement {
   /** Already merged: the path item's parameters plus the operation's. See `collectParameters`. */
   @property({ attribute: false })
   parameters: readonly ParameterEntry[] = []
+
+  /**
+   * The heading level each group takes.
+   *
+   * One below whatever level the `Parameters` section above these was written at, which is a fact
+   * only the operation knows - on the plane it depends on how deep the document puts the operation.
+   * The default is what a caller mounting this element on its own would want: a group under a
+   * level-four section, the arrangement an operation had before the plane.
+   */
+  @property({ type: Number })
+  level = 5
 
   /**
    * The examples an author wrote for one parameter, inline.
@@ -189,11 +227,11 @@ export class OpenishParameters extends LitElement {
     return html`
       ${groups.map(
         ([location, parameters]) => html`
-          <h3>${HEADINGS[location]}</h3>
+          ${heading(this.level, HEADINGS[location], { group: true })}
           <openish-table
             .columns=${COLUMNS}
             .rows=${this.#rows(parameters)}
-            caption=${HEADINGS[location]}
+            caption=${CAPTIONS[location]}
           ></openish-table>
         `,
       )}

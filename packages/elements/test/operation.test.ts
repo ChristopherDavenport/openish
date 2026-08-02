@@ -2,11 +2,13 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import '../src/index.js'
 import {
+  contentTypePicker,
   deepQuery,
   deepQueryAll,
   deepTextOf,
   disposeAll,
   mountReference,
+  openBodies,
   openTryIt,
   schemaRows,
   shadowOf,
@@ -106,7 +108,7 @@ describe('parameters', () => {
      * examples column has nothing to show and writes no region at all.
      */
     expect([...operation.querySelectorAll('h4')].map((heading) => textOf(heading))).toEqual([
-      'Responses',
+      'Returns',
     ])
   })
 
@@ -131,6 +133,52 @@ describe('parameters', () => {
       expect(section!.querySelectorAll('h1, h2, h3, h4, h5, h6')).toHaveLength(0)
       expect(section!.getAttribute('aria-label')).toContain('Get an account')
     }
+  })
+
+  /*
+   * One section for everything the reader sends.
+   *
+   * `Parameters` and `Request body` were the same question - what do I send? - kept apart because
+   * OpenAPI stores a body somewhere else from the parameters travelling beside it. The body is a
+   * group within the answer now, named for where it goes, exactly as `Path` and `Query` are.
+   */
+  it('puts the body under Parameters, as another group of inputs', async () => {
+    const { element } = await operationOf('replaceAccount')
+    const operation = shadowOf(sectionOf(element), 'openish-operation')
+
+    expect([...operation.querySelectorAll('h4')].map((one) => textOf(one))).toEqual([
+      'Parameters',
+      'Returns',
+    ])
+
+    const section = operation.querySelector('[part~="parameters-section"]')!
+    expect(section.querySelector('[part~="body-section"]')).not.toBeNull()
+
+    /*
+     * A level below the section holding it, not above. These were `h3`s under an `h4` - nested on
+     * the page and outranking it in the outline, which is the half of "moved under Parameters" that
+     * a reader following headings would not have got.
+     */
+    const group = section.querySelector('.group')!
+    expect(textOf(group)).toBe('Body')
+    expect(group.tagName).toBe('H5')
+  })
+
+  /*
+   * The heading is short because the section above it already said the word; the table's name is not,
+   * because it is announced when a screen-reader user enters the table, where the heading is out of
+   * earshot and `Path` alone names nothing.
+   */
+  it('shortens the group heading without shortening the table it names', async () => {
+    const { element } = await operationOf('getAccount')
+    const parameters = shadowOf(sectionOf(element), 'openish-parameters')
+
+    expect([...parameters.querySelectorAll('h5')].map((one) => textOf(one))).toEqual([
+      'Path',
+      'Query',
+      'Header',
+    ])
+    expect(parameters.querySelector('openish-table')?.getAttribute('caption')).toBe('Path parameters')
   })
 })
 
@@ -188,16 +236,23 @@ describe('responses', () => {
   })
 
   it('renders response headers and the body schema for a response that has both', async () => {
-    const { element } = await operationOf('getAccount')
-    const responses = shadowOf(sectionOf(element), 'openish-response-list')
+    const harness = await operationOf('getAccount')
+    const responses = shadowOf(sectionOf(harness.element), 'openish-response-list')
 
     const [header] = rowsOf(responses, 'Response headers')
     expect(header?.[0]).toBe('X-Request-Id')
     expect(header?.[2]).toContain('Correlation id.')
 
-    /* Two media types on one response is a tab set of its own, nested in the status tab. */
-    const mediaTypes = tabsIn(panelIn(responses))
-    expect(mediaTypes.map((tab) => textOf(tab))).toEqual(['application/json', 'text/csv'])
+    /* The two media types this response offers are the picker's options, on the Returns heading. */
+    expect(tabsIn(panelIn(responses))).toEqual([])
+    expect([...contentTypePicker(harness, 'response').options].map((option) => option.value)).toEqual([
+      'application/json',
+      'text/csv',
+    ])
+
+    /* The body arrives named and closed, so the shape is there once the reader asks for it. */
+    expect(deepTextOf(responses)).not.toContain('Opaque account id.')
+    await openBodies(harness, responses)
     expect(deepTextOf(responses)).toContain('Opaque account id.')
   })
 
@@ -241,21 +296,45 @@ describe('responses', () => {
 })
 
 describe('request body', () => {
-  it('tabs by media type and says whether the body is required', async () => {
-    const { element } = await operationOf('replaceAccount')
-    const body = shadowOf(sectionOf(element), 'openish-request-body')
+  /*
+   * The media type is a select on the `Body` heading, not a tab set over the body.
+   *
+   * A band of chrome the width of the column, level with the first thing worth reading, for a choice
+   * most readers never make - and it appeared again under every response. It is one control on a row
+   * that already existed now, at the end a reader going down the left edge never reaches.
+   */
+  it('says whether the body is required, and picks its media type from the heading', async () => {
+    const harness = await operationOf('replaceAccount')
+    const body = shadowOf(sectionOf(harness), 'openish-request-body')
 
     expect(textOf(body.querySelector('.required'))).toBe('Required')
     expect(deepTextOf(body)).toContain('The replacement account.')
-    expect(tabsIn(body).map((tab) => textOf(tab))).toEqual(['application/json', 'application/xml'])
+
+    expect(tabsIn(body)).toEqual([])
+    const picker = contentTypePicker(harness, 'request')
+    expect([...picker.options].map((option) => option.value)).toEqual([
+      'application/json',
+      'application/xml',
+    ])
   })
 
-  it('shows the referenced model by name, with its property tree', async () => {
-    const { element } = await operationOf('replaceAccount')
-    const body = shadowOf(sectionOf(element), 'openish-request-body')
+  /*
+   * A body arrives as the name of the thing it is, linked to the section that documents it, with the
+   * shape one click away. The whole shape is still here - it is not a summary - which is what makes
+   * the abstraction honest rather than a truncation.
+   */
+  it('names the referenced model, links it, and keeps the tree a click away', async () => {
+    const harness = await operationOf('replaceAccount')
+    const body = shadowOf(sectionOf(harness.element), 'openish-request-body')
+    const tree = deepQuery(body, 'openish-schema')!
 
-    expect(deepTextOf(body)).toContain('Account')
-    expect(schemaRows(deepQuery(body, 'openish-schema'))).toEqual([
+    const link = tree.shadowRoot!.querySelector('.type a')
+    expect(textOf(link)).toBe('Account')
+    expect(link?.getAttribute('href')).toContain('models/Account')
+
+    expect(schemaRows(tree)).toEqual([])
+    await openBodies(harness, body)
+    expect(schemaRows(tree)).toEqual([
       { name: 'id', type: 'string', required: 'required' },
       { name: 'balance', type: 'integer', required: 'optional' },
     ])

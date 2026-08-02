@@ -325,6 +325,22 @@ export const JSON_SCHEMA_SPEC = {
         then: { required: ['pan'], properties: { pan: { type: 'string' } } },
         else: { required: ['iban'], properties: { iban: { type: 'string' } } },
       },
+      /*
+       * Both spellings of an example, which changed between 3.0 and 3.1.
+       *
+       * `example` is the singular 3.0 keyword and `examples` is JSON Schema's array. A reader wants
+       * the value beside the field either way, and the generated example beside the tree picks the
+       * singular first - so the tree has to as well, or the two disagree about `label`.
+       */
+      Sample: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', example: 'acc_1' },
+          tags: { type: 'array', items: { type: 'string' }, examples: [['live', 'archived']] },
+          label: { type: 'string', example: 'Primary', examples: ['Ignored'] },
+          size: { type: 'integer', examples: [1, 2] },
+        },
+      },
       /* A condition too involved to paraphrase: the `if` schema renders in full instead. */
       Complex: {
         type: 'object',

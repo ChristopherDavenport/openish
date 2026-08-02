@@ -136,6 +136,15 @@ export class OpenishSchemaPreview extends LitElement {
   @property({ type: Boolean, attribute: 'no-schema' })
   noSchema = false
 
+  /**
+   * Let the tree arrive closed. Passed straight through to `<openish-schema>`; see the note there.
+   *
+   * Off by default because this element is usable on its own and a host mounting one has asked to
+   * see a schema. `renderMediaTypes` sets it, which is every body and every response on an operation.
+   */
+  @property({ type: Boolean, attribute: 'collapse-root' })
+  collapseRoot = false
+
   /** Which example the reader picked. Clamped rather than reset - see `#chosen`. */
   @state()
   private selected = 0
@@ -234,6 +243,7 @@ export class OpenishSchemaPreview extends LitElement {
       ${this.schema === undefined || this.noSchema
         ? nothing
         : html`<openish-schema
+            ?collapse-root=${this.collapseRoot}
             .schema=${this.schema}
             scope=${this.scope}
           ></openish-schema>`}

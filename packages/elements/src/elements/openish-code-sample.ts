@@ -18,7 +18,7 @@ import { repeat } from 'lit/directives/repeat.js'
 
 import { documentContext, uiContext, type OpenishUiState } from '../context/contexts.js'
 import { dispatch } from '../events.js'
-import { baseStyles, controlStyles, visuallyHidden } from '../styles/shared.js'
+import { baseStyles, controlStyles, pickerStyles, visuallyHidden } from '../styles/shared.js'
 import './openish-code-block.js'
 
 /**
@@ -45,6 +45,7 @@ export class OpenishCodeSample extends LitElement {
   static override styles = [
     baseStyles,
     controlStyles,
+    pickerStyles,
     visuallyHidden,
     css`
       :host {
@@ -57,14 +58,10 @@ export class OpenishCodeSample extends LitElement {
         gap: var(--openish-space-xs);
       }
 
-      select {
-        padding: var(--openish-space-3xs) var(--openish-space-xs);
-        border: 1px solid var(--openish-color-border);
-        border-radius: var(--openish-radius-sm);
+      /* Shape from pickerStyles; the toolbar it sits on decides the rest. */
+      select.picker {
         background: var(--openish-color-surface);
         color: var(--openish-color-text);
-        font: var(--openish-font-small);
-        font-family: inherit;
       }
 
     `,
@@ -244,7 +241,7 @@ export class OpenishCodeSample extends LitElement {
 
     return html`
       <label class="visually-hidden" for="client">Code sample client</label>
-      <select id="client" @change=${this.#onChange}>
+      <select class="picker" id="client" @change=${this.#onChange}>
         ${authored.length > 0
           ? html`
               <optgroup label="From the API's authors">

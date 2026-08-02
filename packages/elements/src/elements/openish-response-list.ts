@@ -1,5 +1,5 @@
 import { consume } from '@lit/context'
-import { getResolvedRef, type VariantChoices } from '@openish/core'
+import { getResolvedRef, schemaConstraints, schemaTypeLabel, type VariantChoices } from '@openish/core'
 import { LitElement, html, css, nothing, type TemplateResult } from 'lit'
 import { customElement, property } from 'lit/decorators.js'
 import { ifDefined } from 'lit/directives/if-defined.js'
@@ -8,7 +8,6 @@ import { repeat } from 'lit/directives/repeat.js'
 import { uiContext, type OpenishUiState } from '../context/contexts.js'
 import { renderMediaTypes } from '../render/media-types.js'
 import { responseEntries } from '../render/responses.js'
-import { schemaConstraints, schemaTypeLabel } from '../schema/summary.js'
 import { baseStyles } from '../styles/shared.js'
 import type { OpenishTableRow } from './openish-table.js'
 import type { OpenishTab } from './openish-tabs.js'
@@ -170,12 +169,22 @@ export class OpenishResponseList extends LitElement {
   /**
    * The media type to show, when something above holds that choice too.
    *
-   * The documentation column offers the tabs; the examples column takes this and renders exactly one
-   * example with no picker of its own. A response that does not declare the chosen type falls back
-   * to its own first, which is the only sensible answer for a `404` that is only ever JSON.
+   * Both columns take it and neither asks for it: the question is put once, on the `Returns` heading.
+   * A response that does not declare the chosen type falls back to its own first, which is the only
+   * sensible answer for a `404` that is only ever JSON.
    */
   @property({ type: String, attribute: 'media-type' })
   mediaType = ''
+
+  /**
+   * The caller is asking the media-type question somewhere else, so do not ask it here.
+   *
+   * See the note on `<openish-request-body>`: a tab set per response was chrome repeated down the
+   * page, and the answer is one select beside the heading. Off by default, so a host mounting this
+   * element alone keeps a way to change the type.
+   */
+  @property({ type: Boolean, attribute: 'no-media-tabs' })
+  noMediaTabs = false
 
   /** Which shape the variant choices below belong to, and what they are. */
   @property({ attribute: false })
@@ -307,7 +316,7 @@ export class OpenishResponseList extends LitElement {
       ${this.#renderHeaders(response.headers)}
       ${renderMediaTypes(response.content, 'Response media types', {
         noExample: this.noExample,
-        selected: this.mediaType,
+        ...(this.noMediaTabs ? { pick: this.mediaType, hideLabel: true } : { selected: this.mediaType }),
         scope,
         ...(this.variants ? { variants: this.variants } : {}),
         onSelect: (mediaType) => {

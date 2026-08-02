@@ -2,7 +2,18 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import '../src/index.js'
 import { EXAMPLES_SPEC } from './fixtures.js'
-import { deepQuery, deepTextOf, disposeAll, mountReference, shadowOf, textOf, type Harness, sectionOf } from './helpers.js'
+import {
+  contentTypePicker,
+  deepQuery,
+  deepTextOf,
+  disposeAll,
+  mountReference,
+  pickContentType,
+  shadowOf,
+  textOf,
+  type Harness,
+  sectionOf,
+} from './helpers.js'
 
 afterEach(() => {
   disposeAll()
@@ -124,17 +135,20 @@ describe('an example is written in the syntax its media type names', () => {
     return preview
   }
 
-  it('picks the media type on the left and shows it on the right', async () => {
+  it('picks the media type once, on the heading, and shows it on the right', async () => {
     const { harness, docs, examples } = await columnsOf('getAccount')
 
-    expect(mediaTabs(docs).map((tab) => textOf(tab))).toEqual(['application/json', 'application/xml'])
-    /* No second copy of the control beside the example it decides. */
+    expect([...contentTypePicker(harness, 'response').options].map((option) => option.value)).toEqual([
+      'application/json',
+      'application/xml',
+    ])
+    /* No copy of the control in either column: the heading asks, both columns answer. */
+    expect(mediaTabs(docs)).toEqual([])
     expect(mediaTabs(examples)).toEqual([])
 
     expect(deepTextOf(previewIn(examples).shadowRoot!)).toContain('"id": "acc_1"')
 
-    mediaTabs(docs)[1]!.click()
-    await harness.settle()
+    await pickContentType(harness, 'response', 'application/xml')
 
     const shown = deepTextOf(previewIn(examples).shadowRoot!)
     expect(shown).toContain('<?xml version="1.0" encoding="UTF-8"?>')
@@ -145,10 +159,9 @@ describe('an example is written in the syntax its media type names', () => {
   })
 
   it('colours it as XML, not as JSON', async () => {
-    const { harness, docs, examples } = await columnsOf('getAccount')
+    const { harness, examples } = await columnsOf('getAccount')
 
-    mediaTabs(docs)[1]!.click()
-    await harness.settle()
+    await pickContentType(harness, 'response', 'application/xml')
 
     const block = deepQuery(previewIn(examples).shadowRoot!, 'openish-code-block')!
     expect(block.getAttribute('language')).toBe('xml')

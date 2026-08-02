@@ -3,12 +3,14 @@ import { afterEach, describe, expect, it } from 'vitest'
 import '../src/index.js'
 import { VARIANTS_SPEC } from './fixtures.js'
 import {
+  contentTypePicker,
   deepQuery,
   deepQueryAll,
   deepTextOf,
   disposeAll,
   mountReference,
   openTryIt,
+  pickContentType,
   shadowOf,
   textOf,
   sectionOf,
@@ -169,13 +171,12 @@ describe('the status is one answer, shown in both columns', () => {
    * with no `Accept`, a server offering both is free to send whichever it likes.
    */
   it('asks for the response media type the reader is reading', async () => {
-    const { harness, docs, examples } = await columnsOf()
-    const responses = docs.querySelector('[part~="response-section"]')!
+    const { harness, examples } = await columnsOf()
 
     /* Before anyone touches anything: the first status, in the first type it declares. */
     expect(sampleText(examples)).toContain('Accept: application/json')
 
-    await pick(harness, tabsLabelled(responses, 'Response media types')[1])
+    await pickContentType(harness, 'response', 'application/xml')
 
     expect(sampleText(examples)).toContain('Accept: application/xml')
     expect(sampleText(examples)).not.toContain('Accept: application/json')
@@ -185,7 +186,7 @@ describe('the status is one answer, shown in both columns', () => {
     const { harness, docs, examples } = await columnsOf()
     const responses = docs.querySelector('[part~="response-section"]')!
 
-    await pick(harness, tabsLabelled(responses, 'Response media types')[1])
+    await pickContentType(harness, 'response', 'application/xml')
     expect(sampleText(examples)).toContain('Accept: application/xml')
 
     /* The 404 is JSON only, so asking for XML would be asking for something it never sends. */
@@ -194,17 +195,19 @@ describe('the status is one answer, shown in both columns', () => {
     expect(sampleText(examples)).toContain('Accept: application/json')
   })
 
-  it('leaves the media type to the documentation column alone', async () => {
+  /* One control for the whole section, on the heading - not a tab set in either column. */
+  it('leaves the media type to the one picker on the heading', async () => {
     const { harness, docs, examples } = await columnsOf()
     const responses = docs.querySelector('[part~="response-section"]')!
 
-    expect(tabsLabelled(responses, 'Response media types').map((tab) => textOf(tab))).toEqual([
+    expect([...contentTypePicker(harness, 'response').options].map((option) => option.value)).toEqual([
       'application/json',
       'application/xml',
     ])
+    expect(tabsLabelled(responses, 'Response media types')).toEqual([])
     expect(tabsLabelled(examples, 'Response media types')).toEqual([])
 
-    await pick(harness, tabsLabelled(responses, 'Response media types')[1])
+    await pickContentType(harness, 'response', 'application/xml')
 
     expect(deepTextOf(examples)).toContain('<?xml version="1.0" encoding="UTF-8"?>')
   })

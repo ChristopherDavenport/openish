@@ -6,8 +6,9 @@ import { getResolvedRef } from '../ref.js'
  * This lived in `@openish/elements` for as long as a table was the only thing that needed it. It is
  * here now because it is not a rendering decision: `nodeToMarkdown` has to name the same types the
  * table names, and two answers to "what type is this" - one in the page, one on the clipboard - is
- * the failure this project keeps writing rules to avoid. `packages/elements/src/schema/summary.ts`
- * re-exports these, so every call site that already had them still does.
+ * the failure this project keeps writing rules to avoid. The rest of the schema readers followed it
+ * into `read.ts` next door for the same reason, and `@openish/elements` re-exports the lot, so every
+ * call site that already had them still does.
  *
  * Schemas are read as `Record<string, unknown>` rather than through `SchemaObject`, which is a
  * discriminated union: code that probes `allOf`, then `enum`, then `items` before it knows what it

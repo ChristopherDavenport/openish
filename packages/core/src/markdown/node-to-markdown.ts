@@ -6,7 +6,7 @@ import { operationToHar, resolveServerUrl } from '../har/operation-to-har.js'
 import { declarationFor } from '../navigation/declaration.js'
 import { resolveOperationNode } from '../navigation/resolve.js'
 import { mediaTypeExamples } from '../operation/examples.js'
-import { collectParameters, type ParameterEntry } from '../operation/parameters.js'
+import { collectParameters, groupParameters, type ParameterEntry } from '../operation/parameters.js'
 import {
   describeSecurityScheme,
   securityRequirements,
@@ -15,6 +15,7 @@ import {
 import { getResolvedRef } from '../ref.js'
 import { schemaExample } from '../schema/schema-example.js'
 import { asSchema, schemaTypeLabel } from '../schema/type-label.js'
+import { schemaMarkdown } from './schema-to-markdown.js'
 import type { DocumentStore, NavNode } from '../types.js'
 
 export type NodeMarkdownOptions = {
@@ -185,17 +186,37 @@ const securityMarkdown = (
   )
 }
 
-const parametersMarkdown = (parameters: readonly ParameterEntry[], level: number): string | undefined => {
-  const rows = parameters.map((parameter) => [
-    `\`${parameter.name}\``,
-    parameter.in,
-    schemaTypeLabel(parameter.schema) || '—',
-    parameter.required ? 'Yes' : 'No',
-    parameter.description ?? '',
-  ])
+/** The heading over each group of inputs, the same word the page puts there. */
+const GROUP_HEADINGS: Record<string, string> = {
+  path: 'Path',
+  query: 'Query',
+  header: 'Header',
+  cookie: 'Cookie',
+}
 
-  const body = table(['Name', 'In', 'Type', 'Required', 'Description'], rows)
-  return body ? blocks(heading(level, 'Parameters'), body) : undefined
+/**
+ * The parameters, one table per place they travel.
+ *
+ * Grouped rather than listed flat with an `in` column, because that is how the page groups them and
+ * a copy is meant to be the same document read somewhere else. The location is the heading, so it
+ * stops being a column.
+ */
+const parametersMarkdown = (parameters: readonly ParameterEntry[], level: number): string | undefined => {
+  const groups = groupParameters(parameters).map(([location, entries]) => {
+    const rows = entries.map((parameter) => [
+      `\`${parameter.name}\``,
+      schemaTypeLabel(parameter.schema) || '—',
+      parameter.required || parameter.in === 'path' ? 'Yes' : 'No',
+      parameter.description ?? '',
+    ])
+
+    const body = table(['Name', 'Type', 'Required', 'Description'], rows)
+    return body === undefined
+      ? undefined
+      : blocks(heading(level, GROUP_HEADINGS[location] ?? location), body)
+  })
+
+  return blocks(...groups) || undefined
 }
 
 /**
@@ -213,6 +234,17 @@ const exampleFor = (media: unknown): unknown => {
   return authored?.value ?? media['example'] ?? schemaExample(media['schema'])
 }
 
+/**
+ * A body, in every media type it comes in, with its shape written out.
+ *
+ * The shape is the part that used to be missing: this printed the media type, the name of the schema
+ * and an example of it, and left what the fields actually *were* to the page. That was survivable
+ * only while the page drew the whole tree. It arrives collapsed now - named, one click from open -
+ * which makes this copy the complete one, so it has to be complete.
+ *
+ * `schemaMarkdown` is the same walk `<openish-schema>` renders, off the same readers, and it prints
+ * what the page rations: every enum member, every `oneOf` branch, every nesting.
+ */
 const mediaMarkdown = (content: unknown, withExample = true): string | undefined => {
   if (!isPlainObject(content)) {
     return undefined
@@ -221,12 +253,14 @@ const mediaMarkdown = (content: unknown, withExample = true): string | undefined
   return blocks(
     ...Object.entries(content).map(([mimeType, raw]) => {
       const media = getResolvedRef(raw)
-      const schema = asSchema(isPlainObject(media) ? media['schema'] : undefined)
-      const label = schemaTypeLabel(isPlainObject(media) ? media['schema'] : undefined)
+      const rawSchema = isPlainObject(media) ? media['schema'] : undefined
+      const schema = asSchema(rawSchema)
+      const label = schemaTypeLabel(rawSchema)
       const example = withExample ? exampleFor(media) : undefined
 
       return blocks(
         `\`${mimeType}\`${label ? ` — ${label}` : ''}`,
+        schemaMarkdown(rawSchema),
         schema && example !== undefined ? fence('json', asJson(example)) : undefined,
       )
     }),
@@ -254,11 +288,34 @@ const requestBodyMarkdown = (
   }
 
   return blocks(
-    heading(level, 'Request body'),
+    heading(level, 'Body'),
     requestBody['required'] === true ? 'Required.' : undefined,
     typeof requestBody['description'] === 'string' ? requestBody['description'] : undefined,
     mediaMarkdown(requestBody['content'], withExample),
   )
+}
+
+/**
+ * Everything the reader sends, under one heading.
+ *
+ * The page groups the inputs this way and the copy has to describe the same document: `Parameters`
+ * and `Request body` were one question - what do I send? - split in two because OpenAPI keeps a body
+ * somewhere else from the parameters travelling beside it. The body is a group within the answer, the
+ * way `Path` and `Query` are, named for where it travels.
+ */
+const inputsMarkdown = (
+  operation: OperationObject | undefined,
+  parameters: readonly ParameterEntry[],
+  level: number,
+  withExample: boolean,
+): string | undefined => {
+  const tables = parametersMarkdown(parameters, level + 1)
+  const body = requestBodyMarkdown(operation, level + 1, withExample)
+  if (tables === undefined && body === undefined) {
+    return undefined
+  }
+
+  return blocks(heading(level, 'Parameters'), tables, body)
 }
 
 const responsesMarkdown = (operation: OperationObject | undefined, level: number): string | undefined => {
@@ -277,7 +334,8 @@ const responsesMarkdown = (operation: OperationObject | undefined, level: number
     )
   })
 
-  return entries.length === 0 ? undefined : blocks(heading(level, 'Responses'), ...entries)
+  /* `Returns`, the word the page uses: one section says what goes out, as one says what goes in. */
+  return entries.length === 0 ? undefined : blocks(heading(level, 'Returns'), ...entries)
 }
 
 /**
@@ -341,32 +399,27 @@ const operationMarkdown = (
     operation?.description ? demoteHeadings(operation.description, level) : undefined,
     operation?.operationId ? `Operation ID: \`${operation.operationId}\`` : undefined,
     securityMarkdown(store.document, operation, level + 1),
-    parametersMarkdown(parameters, level + 1),
-    requestBodyMarkdown(operation, level + 1, !sendable),
+    inputsMarkdown(operation, parameters, level + 1, !sendable),
     sendable ? requestMarkdown(store.document, resolved, level + 1, server) : undefined,
     responsesMarkdown(operation, level + 1),
   )
 }
 
+/**
+ * A model, in as much detail as the section that documents it.
+ *
+ * This was a table of the top level and nothing else: a nested object arrived as the word `object`,
+ * a constraint never arrived at all, and an enum of forty values arrived as `enum`. A reader pasting
+ * a model into a conversation was handing over its field names and a guess at the rest.
+ */
 const modelMarkdown = (store: DocumentStore, node: Extract<NavNode, { type: 'model' }>, level: number): string => {
   const schema = asSchema(store.document.components?.schemas?.[node.name])
-  const properties = asSchema(schema?.['properties'])
-  const required = new Set(Array.isArray(schema?.['required']) ? (schema['required'] as string[]) : [])
-
-  const rows = Object.entries(properties ?? {}).map(([name, property]) => {
-    const resolved = asSchema(property)
-    return [
-      `\`${name}\``,
-      schemaTypeLabel(property) || '—',
-      required.has(name) ? 'Yes' : 'No',
-      typeof resolved?.['description'] === 'string' ? resolved['description'] : '',
-    ]
-  })
 
   return blocks(
     heading(level, node.title),
     typeof schema?.['description'] === 'string' ? demoteHeadings(schema['description'], level) : undefined,
-    table(['Property', 'Type', 'Required', 'Description'], rows),
+    /* The pointer travels beside the schema: a model's own entry carries no `$ref` to be known by. */
+    schemaMarkdown(schema, node.pointer),
     schema ? blocks(heading(level + 1, 'Example'), fence('json', asJson(schemaExample(schema)))) : undefined,
   )
 }

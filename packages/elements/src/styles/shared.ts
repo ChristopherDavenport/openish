@@ -192,6 +192,29 @@ export const controlStyles = css`
   }
 `
 
+/**
+ * A picker that names a choice without announcing it.
+ *
+ * The code sample's client picker arrived at this shape first - a bordered control the size of its
+ * own value, sitting quietly at the end of a toolbar - and the content-type pickers on an operation
+ * are the same kind of thing: one answer that decides what several blocks below show, put somewhere
+ * a reader going down the page never has to read. Shared so the two cannot drift into two ideas of
+ * what a small picker looks like.
+ *
+ * Geometry and type only. Colour is the component's, because these sit on different surfaces: the
+ * client picker is on a code block's toolbar and reads as content, and a content type is metadata on
+ * the page, which is a different weight even though it is the same control.
+ */
+export const pickerStyles = css`
+  select.picker {
+    padding: var(--openish-space-3xs) var(--openish-space-xs);
+    border: 1px solid var(--openish-color-border);
+    border-radius: var(--openish-radius-sm);
+    font: var(--openish-font-small);
+    font-family: inherit;
+  }
+`
+
 /** The coloured method chip, shared by the sidebar and the operation header. */
 export const methodStyles = css`
   .method {

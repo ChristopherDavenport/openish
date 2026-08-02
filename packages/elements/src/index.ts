@@ -81,6 +81,13 @@ export {
   type SectionKind,
 } from './render/sections.js'
 export { sectionLinks, type SectionLinkGroup, type SectionParent } from './render/section-links.js'
+export { modelNodeFor, renderModelName, renderTypeLabel } from './render/model-link.js'
+/*
+ * The schema readers moved to `@openish/core` and are re-exported here unchanged, so nothing
+ * importing them from this package has to notice. They went because `nodeToMarkdown` describes the
+ * same shapes the page does and cannot import from the package that depends on it - see the note at
+ * the top of `core/src/schema/read.ts`.
+ */
 export {
   additionalPropertiesName,
   asSchema,
@@ -96,7 +103,7 @@ export {
   unwrapArray,
   type SchemaProperty,
   type SchemaVariants,
-} from './schema/summary.js'
+} from '@openish/core'
 
 export {
   documentContext,

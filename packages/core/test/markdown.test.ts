@@ -12,19 +12,28 @@ describe('a section as markdown', () => {
     expect(markdown).toContain('`POST /users/{userId}/notes`')
     expect(markdown).toContain('Operation ID: `createNote`')
 
-    /* The parameter table, including the operation-level override of a path-level parameter. */
-    expect(markdown).toContain('| Name | In | Type | Required | Description |')
-    expect(markdown).toContain('| `userId` | path | string | Yes |')
-    expect(markdown).toContain('| `limit` | query | integer | Yes |')
-    expect(markdown).toContain('| `session` | cookie | string | Yes |')
+    /*
+     * Everything the reader sends is under one heading, grouped by where it travels - the same
+     * question answered in the same shape the page answers it in. The location is the heading now,
+     * so it has stopped being a column.
+     */
+    expect(markdown).toContain('## Parameters')
+    expect(markdown).toContain('### Path')
+    expect(markdown).toContain('| Name | Type | Required | Description |')
+    expect(markdown).toContain('| `userId` | string | Yes |')
+    /* Including the operation-level override of a path-level parameter. */
+    expect(markdown).toContain('### Query')
+    expect(markdown).toContain('| `limit` | integer | Yes |')
+    expect(markdown).toContain('### Cookie')
+    expect(markdown).toContain('| `session` | string | Yes |')
 
-    expect(markdown).toContain('## Request body')
+    expect(markdown).toContain('### Body')
     expect(markdown).toContain('`application/json`')
     /* Documented here, but shown once - the copy the reader can act on is the request below. */
     expect(markdown.indexOf('"title": "Groceries"')).toBe(markdown.lastIndexOf('"title": "Groceries"'))
     expect(markdown.indexOf('"title": "Groceries"')).toBeGreaterThan(markdown.indexOf('```http'))
 
-    expect(markdown).toContain('## Responses')
+    expect(markdown).toContain('## Returns')
     expect(markdown).toContain('`201` — Created')
   })
 
@@ -58,7 +67,7 @@ describe('a section as markdown', () => {
     expect(markdown).toContain('## List zebra')
     expect(markdown).toContain('## In two tags')
     /* And their sections another level down again, so nothing is ambiguous about what contains what. */
-    expect(markdown).toContain('### Responses')
+    expect(markdown).toContain('### Returns')
   })
 
   it('starts wherever it is told to, so a section inside a copy is a chapter of one', async () => {
@@ -81,16 +90,16 @@ describe('a section as markdown', () => {
     const markdown = nodeToMarkdown(store, findNode(store, 'webhooks/post-newthing'))
 
     expect(markdown).toContain('# A thing was created')
-    expect(markdown).toContain('## Responses')
+    expect(markdown).toContain('## Returns')
     expect(markdown).not.toContain('## Request')
   })
 
-  it('documents a model as a property table and an example', async () => {
+  it('documents a model as its shape and an example', async () => {
     const store = await storeFromFixture('composition.yaml')
     const [model] = [...store.bySlug.values()].filter((node) => node.type === 'model')
     const markdown = nodeToMarkdown(store, model)
 
-    expect(markdown).toContain('| Property | Type | Required | Description |')
+    expect(markdown).toContain('- `id` — `string (uuid)` · required')
     expect(markdown).toContain('## Example')
     expect(markdown).toContain('```json')
   })

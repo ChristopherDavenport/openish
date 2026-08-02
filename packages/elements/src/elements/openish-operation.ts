@@ -2,6 +2,7 @@ import { consume } from '@lit/context'
 import {
   collectParameters,
   describeSecurityScheme,
+  getResolvedRef,
   operationBadges,
   resolveOperationNode,
   securityRequirements,
@@ -22,8 +23,16 @@ import { documentContext, uiContext, type OpenishUiState } from '../context/cont
 import { externalDocsStyles, renderExternalDocs } from '../render/external-docs.js'
 import { heading } from '../render/heading.js'
 import { hasRenderableContent } from '../render/media-types.js'
-import { shownResponseMediaType } from '../render/responses.js'
-import { baseStyles, methodStyles, planeColumnStyles, titleRowStyles } from '../styles/shared.js'
+import { shownResponseContent, shownResponseMediaType } from '../render/responses.js'
+import {
+  baseStyles,
+  controlStyles,
+  methodStyles,
+  pickerStyles,
+  planeColumnStyles,
+  titleRowStyles,
+  visuallyHidden,
+} from '../styles/shared.js'
 import './openish-callbacks.js'
 import './openish-code-sample.js'
 import './openish-disclosure.js'
@@ -50,9 +59,12 @@ export class OpenishOperation extends LitElement {
   static override styles = [
     baseStyles,
     externalDocsStyles,
+    controlStyles,
     methodStyles,
+    pickerStyles,
     planeColumnStyles,
     titleRowStyles,
+    visuallyHidden,
     css`
       /*
        * Two columns and two elements, in that order.
@@ -196,6 +208,64 @@ export class OpenishOperation extends LitElement {
       .section-title {
         font: var(--openish-font-heading-2);
         margin: 0 0 var(--openish-space-sm);
+      }
+
+      /*
+       * The body is one more group of inputs, so it is titled like the others.
+       *
+       * Path, Query and Header are written by openish-parameters inside its own shadow root; this
+       * matches that rule rather than inventing a second weight for a heading standing beside them.
+       * Both take a level one below the section holding them, so the outline says what the layout
+       * says - these were h3s under an h4 section, which read as groups outranking their own section.
+       */
+      .group {
+        font: var(--openish-font-heading-3);
+        margin: var(--openish-space-lg) 0 var(--openish-space-xs);
+      }
+
+      /* Nothing above it but the section's own title, which brought its own space. */
+      .section-title + [part~='body-section'] .heading-row .group {
+        margin-top: 0;
+      }
+
+      /*
+       * A heading, and the one control that acts on everything under it.
+       *
+       * The same arrangement the operation's own title has with Copy for LLM, for the same reason:
+       * the control belongs to the section rather than to any block inside it, and a reader going
+       * down the left edge never meets it.
+       *
+       * Baseline rather than start, because a select and a heading are both text and lining up their
+       * boxes leaves the words at different heights.
+       */
+      .heading-row {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: var(--openish-space-md);
+      }
+
+      .heading-row > :first-child {
+        min-width: 0;
+      }
+
+      /* The row gives way first; a content type has nothing to gain from being half shown. */
+      .media-picker {
+        flex: none;
+      }
+
+      /*
+       * The shape of the code sample's client picker, in the weight this one's position asks for.
+       *
+       * Both are the same kind of control - one answer that decides what the blocks under it show,
+       * parked where a reader working down the page never meets it - so they share pickerStyles and
+       * cannot drift apart. What differs is what they sit on and what they are: the client is
+       * content, on a code block's own toolbar. A content type is metadata beside a heading, and
+       * drawn in the page's text colour it was the loudest thing on the row it belongs to the end of.
+       */
+      .media-picker select {
+        background: var(--openish-color-surface);
+        color: var(--openish-color-text-muted);
       }
 
       .badge {
@@ -354,8 +424,21 @@ export class OpenishOperation extends LitElement {
     this.requestMediaType = event.detail
   }
 
-  readonly #onResponseMediaType = (event: CustomEvent<string>): void => {
-    this.responseMediaType = event.detail
+  /*
+   * The two answers, set by a control this element owns rather than reported by one below it.
+   *
+   * The response half has no event any more: the tabs that used to report it are a select on the
+   * `Returns` heading now, and nothing under the section asks the question. The request half keeps
+   * one, because the try-it panel has a picker of its own that a reader can move.
+   *
+   * Bound fields, so the callback does not change identity on every render.
+   */
+  readonly #pickRequestMediaType = (mediaType: string): void => {
+    this.requestMediaType = mediaType
+  }
+
+  readonly #pickResponseMediaType = (mediaType: string): void => {
+    this.responseMediaType = mediaType
   }
 
   /**
@@ -420,6 +503,54 @@ export class OpenishOperation extends LitElement {
           `,
         )}
       </ul>
+    `
+  }
+
+  /**
+   * Which content type the section is being read in, asked once and out of the way.
+   *
+   * A tab set was the wrong instrument for this. It is a band of chrome the width of the column,
+   * level with the first thing a reader wants to read, offering a choice most readers make once and
+   * many never make at all - and it appeared again under every response. A select says the same
+   * thing in the space of its own value, at the right-hand end of a row that already existed, where
+   * `Copy for LLM` sits on the title above it.
+   *
+   * Nothing at all for a single media type: a picker with one option is a control that cannot do
+   * anything, which is the rule `renderMediaTypes` already applies to a one-tab tablist.
+   *
+   * The `id` is scoped by `kind`, because a body and a response can both have one on the same page
+   * and a `<label for>` matching two controls labels neither.
+   */
+  #renderMediaPicker(
+    kind: string,
+    content: unknown,
+    selected: string,
+    label: string,
+    onChange: (mediaType: string) => void,
+  ): TemplateResult | typeof nothing {
+    const types = content !== null && typeof content === 'object' ? Object.keys(content) : []
+    if (types.length < 2) {
+      return nothing
+    }
+
+    /* The one showing: the reader's pick where this response offers it, and its own first where not. */
+    const shown = types.find((type) => type === selected) ?? types[0]
+
+    return html`
+      <div class="media-picker">
+        <label class="visually-hidden" for=${`${kind}-content-type`}>${label}</label>
+        <select
+          class="picker"
+          id=${`${kind}-content-type`}
+          @change=${(event: Event) => onChange((event.target as HTMLSelectElement).value)}
+        >
+          ${repeat(
+            types,
+            (type) => type,
+            (type) => html`<option value=${type} ?selected=${type === shown}>${type}</option>`,
+          )}
+        </select>
+      </div>
     `
   }
 
@@ -510,6 +641,13 @@ export class OpenishOperation extends LitElement {
      * response examples end up together - they are the two halves of one worked example, and a
      * reader copying a call wants them beside each other rather than a screen apart.
      *
+     * The left column is grouped the same way, by what the reader is asking rather than by where the
+     * specification keeps the answer. `Parameters` and `Request body` were one question - what do I
+     * send? - split in two because OpenAPI stores a body in a different place from the parameters
+     * that travel beside it. They are one section now, and the body is a group within it the way
+     * `Path` and `Query` are: named for where the input travels, which is the only thing that
+     * separates them.
+     *
      * Which arrangement is used is decided in CSS by a container query, because both panes are the
      * same DOM either way. Only their placement changes, so nothing here needs to know the width.
      *
@@ -525,6 +663,8 @@ export class OpenishOperation extends LitElement {
      * correctly, is a list nobody can navigate by.
      */
     const badges = operationBadges(operation, { deprecated })
+    /* The media types the body declares, for the picker on its heading. May be a `$ref` to one. */
+    const bodyContent = (getResolvedRef(operation?.requestBody) as { content?: unknown } | undefined)?.content
 
     return html`
       <div class="columns">
@@ -556,42 +696,65 @@ export class OpenishOperation extends LitElement {
             ? html`<openish-markdown .markdown=${operation.description} .headingOffset=${this.level}></openish-markdown>`
             : nothing}
           ${renderExternalDocs(operation?.externalDocs, `More about ${node.title}`)}
-          ${parameters.length > 0
+          ${parameters.length > 0 || operation?.requestBody
             ? html`
                 <section part="parameters-section">
                   ${heading(this.level + 1, 'Parameters', { 'section-title': true })}
-                  <openish-parameters .parameters=${parameters}></openish-parameters>
-                </section>
-              `
-            : nothing}
-          ${operation?.requestBody
-            ? html`
-                <section part="body-section">
-                  ${heading(this.level + 1, 'Request body', { 'section-title': true })}
-                  <openish-request-body
-                    ?no-example=${tryIt || payload !== undefined}
-                    media-type=${this.requestMediaType}
-                    .requestBody=${operation.requestBody}
-                    .variants=${this.variants}
-                    @openish-media-type-change=${this.#onMediaType}
-                    @openish-variant-change=${this.#onVariant}
-                  ></openish-request-body>
+                  ${parameters.length > 0
+                    ? html`<openish-parameters
+                        .parameters=${parameters}
+                        .level=${this.level + 2}
+                      ></openish-parameters>`
+                    : nothing}
+                  ${operation?.requestBody
+                    ? html`
+                        <div part="body-section">
+                          <div class="heading-row">
+                            ${heading(this.level + 2, 'Body', { group: true })}
+                            ${this.#renderMediaPicker(
+                              'request',
+                              bodyContent,
+                              this.requestMediaType,
+                              'Request content type',
+                              this.#pickRequestMediaType,
+                            )}
+                          </div>
+                          <openish-request-body
+                            no-media-tabs
+                            ?no-example=${tryIt || payload !== undefined}
+                            media-type=${this.requestMediaType}
+                            .requestBody=${operation.requestBody}
+                            .variants=${this.variants}
+                            @openish-variant-change=${this.#onVariant}
+                          ></openish-request-body>
+                        </div>
+                      `
+                    : nothing}
                 </section>
               `
             : nothing}
           ${operation?.responses
             ? html`
                 <section part="response-section">
-                  ${heading(this.level + 1, 'Responses', { 'section-title': true })}
+                  <div class="heading-row">
+                    ${heading(this.level + 1, 'Returns', { 'section-title': true })}
+                    ${this.#renderMediaPicker(
+                      'response',
+                      shownResponseContent(operation.responses, this.responseStatus),
+                      this.responseMediaType,
+                      'Response content type',
+                      this.#pickResponseMediaType,
+                    )}
+                  </div>
                   <slot name="response-start"></slot>
                   <openish-response-list
                     no-example
+                    no-media-tabs
                     status=${this.responseStatus}
                     media-type=${this.responseMediaType}
                     .responses=${operation.responses}
                     .variants=${this.variants}
                     @openish-status-change=${this.#onStatus}
-                    @openish-media-type-change=${this.#onResponseMediaType}
                     @openish-variant-change=${this.#onVariant}
                   ></openish-response-list>
                   <slot name="response-end"></slot>

@@ -51,6 +51,40 @@ export class OpenishCopyButton extends LitElement {
         background: var(--openish-color-surface);
         color: var(--openish-color-text);
         font: var(--openish-font-micro);
+        /*
+         * The row gives way before the button does.
+         *
+         * It sits beside a title of whatever length the document felt like, and a flex item shrinks
+         * by default - so a long summary was wrapping "Copy for LLM" onto two lines and making the
+         * control taller than the heading beside it. The title can shrink and ellipsize;
+         * a two-word button has nothing useful to give up.
+         */
+        flex: none;
+        white-space: nowrap;
+      }
+
+      /*
+       * The button does not resize when it is pressed.
+       *
+       * "Copied" is shorter than "Copy for LLM", so swapping the word moved every control to the
+       * right of it and then moved them back two seconds later. Both words occupy the same cell and
+       * the widest one sets the width, so the confirmation happens in place.
+       *
+       * The measured word is a pseudo-element rather than a hidden span, because a span would join
+       * textContent - and the accessible name of this button is assembled out of exactly that.
+       */
+      .swap {
+        display: inline-grid;
+      }
+
+      .swap > .word,
+      .swap::after {
+        grid-area: 1 / 1;
+      }
+
+      .swap::after {
+        content: attr(data-alt);
+        visibility: hidden;
       }
     `,
   ]
@@ -112,7 +146,9 @@ export class OpenishCopyButton extends LitElement {
 
     return html`
       <button type="button" part="copy" @click=${this.#copy}>
-        ${this.copied ? 'Copied' : this.action}
+        <span class="swap" data-alt=${this.copied ? this.action : 'Copied'}>
+          <span class="word">${this.copied ? 'Copied' : this.action}</span>
+        </span>
         ${this.label ? html`<span class="visually-hidden">${this.label}</span>` : nothing}
       </button>
       <span class="visually-hidden" role="status">${this.copied ? 'Copied to clipboard' : ''}</span>

@@ -65,3 +65,37 @@ export const indexNavigation = (nodes: readonly NavNode[]): Map<string, NavNode>
   visit(nodes)
   return index
 }
+
+/**
+ * The same walk, keyed by JSON pointer: which section documents the thing this `$ref` names.
+ *
+ * A schema holding `{ $ref: '#/components/schemas/User' }` and the model node for `User` carry the
+ * *same string* - `traverseSchemas` builds its pointer with the same `escapeJsonPointer` a document
+ * writes its references with - so the join needs no parsing and no convention.
+ *
+ * It exists because the alternative was a guess. Rebuilding the id as `<slug>/models/<name>` looks
+ * equivalent and is not: a host slug override, a name that is not URL-safe, and the `-2` a collision
+ * gets are three ways for the guess to miss, each of them silent. Operations and webhooks carry
+ * pointers too and are indexed here for nothing extra, so a reference to one of those resolves as
+ * well.
+ *
+ * A separate function rather than a second return value from `indexNavigation`, whose signature is
+ * exported and which a host may be calling.
+ */
+export const indexPointers = (nodes: readonly NavNode[]): Map<string, NavNode> => {
+  const index = new Map<string, NavNode>()
+
+  const visit = (list: readonly NavNode[]) => {
+    for (const node of list) {
+      if ('pointer' in node && typeof node.pointer === 'string' && node.pointer !== '') {
+        index.set(node.pointer, node)
+      }
+      if ('children' in node && node.children) {
+        visit(node.children)
+      }
+    }
+  }
+
+  visit(nodes)
+  return index
+}

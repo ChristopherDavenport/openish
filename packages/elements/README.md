@@ -208,6 +208,7 @@ An operation's parameters, one table per `in` group.
 | Property | Attribute | Type | Default | |
 |---|---|---|---|---|
 | `parameters` | — | `readonly ParameterEntry[]` | `[]` | Already merged: the path item's parameters plus the operation's. See `collectParameters`. |
+| `level` | `level` | `number` | `5` | The heading level each group takes. |
 
 ### `<openish-request-body>`
 
@@ -219,6 +220,7 @@ An operation's request body: what to send, and in which media type.
 | `noExample` | `no-example` | `boolean` | `false` | Document the schema without an example. |
 | `examplesOnly` | `examples-only` | `boolean` | `false` | Render only the example body, media type by media type. |
 | `mediaType` | `media-type` | `string` | `''` | Which media type the operation is talking about. |
+| `noMediaTabs` | `no-media-tabs` | `boolean` | `false` | The caller is asking the media-type question somewhere else, so do not ask it here. |
 | `variants` | — | `VariantChoices \| undefined` | `undefined` | The `oneOf`/`anyOf` branches picked in this body's tree, for the example to honour. |
 
 | Event | |
@@ -254,6 +256,7 @@ An operation's responses.
 | `examplesOnly` | `examples-only` | `boolean` | `false` | Render only the example bodies, status by status. |
 | `status` | `status` | `string` | `''` | Which status the reader is on, when something above holds that choice. |
 | `mediaType` | `media-type` | `string` | `''` | The media type to show, when something above holds that choice too. |
+| `noMediaTabs` | `no-media-tabs` | `boolean` | `false` | The caller is asking the media-type question somewhere else, so do not ask it here. |
 | `variants` | — | `VariantChoices \| undefined` | `undefined` | Which shape the variant choices below belong to, and what they are. |
 
 | Event | |
@@ -283,6 +286,7 @@ A schema, rendered as a property tree that expands a level at a time.
 | `pointer` | `pointer` | `string` | `''` | The JSON pointer this schema was reached by, when it is not itself a `$ref`. |
 | `hideHeader` | `hide-header` | `boolean` | `false` | Skip the type line, for a caller that has already printed it - a property row does. |
 | `inlineProperties` | `inline-properties` | `boolean` | `false` | Show the property list without a disclosure, whatever the depth. |
+| `collapseRoot` | `collapse-root` | `boolean` | `false` | Collapse the outermost level too, instead of drawing it open. |
 | `scope` | `scope` | `string` | `''` | Which shape on the page this tree describes - `request`, or `response:404`. |
 | `path` | `path` | `unknown` | `VARIANT_PATH_ROOT` | Where this tree sits inside the shape named by `scope`, in `variant-path.ts`'s spelling. |
 
@@ -305,6 +309,7 @@ A schema and an example of it, side by side.
 | `variants` | — | `VariantChoices \| undefined` | `undefined` |  |
 | `noExample` | `no-example` | `boolean` | `false` | Hide the example block, for callers that show one of their own. |
 | `noSchema` | `no-schema` | `boolean` | `false` | Hide the property tree, keeping only the example. |
+| `collapseRoot` | `collapse-root` | `boolean` | `false` | Let the tree arrive closed. Passed straight through to `<openish-schema>`; see the note there. |
 
 ### `<openish-search>`
 

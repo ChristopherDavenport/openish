@@ -106,6 +106,91 @@ describe('a long enum', () => {
   })
 })
 
+/*
+ * A value an author wrote for one field, beside that field.
+ *
+ * The parameter table has shown these since it was written and the property tree never did, so a
+ * document saying `example: acc_1` got it into the generated JSON on the right and nowhere a reader
+ * scanning the fields would find it.
+ */
+describe('an example on a property', () => {
+  /** The marker on one property's row, and the values it is holding. */
+  const markerFor = async (
+    name: string,
+  ): Promise<{ harness: Harness; button: HTMLButtonElement; values: () => string[]; showing: () => boolean }> => {
+    const { harness, schema } = await modelSchema(JSON_SCHEMA_SPEC, 'Sample')
+    const row = [...schema.shadowRoot!.querySelectorAll('ul > li')].find(
+      (one) => textOf(one.querySelector('.name')) === name,
+    )!
+    const button = row.querySelector<HTMLButtonElement>('button.marker')!
+    return {
+      harness,
+      button,
+      values: () => [...row.querySelectorAll('.tip code')].map((one) => textOf(one)),
+      showing: () => row.querySelector('.tip')?.hasAttribute('hidden') === false,
+    }
+  }
+
+  it('surfaces the 3.0 singular keyword', async () => {
+    expect((await markerFor('id')).values()).toEqual(['acc_1'])
+  })
+
+  it('surfaces the JSON Schema array, one value per entry', async () => {
+    expect((await markerFor('size')).values()).toEqual(['1', '2'])
+  })
+
+  /* Not a string, so printed the way the example block beside it would print the same value. */
+  it('writes a value that is not text as JSON', async () => {
+    expect((await markerFor('tags')).values()).toEqual(['["live","archived"]'])
+  })
+
+  /* The generator reads the singular first, so a schema carrying both must not say two things. */
+  it('prefers the singular where a document wrote both, as the generated example does', async () => {
+    expect((await markerFor('label')).values()).toEqual(['Primary'])
+  })
+
+  it('says nothing on a property the document gave no example for', async () => {
+    const { schema } = await modelSchema(JSON_SCHEMA_SPEC, 'Order')
+
+    expect(schema.shadowRoot!.querySelectorAll('button.marker')).toHaveLength(0)
+  })
+
+  /*
+   * Hover is one of three ways in, not the way in. A tooltip only a mouse can reach is unreachable
+   * from a keyboard and absent on a phone, so the marker is a button: focus opens it and Escape
+   * closes it, and a tap does both through the same events.
+   */
+  it('opens on focus and closes on Escape', async () => {
+    const { harness, button, showing } = await markerFor('id')
+
+    expect(showing()).toBe(false)
+
+    button.focus()
+    await harness.settle()
+    expect(showing()).toBe(true)
+
+    button.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await harness.settle()
+    expect(showing()).toBe(false)
+  })
+
+  /*
+   * And the values are in the button's name, so a screen reader hears them on focus rather than
+   * having to open a panel it was never told about.
+   */
+  it('names the button with what it is holding', async () => {
+    const { button } = await markerFor('size')
+
+    expect(textOf(button)).toBe('examples for size: 1, 2')
+  })
+
+  it('says example, singular, for one of them', async () => {
+    const { button } = await markerFor('id')
+
+    expect(textOf(button.querySelector('[aria-hidden="true"]'))).toBe('example')
+  })
+})
+
 describe('a discriminator with no oneOf', () => {
   /*
    * The document named the deciding property and the schema each value selects. That is a union,
