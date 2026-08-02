@@ -1,12 +1,13 @@
 import { consume } from '@lit/context'
-import { getResolvedRef } from '@openish/core'
+import { getResolvedRef, type VariantChoices } from '@openish/core'
 import { LitElement, html, css, nothing, type TemplateResult } from 'lit'
 import { customElement, property } from 'lit/decorators.js'
 import { ifDefined } from 'lit/directives/if-defined.js'
 import { repeat } from 'lit/directives/repeat.js'
 
 import { uiContext, type OpenishUiState } from '../context/contexts.js'
-import { hasRenderableContent, renderMediaTypes } from '../render/media-types.js'
+import { renderMediaTypes } from '../render/media-types.js'
+import { responseEntries } from '../render/responses.js'
 import { schemaConstraints, schemaTypeLabel } from '../schema/summary.js'
 import { baseStyles } from '../styles/shared.js'
 import type { OpenishTableRow } from './openish-table.js'
@@ -152,27 +153,37 @@ export class OpenishResponseList extends LitElement {
   @property({ type: Boolean, attribute: 'examples-only' })
   examplesOnly = false
 
-  /** Status codes in document order, with `default` moved to the end. */
+  /**
+   * Which status the reader is on, when something above holds that choice.
+   *
+   * `<openish-operation>` does, so the tab set here and the one over the examples move together:
+   * they are two views of one question - which answer am I reading about - and a reader who moved
+   * one and found the other still on `200` had been shown a schema and an example of two different
+   * responses, side by side.
+   *
+   * Empty leaves each tab set to decide for itself, which is what a host mounting this element on
+   * its own gets.
+   */
+  @property({ type: String })
+  status = ''
+
+  /**
+   * The media type to show, when something above holds that choice too.
+   *
+   * The documentation column offers the tabs; the examples column takes this and renders exactly one
+   * example with no picker of its own. A response that does not declare the chosen type falls back
+   * to its own first, which is the only sensible answer for a `404` that is only ever JSON.
+   */
+  @property({ type: String, attribute: 'media-type' })
+  mediaType = ''
+
+  /** Which shape the variant choices below belong to, and what they are. */
+  @property({ attribute: false })
+  variants: VariantChoices | undefined = undefined
+
+  /** Status codes in document order, with `default` moved to the end. See `render/responses.ts`. */
   get #entries(): Array<[string, unknown]> {
-    const responses = this.responses
-    if (typeof responses !== 'object' || responses === null) {
-      return []
-    }
-
-    /*
-     * A `204` has a description and no body, which is a complete answer in the documentation column
-     * and an empty tab in the examples one. So the examples column shows only the statuses that
-     * actually carry a body - the reader is not missing anything, because the status is still on a
-     * tab beside the description.
-     */
-    const entries = Object.entries(responses as Record<string, unknown>).filter(
-      ([, raw]) => !this.examplesOnly || hasRenderableContent(raw),
-    )
-
-    return [
-      ...entries.filter(([status]) => status !== 'default'),
-      ...entries.filter(([status]) => status === 'default'),
-    ]
+    return responseEntries(this.responses, { withContentOnly: this.examplesOnly })
   }
 
   #renderHeaders(headers: Record<string, unknown> | undefined): TemplateResult | typeof nothing {
@@ -272,11 +283,21 @@ export class OpenishResponseList extends LitElement {
    * A response with no `content` is a complete answer - `204 No Content` says everything by saying
    * nothing - so it renders its description and stops, rather than an empty schema block.
    */
-  #renderResponse(raw: unknown): TemplateResult {
+  #renderResponse(status: string, raw: unknown): TemplateResult {
     const response = (getResolvedRef(raw) as Response | undefined) ?? {}
+    const scope = `response:${status}`
 
+    /*
+     * The examples column: one media type, no tabs, and the caption saying which one it is. The
+     * control that chose it is in the documentation column, where the schema it describes is.
+     */
     if (this.examplesOnly) {
-      return html`${renderMediaTypes(response.content, 'Response media types', { noSchema: true })}`
+      return html`${renderMediaTypes(response.content, 'Response media types', {
+        noSchema: true,
+        pick: this.mediaType,
+        scope,
+        ...(this.variants ? { variants: this.variants } : {}),
+      })}`
     }
 
     return html`
@@ -284,7 +305,17 @@ export class OpenishResponseList extends LitElement {
         ? html`<openish-markdown .markdown=${response.description} .headingOffset=${2}></openish-markdown>`
         : nothing}
       ${this.#renderHeaders(response.headers)}
-      ${renderMediaTypes(response.content, 'Response media types', { noExample: this.noExample })}
+      ${renderMediaTypes(response.content, 'Response media types', {
+        noExample: this.noExample,
+        selected: this.mediaType,
+        scope,
+        ...(this.variants ? { variants: this.variants } : {}),
+        onSelect: (mediaType) => {
+          this.dispatchEvent(
+            new CustomEvent<string>('openish-media-type-change', { detail: mediaType, bubbles: true }),
+          )
+        },
+      })}
       ${this.#renderLinks(response.links)}
     `
   }
@@ -303,7 +334,7 @@ export class OpenishResponseList extends LitElement {
           ([status, raw]) => html`
             <div class="stacked">
               <h3><span class="status" data-tone=${ifDefined(toneFor(status))}>${status}</span></h3>
-              ${this.#renderResponse(raw)}
+              ${this.#renderResponse(status, raw)}
             </div>
           `,
         )}
@@ -314,15 +345,31 @@ export class OpenishResponseList extends LitElement {
       id: status,
       label: status,
       tone: toneFor(status),
-      content: () => this.#renderResponse(raw),
+      content: () => this.#renderResponse(status, raw),
     }))
 
-    return html`<openish-tabs label="Response status codes" .tabs=${tabs}></openish-tabs>`
+    return html`
+      <openish-tabs
+        label="Response status codes"
+        selected=${ifDefined(this.status || undefined)}
+        .tabs=${tabs}
+        @openish-tab-change=${(event: CustomEvent<string>) => {
+          this.dispatchEvent(
+            new CustomEvent<string>('openish-status-change', { detail: event.detail, bubbles: true }),
+          )
+        }}
+      ></openish-tabs>
+    `
   }
 }
 
 declare global {
   interface HTMLElementTagNameMap {
     'openish-response-list': OpenishResponseList
+  }
+
+  /** The reader moved to another status code, from either column's tab set. */
+  interface HTMLElementEventMap {
+    'openish-status-change': CustomEvent<string>
   }
 }

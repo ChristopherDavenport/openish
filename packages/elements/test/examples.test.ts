@@ -85,3 +85,78 @@ describe('named examples', () => {
     expect(deepTextOf(preview.shadowRoot!)).toContain('pong')
   })
 })
+
+/*
+ * A tab that says `application/xml` over a block of JSON is telling the reader something false about
+ * the API. The media type decides the syntax, and the schema's `xml` object decides the markup.
+ */
+describe('an example is written in the syntax its media type names', () => {
+  /**
+   * The two columns of one operation.
+   *
+   * The controls are all in `docs` now and the consequences are all in `examples`: which media type
+   * a response is being read in is asked once, beside the schema it describes, and the example
+   * follows. The examples column keeps the status tabs and nothing else.
+   */
+  const columnsOf = async (
+    id: string,
+  ): Promise<{ harness: Harness; docs: Element; examples: Element }> => {
+    const harness = await mountReference({ path: `/tags/accounts/${id}`, spec: EXAMPLES_SPEC })
+    const operation = shadowOf(sectionOf(harness), 'openish-operation')
+    const docs = operation.querySelector('[part~="response-section"]')
+    const examples = operation.querySelector('[part~="examples-section"]')
+    if (!docs || !examples) {
+      throw new Error(`The ${id} page is missing a column.`)
+    }
+    return { harness, docs, examples }
+  }
+
+  const mediaTabs = (root: Element): HTMLButtonElement[] => {
+    const tabs = deepQuery(root, 'openish-tabs[label="Response media types"]')
+    return tabs?.shadowRoot ? [...tabs.shadowRoot.querySelectorAll<HTMLButtonElement>('button[role="tab"]')] : []
+  }
+
+  const previewIn = (root: Element): Element => {
+    const preview = deepQuery(root, 'openish-schema-preview')
+    if (!preview) {
+      throw new Error('No schema preview under that column.')
+    }
+    return preview
+  }
+
+  it('picks the media type on the left and shows it on the right', async () => {
+    const { harness, docs, examples } = await columnsOf('getAccount')
+
+    expect(mediaTabs(docs).map((tab) => textOf(tab))).toEqual(['application/json', 'application/xml'])
+    /* No second copy of the control beside the example it decides. */
+    expect(mediaTabs(examples)).toEqual([])
+
+    expect(deepTextOf(previewIn(examples).shadowRoot!)).toContain('"id": "acc_1"')
+
+    mediaTabs(docs)[1]!.click()
+    await harness.settle()
+
+    const shown = deepTextOf(previewIn(examples).shadowRoot!)
+    expect(shown).toContain('<?xml version="1.0" encoding="UTF-8"?>')
+    /* `xml.name` renamed the element and `xml.attribute` moved the id onto it. */
+    expect(shown).toContain('<account id="acc_1">')
+    expect(shown).toContain('<balance>500</balance>')
+    expect(shown).not.toContain('"id": "acc_1"')
+  })
+
+  it('colours it as XML, not as JSON', async () => {
+    const { harness, docs, examples } = await columnsOf('getAccount')
+
+    mediaTabs(docs)[1]!.click()
+    await harness.settle()
+
+    const block = deepQuery(previewIn(examples).shadowRoot!, 'openish-code-block')!
+    expect(block.getAttribute('language')).toBe('xml')
+  })
+
+  it('names the media type over the example, since the picker is no longer there', async () => {
+    const { examples } = await columnsOf('getAccount')
+
+    expect(textOf(previewIn(examples).shadowRoot!.querySelector('.media-type'))).toBe('application/json')
+  })
+})

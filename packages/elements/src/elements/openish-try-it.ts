@@ -9,9 +9,11 @@ import {
   schemaExample,
   securityRequirements,
   securitySchemesFor,
+  serializeExample,
   type DocumentStore,
   type NavOperationNode,
   type ParameterEntry,
+  type VariantChoices,
 } from '@openish/core'
 import { LitElement, html, css, nothing, type PropertyValues, type TemplateResult } from 'lit'
 import { customElement, property, query, state } from 'lit/decorators.js'
@@ -32,10 +34,14 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
 /**
  * Sending the request the page describes.
  *
- * The page itself gets one button. Everything a reader fills in - server, credentials, parameters,
- * body, and the answer that comes back - lives in a modal client behind it, because none of it is
- * documentation: a reference read by someone who is not calling the API today should not be mostly
- * empty form. That is the shape Scalar arrived at too, and for the same reason.
+ * The page itself gets one button, named after what it does rather than after testing: a reader who
+ * has read the reference and wants the call made is not running an experiment. It sits at the end of
+ * the sample's toolbar, past the controls that adjust the sample.
+ *
+ * Everything a reader fills in - server, credentials, parameters, body, and the answer that comes
+ * back - lives in a modal client behind it, because none of it is documentation: a reference read by
+ * someone who is not calling the API today should not be mostly empty form. That is the shape Scalar
+ * arrived at too, and for the same reason.
  *
  * The values live here and nowhere else - they are one reader's answers about one operation, and
  * they are not worth persisting or sharing between pages. What *is* shared, because a reader sets it
@@ -57,7 +63,7 @@ export class OpenishTryIt extends LitElement {
         display: block;
       }
 
-      .test {
+      .run {
         display: inline-flex;
         align-items: center;
         gap: var(--openish-space-3xs);
@@ -213,8 +219,40 @@ export class OpenishTryIt extends LitElement {
   @state()
   private body: string | undefined = undefined
 
+  /**
+   * Which media type the operation is talking about, when something above owns that choice.
+   *
+   * `<openish-operation>` does, because the request body's tabs ask the same question this panel's
+   * picker does and the two must not answer it differently - the tab said `application/xml` while
+   * the sample beside it sent JSON. Empty means nobody above is deciding, which is what a host
+   * mounting this panel on its own gets, and then `chosenHere` is the whole answer.
+   */
+  @property({ type: String, attribute: 'media-type' })
+  mediaType = ''
+
+  /**
+   * The variant branches picked in the request body's tree.
+   *
+   * The panel prefills the body from the same generator the documentation column draws its tree
+   * with, so a reader who chose `Dog` on the left opens this and finds a dog to send.
+   */
+  @property({ attribute: false })
+  variants: VariantChoices | undefined = undefined
+
+  /**
+   * The media type to ask for back, from the response the examples column is showing.
+   *
+   * On the wire as well as in the sample: a reader who switched the response to `application/xml`
+   * and pressed Run was asking for XML, and a request with no `Accept` gets whatever the server
+   * prefers - which is the one thing the panel must not do, since its whole claim is that it sends
+   * what the snippet shows.
+   */
+  @property({ type: String })
+  accept = ''
+
+  /** The panel picker's own choice. Only consulted when nothing above provides one - see `#mediaType`. */
   @state()
-  private mediaType = ''
+  private chosenHere = ''
 
   /**
    * The last answer, or nothing.
@@ -248,22 +286,38 @@ export class OpenishTryIt extends LitElement {
     return isPlainObject(content) ? Object.keys(content) : []
   }
 
+  /**
+   * The media type in force: what the operation decided, else this panel's own picker, else the
+   * first one the body declares.
+   *
+   * The operation wins when it has an opinion, so picking `application/xml` in the request body's
+   * tabs moves the panel too. Both are empty until somebody chooses, and the form is handed the
+   * resolved one - so anything comparing what the form reports against this element's state has to
+   * compare against the same value the form was given, not against the empty string behind it.
+   */
+  get #mediaType(): string {
+    return this.mediaType || this.chosenHere || this.#mediaTypes[0] || ''
+  }
+
   /** The body to send: what the reader edited, or the example the document implies. */
   get #bodyText(): string {
     if (this.body !== undefined) {
       return this.body
     }
 
-    const mediaType = this.mediaType || this.#mediaTypes[0] || ''
+    const mediaType = this.#mediaType
     const content = (this.#resolved?.operation?.requestBody as { content?: Record<string, unknown> } | undefined)
       ?.content
     const media = isPlainObject(content?.[mediaType]) ? (content[mediaType] as Record<string, unknown>) : undefined
-    const example = mediaTypeExample(media) ?? schemaExample(media?.['schema'])
+    const example =
+      mediaTypeExample(media) ??
+      schemaExample(media?.['schema'], {
+        ...(this.variants ? { variants: this.variants, variantScope: 'request' } : {}),
+      })
 
-    if (example === undefined) {
-      return ''
-    }
-    return typeof example === 'string' ? example : JSON.stringify(example, null, 2)
+    /* In the syntax the picker beside it names, so switching to `application/xml` refills with XML
+     * rather than handing the reader JSON to translate. */
+    return serializeExample(example, mediaType, media?.['schema'])
   }
 
   /**
@@ -280,7 +334,7 @@ export class OpenishTryIt extends LitElement {
       return undefined
     }
 
-    const mediaType = this.mediaType || this.#mediaTypes[0] || ''
+    const mediaType = this.#mediaType
 
     /*
      * Which alternative to satisfy, decided from the *real* credentials rather than from the
@@ -306,6 +360,8 @@ export class OpenishTryIt extends LitElement {
         credentials,
         securityIndex,
         ...(mediaType ? { contentType: mediaType } : {}),
+        ...(this.accept ? { accept: this.accept } : {}),
+        ...(this.variants ? { variants: this.variants, variantScope: 'request' } : {}),
         ...(this.#mediaTypes.length > 0 ? { body: { mediaType, text: this.#bodyText } } : {}),
       },
     )
@@ -438,14 +494,39 @@ export class OpenishTryIt extends LitElement {
                     .parameters=${parameters}
                     .values=${this.values}
                     .mediaTypes=${mediaTypes}
-                    mediaType=${this.mediaType || mediaTypes[0] || ''}
+                    mediaType=${this.#mediaType}
                     .body=${this.#bodyText}
                     @openish-parameter-input=${(event: CustomEvent<ParameterChange>) => {
                       this.values = { ...this.values, [event.detail.key]: event.detail.value }
                     }}
                     @openish-body-input=${(event: CustomEvent<{ body: string; mediaType: string }>) => {
-                      this.body = event.detail.body
-                      this.mediaType = event.detail.mediaType
+                      /*
+                       * The form re-sends the body it is holding when the media type changes, which
+                       * is right for a body the reader typed and wrong for one they never touched:
+                       * carried across, a JSON prefill would sit under an `application/xml` header
+                       * for them to translate by hand. An untouched body stays untouched - which is
+                       * `undefined` - so it refills in the syntax the new type names.
+                       */
+                      const untouched = this.body === undefined && event.detail.mediaType !== this.#mediaType
+                      if (!untouched) {
+                        this.body = event.detail.body
+                      }
+
+                      if (event.detail.mediaType !== this.#mediaType) {
+                        /*
+                         * Announced as well as recorded. Inside an operation the announcement is
+                         * what moves the request body's tabs to match, and the property comes back
+                         * down over `chosenHere`; on its own this element is still the only thing
+                         * listening to itself, so the local record is what keeps the picker working.
+                         */
+                        this.chosenHere = event.detail.mediaType
+                        this.dispatchEvent(
+                          new CustomEvent<string>('openish-media-type-change', {
+                            detail: event.detail.mediaType,
+                            bubbles: true,
+                          }),
+                        )
+                      }
                     }}
                   ></openish-request-form>
                 `
@@ -483,15 +564,16 @@ export class OpenishTryIt extends LitElement {
         <button
           slot="actions"
           type="button"
-          class="test"
+          class="run"
           aria-haspopup="dialog"
+          aria-label=${`Run ${this.node.title}`}
           @click=${(event: Event) => this.#show(event.currentTarget as HTMLElement)}
         >
-          Test request
+          Run
         </button>
       </openish-code-sample>
 
-      <dialog part="dialog" aria-label="Test request: ${this.node.title}" @close=${this.#onClose}>
+      <dialog part="dialog" aria-label="Run: ${this.node.title}" @close=${this.#onClose}>
         ${this.open ? this.#renderClient() : nothing}
       </dialog>
     `

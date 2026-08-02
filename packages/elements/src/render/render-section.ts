@@ -89,7 +89,7 @@ export const renderSection = (section: Section, context: SectionContext): Templa
         <openish-operation
           .node=${section.node as never}
           .level=${section.level}
-          exportparts="operation-header, operation-docs, operation-examples, request-section, payload-section, parameters-section, body-section, response-section, examples-section, security-section, callbacks-section, code, code-toolbar, copy, dialog, dialog-toolbar"
+          exportparts="operation-header, operation-target, operation-docs, operation-examples, request-section, payload-section, parameters-section, body-section, response-section, examples-section, security-section, callbacks-section, code, code-toolbar, copy, dialog, dialog-toolbar"
         >
           ${context.active ? renderOperationSlots() : nothing}
         </openish-operation>

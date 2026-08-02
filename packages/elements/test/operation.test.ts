@@ -179,6 +179,31 @@ describe('responses', () => {
     expect(deepTextOf(responses)).toContain('Opaque account id.')
   })
 
+  /*
+   * A tab set nobody is controlling keeps what the reader picked. Response statuses are that case -
+   * no parent has an opinion about which one is showing - and they must not be disturbed by the
+   * re-renders that a request body's controlled tabs now cause elsewhere in the section.
+   */
+  it('keeps the response status the reader picked across a re-render', async () => {
+    const harness = await mountReference({ path: '/tags/accounts/getAccount' })
+    await harness.settle()
+    const responses = shadowOf(sectionOf(harness), 'openish-response-list')
+
+    tabsIn(responses)[1]!.click()
+    await harness.settle()
+    expect(tabsIn(responses)[1]!.getAttribute('aria-selected')).toBe('true')
+
+    /* Something else on the section changes; the reader's tab is not something else's business. */
+    const sample = deepQuery<HTMLSelectElement>(sectionOf(harness), 'openish-code-sample')!
+    const client = sample.shadowRoot!.querySelector<HTMLSelectElement>('select')!
+    client.value = 'python/requests'
+    client.dispatchEvent(new Event('change', { bubbles: true }))
+    await new Promise((resolve) => setTimeout(resolve, 150))
+    await harness.settle()
+
+    expect(tabsIn(responses)[1]!.getAttribute('aria-selected')).toBe('true')
+  })
+
   it('stacks every response when expandAllResponses is set', async () => {
     const { element } = await operationOf('getAccount', { expandAllResponses: true })
     const responses = shadowOf(sectionOf(element), 'openish-response-list')

@@ -109,6 +109,9 @@ A ready-to-run request for one operation, in the reader's language.
 | `ui` | — | `OpenishUiState \| undefined` | — | Presentation state. Provided by `<openish-api-reference>` through context. |
 | `node` | — | `NavOperationNode` | — | The operation to build a request for. |
 | `request` | — | `ReturnType<typeof operationToHar> \| undefined` | `undefined` | A request to render instead of deriving one. |
+| `mediaType` | `media-type` | `string` | `''` | Which media type to send the body as, when this derives the request itself. |
+| `variants` | — | `VariantChoices \| undefined` | `undefined` | The variant branches picked in the request body's tree, so the snippet posts what it shows. |
+| `accept` | `accept` | `string` | `''` | The media type to ask for back. |
 
 | Event | |
 |---|---|
@@ -215,6 +218,12 @@ An operation's request body: what to send, and in which media type.
 | `requestBody` | — | `unknown` | `undefined` | A Request Body Object, or a `$ref` to one. |
 | `noExample` | `no-example` | `boolean` | `false` | Document the schema without an example. |
 | `examplesOnly` | `examples-only` | `boolean` | `false` | Render only the example body, media type by media type. |
+| `mediaType` | `media-type` | `string` | `''` | Which media type the operation is talking about. |
+| `variants` | — | `VariantChoices \| undefined` | `undefined` | The `oneOf`/`anyOf` branches picked in this body's tree, for the example to honour. |
+
+| Event | |
+|---|---|
+| `openish-media-type-change` |  |
 
 ### `<openish-request-form>`
 
@@ -243,6 +252,14 @@ An operation's responses.
 | `responses` | — | `unknown` | `undefined` | A Responses Object: status codes to Response Objects. |
 | `noExample` | `no-example` | `boolean` | `false` | Document the response schemas without their examples. |
 | `examplesOnly` | `examples-only` | `boolean` | `false` | Render only the example bodies, status by status. |
+| `status` | `status` | `string` | `''` | Which status the reader is on, when something above holds that choice. |
+| `mediaType` | `media-type` | `string` | `''` | The media type to show, when something above holds that choice too. |
+| `variants` | — | `VariantChoices \| undefined` | `undefined` | Which shape the variant choices below belong to, and what they are. |
+
+| Event | |
+|---|---|
+| `openish-media-type-change` |  |
+| `openish-status-change` |  |
 
 ### `<openish-response-view>`
 
@@ -266,6 +283,12 @@ A schema, rendered as a property tree that expands a level at a time.
 | `pointer` | `pointer` | `string` | `''` | The JSON pointer this schema was reached by, when it is not itself a `$ref`. |
 | `hideHeader` | `hide-header` | `boolean` | `false` | Skip the type line, for a caller that has already printed it - a property row does. |
 | `inlineProperties` | `inline-properties` | `boolean` | `false` | Show the property list without a disclosure, whatever the depth. |
+| `scope` | `scope` | `string` | `''` | Which shape on the page this tree describes - `request`, or `response:404`. |
+| `path` | `path` | `unknown` | `VARIANT_PATH_ROOT` | Where this tree sits inside the shape named by `scope`, in `variant-path.ts`'s spelling. |
+
+| Event | |
+|---|---|
+| `openish-variant-change` |  |
 
 ### `<openish-schema-preview>`
 
@@ -275,9 +298,11 @@ A schema and an example of it, side by side.
 |---|---|---|---|---|
 | `schema` | — | `unknown` | `undefined` | The schema to render beside its example. |
 | `label` | `label` | `string` | `''` | A caption above the schema, e.g. the media type this one describes. |
-| `language` | `language` | `string` | `'json'` | Highlight language for a string example. A generated one is always JSON. |
+| `mediaType` | `media-type` | `string` | `'application/json'` | The media type the example is an example of. Decides both the syntax and the colours. |
 | `example` | — | `unknown` | `undefined` | One example the author supplied, for a caller that has only one to give. |
 | `examples` | — | `readonly MediaTypeExample[]` | `[]` | Every example the author wrote, in document order. More than one becomes a picker. |
+| `scope` | `scope` | `string` | `''` | Which shape on the page this is, and the variant branches the reader picked in its tree. |
+| `variants` | — | `VariantChoices \| undefined` | `undefined` |  |
 | `noExample` | `no-example` | `boolean` | `false` | Hide the example block, for callers that show one of their own. |
 | `noSchema` | `no-schema` | `boolean` | `false` | Hide the property tree, keeping only the example. |
 
@@ -405,5 +430,12 @@ Sending the request the page describes.
 | `request` | — | `OpenishRequestState \| undefined` | — | The server and credentials the reader has chosen. Provided through context. |
 | `node` | — | `NavOperationNode` | — | The operation this panel sends. |
 | `open` | `open` | `boolean` | `false` | Whether the client is showing. Set it; the element does the rest. |
+| `mediaType` | `media-type` | `string` | `''` | Which media type the operation is talking about, when something above owns that choice. |
+| `variants` | — | `VariantChoices \| undefined` | `undefined` | The variant branches picked in the request body's tree. |
+| `accept` | `accept` | `string` | `''` | The media type to ask for back, from the response the examples column is showing. |
+
+| Event | |
+|---|---|
+| `openish-media-type-change` |  |
 
 <!-- elements:end -->

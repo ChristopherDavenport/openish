@@ -1,4 +1,12 @@
 import { getResolvedRef, isRefObject } from '../ref.js'
+import {
+  VARIANT_PATH_ROOT,
+  variantAdditional,
+  variantBranch,
+  variantIndex,
+  variantProperty,
+  type VariantChoices,
+} from './variant-path.js'
 
 /**
  * A schema seen as a bag of keywords.
@@ -19,6 +27,15 @@ export type SchemaExampleOptions = {
   maxDepth?: number
   /** Include properties that are not in `required`. On by default - docs should show the shape. */
   includeOptional?: boolean
+  /**
+   * Which branch to take at a `oneOf`/`anyOf`, where the reader has said.
+   *
+   * The first branch otherwise, which is what an example has always shown and what a document with
+   * nobody reading it implies. See `variant-path.ts` for how a choice is addressed.
+   */
+  variants?: VariantChoices
+  /** Which shape on the page this shows, so two roots cannot share a choice. */
+  variantScope?: string
 }
 
 const DEFAULT_MAX_DEPTH = 12
@@ -138,12 +155,15 @@ export const schemaExample = (schema: unknown, options: SchemaExampleOptions = {
   const maxDepth = options.maxDepth ?? DEFAULT_MAX_DEPTH
   const includeOptional = options.includeOptional ?? true
 
+  const scope = options.variantScope ?? ''
+
   const visit = (
     input: unknown,
     depth: number,
     seenRefs: ReadonlySet<string>,
     seenObjects: ReadonlySet<object>,
     anchors: ReadonlyMap<string, unknown>,
+    path: string,
   ): unknown => {
     if (depth >= maxDepth) {
       return null
@@ -171,7 +191,7 @@ export const schemaExample = (schema: unknown, options: SchemaExampleOptions = {
      * Without this the tree said `Planet[]` and the example beside it said `[{}]`, which is two
      * answers to one question. The outermost binding wins, so a name already in scope is kept.
      */
-    let scope = anchors
+    let dynamicScope = anchors
     const declared = dynamicAnchorsIn(resolved)
     if (declared.size > 0) {
       const merged = new Map(anchors)
@@ -180,14 +200,16 @@ export const schemaExample = (schema: unknown, options: SchemaExampleOptions = {
           merged.set(name, schema)
         }
       }
-      scope = merged
+      dynamicScope = merged
     }
 
     const dynamicRef = resolved['$dynamicRef']
     if (typeof dynamicRef === 'string' && dynamicRef.startsWith('#')) {
-      const bound = scope.get(dynamicRef.slice(1))
+      const bound = dynamicScope.get(dynamicRef.slice(1))
       /* Unbound is `not: {}` - nothing validates, so there is no example to give. */
-      return bound === undefined || isUnboundAnchor(bound) ? null : visit(bound, depth + 1, refs, seenObjects, scope)
+      return bound === undefined || isUnboundAnchor(bound)
+        ? null
+        : visit(bound, depth + 1, refs, seenObjects, dynamicScope, path)
     }
 
     if (resolved['example'] !== undefined) {
@@ -209,7 +231,14 @@ export const schemaExample = (schema: unknown, options: SchemaExampleOptions = {
     }
 
     const nestedObjects = new Set(seenObjects).add(resolved)
-    const descend = (value: unknown) => visit(value, depth + 1, refs, nestedObjects, scope)
+    /*
+     * The path is where the *reader* is, not where the walk is, so most steps leave it alone. See
+     * `variant-path.ts`: `allOf` and `items` are transparent because the property tree presents them
+     * that way - it merges the branches and unwraps the array - and a choice has to be addressable
+     * by whoever offered it.
+     */
+    const descend = (value: unknown, at: string = path) =>
+      visit(value, depth + 1, refs, nestedObjects, dynamicScope, at)
 
     /* `allOf` is an intersection, so merge the branches. Non-object branches cannot merge; last wins. */
     const allOf = asArray(resolved['allOf'])
@@ -226,10 +255,17 @@ export const schemaExample = (schema: unknown, options: SchemaExampleOptions = {
       return merged
     }
 
-    /* `oneOf`/`anyOf` are choices; a sample has to pick one, and the first is the author's default. */
-    const choice = asArray(resolved['oneOf']) ?? asArray(resolved['anyOf'])
+    /*
+     * `oneOf`/`anyOf` are choices, and this is the one place a reader's answer changes the example:
+     * the variant tabs in the property tree address this node by `path`, so picking `Dog` there is
+     * what makes the sample beside it a dog. The first branch when nobody has said - which is what
+     * every example was before, and what a page nobody has touched still shows.
+     */
+    const oneOf = asArray(resolved['oneOf'])
+    const choice = oneOf ?? asArray(resolved['anyOf'])
     if (choice && choice.length > 0) {
-      return descend(choice[0])
+      const index = variantIndex(options.variants, scope, path, choice.length)
+      return descend(choice[index], variantBranch(path, oneOf ? 'oneOf' : 'anyOf', index))
     }
 
     const type = firstType(resolved)
@@ -260,13 +296,13 @@ export const schemaExample = (schema: unknown, options: SchemaExampleOptions = {
           if (isPlainObject(propertySchema) && propertySchema['writeOnly'] === true) {
             continue
           }
-          output[name] = descend(property)
+          output[name] = descend(property, variantProperty(path, name))
         }
       }
 
       /* A map-shaped schema has no named properties; show one entry so the shape is visible. */
       if (Object.keys(output).length === 0 && isPlainObject(additionalProperties)) {
-        output['key'] = descend(additionalProperties)
+        output['key'] = descend(additionalProperties, variantAdditional(path))
       }
 
       return output
@@ -275,5 +311,5 @@ export const schemaExample = (schema: unknown, options: SchemaExampleOptions = {
     return primitive(resolved)
   }
 
-  return visit(schema, 0, new Set(), new Set(), new Map())
+  return visit(schema, 0, new Set(), new Set(), new Map(), VARIANT_PATH_ROOT)
 }

@@ -52,6 +52,18 @@ export { operationBadges, type OperationBadge } from './operation/badges.js'
 export { isHidden } from './navigation/hidden.js'
 export { getResolvedRef, isRefObject, resolveLocalPointer, resolveProperty, type RefObject } from './ref.js'
 export { schemaExample, type SchemaExampleOptions } from './schema/schema-example.js'
+export { serializeExample } from './schema/serialize-example.js'
+export {
+  VARIANT_PATH_ROOT,
+  variantAdditional,
+  variantAside,
+  variantBranch,
+  variantIndex,
+  variantKey,
+  variantProperty,
+  type VariantChoices,
+} from './schema/variant-path.js'
+export { xmlExample, type XmlExampleOptions } from './schema/xml-example.js'
 export {
   asSchema,
   modelNameFromPointer,

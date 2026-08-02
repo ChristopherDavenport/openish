@@ -1,8 +1,9 @@
-import { schemaExample, type MediaTypeExample } from '@openish/core'
+import { schemaExample, serializeExample, type MediaTypeExample, type VariantChoices } from '@openish/core'
 import { LitElement, html, css, nothing, type TemplateResult } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
 import { repeat } from 'lit/directives/repeat.js'
 
+import { languageForMediaType } from '../render/media-language.js'
 import { baseStyles, controlStyles } from '../styles/shared.js'
 import './openish-code-block.js'
 import './openish-markdown.js'
@@ -86,9 +87,14 @@ export class OpenishSchemaPreview extends LitElement {
   @property({ type: String })
   label = ''
 
-  /** Highlight language for a string example. A generated one is always JSON. */
-  @property({ type: String })
-  language = 'json'
+  /**
+   * The media type the example is an example of. Decides both the syntax and the colours.
+   *
+   * Defaults to JSON for the callers that have no `content` map behind them - a model page is a
+   * schema, not a body, and JSON is the syntax a reader will assume it is looking at.
+   */
+  @property({ type: String, attribute: 'media-type' })
+  mediaType = 'application/json'
 
   /**
    * One example the author supplied, for a caller that has only one to give.
@@ -101,6 +107,19 @@ export class OpenishSchemaPreview extends LitElement {
   /** Every example the author wrote, in document order. More than one becomes a picker. */
   @property({ attribute: false })
   examples: readonly MediaTypeExample[] = []
+
+  /**
+   * Which shape on the page this is, and the variant branches the reader picked in its tree.
+   *
+   * The tree and the example are in different columns and different elements, so the choice travels
+   * up to the operation and back down to both. Empty means nobody is tracking one, which is what a
+   * model page is: the example takes the first branch, as it always did.
+   */
+  @property({ type: String })
+  scope = ''
+
+  @property({ attribute: false })
+  variants: VariantChoices | undefined = undefined
 
   /** Hide the example block, for callers that show one of their own. */
   @property({ type: Boolean, attribute: 'no-example' })
@@ -180,7 +199,12 @@ export class OpenishSchemaPreview extends LitElement {
    */
   #renderExample(chosen: MediaTypeExample | undefined): TemplateResult | typeof nothing {
     const generated = this.examples.length === 0 && this.example === undefined
-    const value = generated ? schemaExample(this.schema) : chosen?.value
+    const value = generated
+      ? schemaExample(this.schema, {
+          ...(this.variants ? { variants: this.variants } : {}),
+          ...(this.scope ? { variantScope: this.scope } : {}),
+        })
+      : chosen?.value
 
     if (value === undefined) {
       const external = chosen?.externalValue
@@ -189,12 +213,11 @@ export class OpenishSchemaPreview extends LitElement {
         : html`<p class="external"><a href=${external} rel="noreferrer noopener">${external}</a></p>`
     }
 
-    const written = typeof value === 'string'
     return html`
       <openish-code-block
         label="Example"
-        language=${written ? this.language : 'json'}
-        .code=${written ? value : JSON.stringify(value, null, 2)}
+        language=${languageForMediaType(this.mediaType)}
+        .code=${serializeExample(value, this.mediaType, this.schema)}
       ></openish-code-block>
     `
   }
@@ -210,7 +233,10 @@ export class OpenishSchemaPreview extends LitElement {
       ${this.label ? html`<div class="media-type">${this.label}</div>` : nothing}
       ${this.schema === undefined || this.noSchema
         ? nothing
-        : html`<openish-schema .schema=${this.schema}></openish-schema>`}
+        : html`<openish-schema
+            .schema=${this.schema}
+            scope=${this.scope}
+          ></openish-schema>`}
       ${this.noExample
         ? nothing
         : html`

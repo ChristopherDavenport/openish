@@ -10,6 +10,8 @@ import { collectParameters, type ParameterEntry } from '../operation/parameters.
 import { securityRequirements } from '../operation/security.js'
 import { getResolvedRef } from '../ref.js'
 import { schemaExample } from '../schema/schema-example.js'
+import { serializeExample } from '../schema/serialize-example.js'
+import type { VariantChoices } from '../schema/variant-path.js'
 import type { HttpMethod } from '../types.js'
 
 type NameValue = { name: string; value: string }
@@ -24,6 +26,27 @@ export type OperationToHarOptions = {
   serverVariables?: Record<string, string>
   /** Media type to send. Defaults to the first one the request body declares. */
   contentType?: string
+  /**
+   * Media type to ask for back, as an `Accept` header.
+   *
+   * A reader reading the `application/xml` response is being shown an answer this request would not
+   * receive: with no `Accept`, a server that offers both is free to send whichever it prefers, and
+   * for most it prefers JSON. Which type the page is showing is a question the operation already
+   * answers - this is that answer, put where it changes what comes back.
+   *
+   * A header the document itself declares wins: an author who wrote an `Accept` parameter has said
+   * something specific about it, and overruling that would be this builder second-guessing them.
+   */
+  accept?: string
+  /**
+   * The `oneOf`/`anyOf` branches the reader picked in the request body's property tree.
+   *
+   * Carried this far because the snippet is the one place the choice becomes something a reader can
+   * run: a tree showing `Dog` beside a curl that posts a cat is two answers to one question.
+   */
+  variants?: VariantChoices
+  /** Which shape the choices are about. `request` is what the operation page uses. */
+  variantScope?: string
   /**
    * What the reader typed, keyed `"{in}:{name}"`.
    *
@@ -235,6 +258,14 @@ export const operationToHar = (input: OperationToHarInput, options: OperationToH
     }
   }
 
+  /*
+   * Asked for before the credential goes on, so the sample reads as a request rather than as a
+   * header dump: what I want, then who I am.
+   */
+  if (options.accept && !headers.some((header) => header.name.toLowerCase() === 'accept')) {
+    headers.push({ name: 'Accept', value: options.accept })
+  }
+
   applySecurity(document, operation, headers, queryString, options)
 
   const serverUrl =
@@ -272,12 +303,17 @@ export const operationToHar = (input: OperationToHarInput, options: OperationToH
       const value =
         media['example'] ??
         (isPlainObject(namedExample) ? namedExample['value'] : undefined) ??
-        schemaExample(media['schema'])
+        schemaExample(media['schema'], {
+          ...(options.variants ? { variants: options.variants } : {}),
+          ...(options.variantScope ? { variantScope: options.variantScope } : {}),
+        })
 
       headers.push({ name: 'Content-Type', value: mimeType })
+      /* Serialised as the header it just wrote says it is: a JSON body under `application/xml` is a
+       * sample nobody can send. */
       request.postData = {
         mimeType,
-        text: typeof value === 'string' ? value : JSON.stringify(value, null, 2),
+        text: serializeExample(value, mimeType, media['schema']),
       }
     }
   }

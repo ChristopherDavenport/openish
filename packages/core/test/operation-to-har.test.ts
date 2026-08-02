@@ -86,6 +86,62 @@ describe('operationToHar', () => {
     expect(JSON.parse(har.postData?.text ?? '{}')).toEqual({ title: 'Groceries' })
   })
 
+  it('asks for the media type it was told the reader is reading', async () => {
+    const store = await storeFromFixture('request.yaml')
+    const entry = collectOperations(store.document.paths as Record<string, unknown>, 'paths').find(
+      (candidate) => candidate.operation.operationId === 'createNote',
+    )!
+    const har = operationToHar(
+      {
+        document: store.document,
+        operation: entry.operation,
+        pathItem: entry.pathItem,
+        path: entry.path,
+        method: entry.method,
+      },
+      { accept: 'application/xml' },
+    )
+
+    expect(valueOf(har.headers, 'Accept')).toBe('application/xml')
+  })
+
+  it('says nothing about Accept when nobody has asked for anything', async () => {
+    const store = await storeFromFixture('request.yaml')
+
+    expect(valueOf(harFor(store, 'createNote').headers, 'Accept')).toBeUndefined()
+  })
+
+  it('leaves an Accept the document declares alone', async () => {
+    const store = await storeFromFixture('request.yaml')
+    const entry = collectOperations(store.document.paths as Record<string, unknown>, 'paths').find(
+      (candidate) => candidate.operation.operationId === 'acceptsNote',
+    )!
+    const har = operationToHar(
+      {
+        document: store.document,
+        operation: entry.operation,
+        pathItem: entry.pathItem,
+        path: entry.path,
+        method: entry.method,
+      },
+      { accept: 'application/xml' },
+    )
+
+    /* The author wrote a parameter for it, which is a decision this builder does not get to retake. */
+    expect(har.headers.filter((header) => header.name.toLowerCase() === 'accept')).toHaveLength(1)
+    expect(valueOf(har.headers, 'Accept')).toBe('application/vnd.notes.v2+json')
+  })
+
+  it('writes the body in the syntax the Content-Type it sets announces', async () => {
+    const store = await storeFromFixture('request.yaml')
+    const har = harFor(store, 'createNoteXml')
+
+    expect(valueOf(har.headers, 'Content-Type')).toBe('application/xml')
+    expect(har.postData?.text).toBe(
+      ['<?xml version="1.0" encoding="UTF-8"?>', '<note id="n_1">', '  <title>Groceries</title>', '</note>'].join('\n'),
+    )
+  })
+
   it('omits writeOnly fields from the generated body', async () => {
     const store = await storeFromFixture('request.yaml')
 

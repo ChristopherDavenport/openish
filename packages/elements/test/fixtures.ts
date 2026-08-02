@@ -699,6 +699,24 @@ export const EXAMPLES_SPEC = {
         },
       },
     },
+    '/accounts/{accountId}': {
+      get: {
+        summary: 'Get an account',
+        operationId: 'getAccount',
+        tags: ['accounts'],
+        responses: {
+          '200': {
+            description: 'OK',
+            /* One account offered in two syntaxes. The example under each tab has to be written in
+             * the syntax that tab names, which is what `xml` on the schema decides. */
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/XmlAccount' } },
+              'application/xml': { schema: { $ref: '#/components/schemas/XmlAccount' } },
+            },
+          },
+        },
+      },
+    },
     '/ping': {
       get: {
         summary: 'Ping',
@@ -721,6 +739,81 @@ export const EXAMPLES_SPEC = {
         type: 'object',
         properties: { id: { type: 'string' }, balance: { type: 'integer' } },
       },
+      XmlAccount: {
+        type: 'object',
+        xml: { name: 'account' },
+        properties: {
+          id: { type: 'string', example: 'acc_1', xml: { attribute: true } },
+          balance: { type: 'integer', example: 500 },
+        },
+      },
+    },
+  },
+} as const
+
+/**
+ * A document whose shapes are choices, for the seam between the two columns.
+ *
+ * The tree that offers a `oneOf` is in the documentation column and the example that has to honour
+ * it is in the other one, so everything here exists to be picked in one place and read in another:
+ * a variant at the root of a request body, a second one nested inside the branch of the first, two
+ * media types, and two statuses.
+ */
+export const VARIANTS_SPEC = {
+  openapi: '3.1.0',
+  info: { title: 'Pets', version: '1.0.0' },
+  servers: [{ url: 'https://api.example.com/v1' }],
+  paths: {
+    '/pets': {
+      post: {
+        summary: 'Create a pet',
+        operationId: 'createPet',
+        tags: ['pets'],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/Pet' } } },
+        },
+        responses: {
+          '201': {
+            description: 'Created.',
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/Pet' } },
+              'application/xml': { schema: { $ref: '#/components/schemas/Pet' } },
+            },
+          },
+          '404': {
+            description: 'No such owner.',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+        },
+      },
+    },
+  },
+  components: {
+    schemas: {
+      Pet: {
+        oneOf: [{ $ref: '#/components/schemas/Cat' }, { $ref: '#/components/schemas/Dog' }],
+      },
+      Cat: {
+        type: 'object',
+        title: 'Cat',
+        properties: { kind: { type: 'string', example: 'cat' }, lives: { type: 'integer', example: 9 } },
+      },
+      Dog: {
+        type: 'object',
+        title: 'Dog',
+        properties: {
+          kind: { type: 'string', example: 'dog' },
+          /* A choice inside a choice: only reachable once the reader has taken the outer one. */
+          collar: {
+            oneOf: [
+              { type: 'object', title: 'Nylon', properties: { material: { type: 'string', example: 'nylon' } } },
+              { type: 'object', title: 'Leather', properties: { material: { type: 'string', example: 'leather' } } },
+            ],
+          },
+        },
+      },
+      Error: { type: 'object', properties: { message: { type: 'string', example: 'Not found' } } },
     },
   },
 } as const

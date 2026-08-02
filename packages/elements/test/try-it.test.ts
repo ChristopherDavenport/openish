@@ -155,6 +155,80 @@ describe('the sample and the send are one request', () => {
     expect(snippetOf(harness)).toContain('https://sandbox.example.com/v1/accounts/')
   })
 
+  it('refills the body in the syntax the media type names, and sends that', async () => {
+    const harness = await client('/tags/accounts/replaceAccount')
+    const sent = interceptFetch(harness)
+    const form = deepQuery(sectionOf(harness), 'openish-request-form')!
+    const editor = deepQuery<HTMLTextAreaElement>(form.shadowRoot!, 'textarea')!
+
+    expect(editor.value).toContain('"id"')
+
+    const picker = [...form.shadowRoot!.querySelectorAll<HTMLSelectElement>('select')].find(
+      (candidate) => candidate.getAttribute('aria-label') === 'Request media type',
+    )!
+    picker.value = 'application/xml'
+    picker.dispatchEvent(new Event('change', { bubbles: true }))
+    await new Promise((resolve) => setTimeout(resolve, 150))
+    await harness.settle()
+
+    const refilled = deepQuery<HTMLTextAreaElement>(form.shadowRoot!, 'textarea')!.value
+    expect(refilled).toContain('<?xml version="1.0" encoding="UTF-8"?>')
+    expect(refilled).toContain('<Account>')
+
+    await send(harness)
+
+    expect(sent[0]?.headers['Content-Type']).toBe('application/xml')
+    expect(sent[0]?.body).toContain('<Account>')
+  })
+
+  /* The other direction of the same agreement: one choice, two controls showing it. */
+  it('moves the request body tabs when the panel picks a media type', async () => {
+    const harness = await client('/tags/accounts/replaceAccount')
+    const form = deepQuery(sectionOf(harness), 'openish-request-form')!
+    const tabsOf = () => {
+      const body = deepQuery(sectionOf(harness), 'openish-request-body')!
+      const tabs = deepQuery(body.shadowRoot!, 'openish-tabs')!
+      return [...tabs.shadowRoot!.querySelectorAll<HTMLButtonElement>('button[role="tab"]')]
+    }
+
+    expect(textOf(tabsOf().find((tab) => tab.getAttribute('aria-selected') === 'true') ?? null)).toBe(
+      'application/json',
+    )
+
+    const picker = [...form.shadowRoot!.querySelectorAll<HTMLSelectElement>('select')].find(
+      (candidate) => candidate.getAttribute('aria-label') === 'Request media type',
+    )!
+    picker.value = 'application/xml'
+    picker.dispatchEvent(new Event('change', { bubbles: true }))
+    await new Promise((resolve) => setTimeout(resolve, 150))
+    await harness.settle()
+
+    expect(textOf(tabsOf().find((tab) => tab.getAttribute('aria-selected') === 'true') ?? null)).toBe(
+      'application/xml',
+    )
+  })
+
+  it('keeps a body the reader typed when they change the media type', async () => {
+    const harness = await client('/tags/accounts/replaceAccount')
+    const form = deepQuery(sectionOf(harness), 'openish-request-form')!
+    const editor = deepQuery<HTMLTextAreaElement>(form.shadowRoot!, 'textarea')!
+
+    editor.value = '{"id":"mine"}'
+    editor.dispatchEvent(new Event('input', { bubbles: true }))
+    await new Promise((resolve) => setTimeout(resolve, 150))
+    await harness.settle()
+
+    const picker = [...form.shadowRoot!.querySelectorAll<HTMLSelectElement>('select')].find(
+      (candidate) => candidate.getAttribute('aria-label') === 'Request media type',
+    )!
+    picker.value = 'application/xml'
+    picker.dispatchEvent(new Event('change', { bubbles: true }))
+    await new Promise((resolve) => setTimeout(resolve, 150))
+    await harness.settle()
+
+    expect(deepQuery<HTMLTextAreaElement>(form.shadowRoot!, 'textarea')!.value).toBe('{"id":"mine"}')
+  })
+
   it('sends an edited body, and shows the edit', async () => {
     const harness = await client('/tags/accounts/replaceAccount')
     const sent = interceptFetch(harness)
