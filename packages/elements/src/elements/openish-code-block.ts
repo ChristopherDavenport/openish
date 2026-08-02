@@ -45,10 +45,38 @@ export class OpenishCodeBlock extends LitElement {
         border-bottom: 1px solid var(--openish-color-border);
       }
 
+      /*
+       * One bar, and the order in it is the order of the questions a reader asks: what is this, then
+       * what language do I want it in, then give it to me. The picker used to sit in a bar of its own
+       * above this one, which put a control between the reader and the thing it controls.
+       */
+      .heading {
+        display: flex;
+        align-items: center;
+        gap: var(--openish-space-2xs);
+        min-width: 0;
+        overflow: hidden;
+      }
+
+      .tools {
+        display: flex;
+        align-items: center;
+        gap: var(--openish-space-xs);
+        flex: none;
+      }
+
       .label {
         font: var(--openish-font-micro);
         font-family: var(--openish-font-family-mono);
         color: var(--openish-color-text-muted);
+      }
+
+      /* A block whose source has not arrived, or could not be built. The bar above it still works. */
+      .status {
+        padding: var(--openish-space-md);
+        color: var(--openish-color-text-muted);
+        font: var(--openish-font-small);
+        margin: 0;
       }
 
       /*
@@ -92,9 +120,19 @@ export class OpenishCodeBlock extends LitElement {
   @property({ type: String })
   language = 'plaintext'
 
-  /** What to call this block, e.g. `curl`. Falls back to the language. */
+  /** What to call this block, e.g. `curl`. Falls back to the language, and to the `title` slot. */
   @property({ type: String })
   label = ''
+
+  /**
+   * Shown in place of the code, for a block whose source has not arrived or could not be built.
+   *
+   * The frame and its toolbar stay, which is the point: the picker that chooses what the code *is*
+   * lives in that toolbar, so a reader whose chosen client cannot generate a sample needs it more
+   * than usual, not less. It used to sit in a bar of its own and survived by accident.
+   */
+  @property({ type: String })
+  status = ''
 
   /** Bumped once the highlighter arrives, purely to ask for another render. See `#highlighted`. */
   @state()
@@ -133,27 +171,40 @@ export class OpenishCodeBlock extends LitElement {
   }
 
   override render(): TemplateResult | typeof nothing {
-    if (this.code === '') {
+    if (this.code === '' && this.status === '') {
       return nothing
     }
 
-    const highlighted = this.#highlighted()
+    const highlighted = this.code === '' ? '' : this.#highlighted()
 
     return html`
       <div class="frame" part="code">
         <div class="head" part="code-toolbar">
-          <span class="label">${this.label || this.language}</span>
-          <openish-copy-button
-            exportparts="copy"
-            .label=${`${this.label || this.language} sample`}
-            .source=${this.#source}
-          ></openish-copy-button>
+          <div class="heading">
+            <slot name="title"><span class="label">${this.label || this.language}</span></slot>
+          </div>
+          <div class="tools">
+            <slot name="toolbar"></slot>
+            ${this.code === ''
+              ? nothing
+              : html`
+                  <openish-copy-button
+                    exportparts="copy"
+                    .label=${`${this.label || this.language} sample`}
+                    .source=${this.#source}
+                  ></openish-copy-button>
+                `}
+          </div>
         </div>
-        <div class="scroll" tabindex="0" role="group" aria-label=${`${this.label || this.language} code`}>
-          ${highlighted === ''
-            ? html`<pre><code>${this.code}</code></pre>`
-            : html`${unsafeHTML(highlighted)}`}
-        </div>
+        ${this.code === ''
+          ? html`<p class="status" role="status">${this.status}</p>`
+          : html`
+              <div class="scroll" tabindex="0" role="group" aria-label=${`${this.label || this.language} code`}>
+                ${highlighted === ''
+                  ? html`<pre><code>${this.code}</code></pre>`
+                  : html`${unsafeHTML(highlighted)}`}
+              </div>
+            `}
       </div>
     `
   }

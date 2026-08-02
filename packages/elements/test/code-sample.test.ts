@@ -80,12 +80,32 @@ describe('code samples', () => {
     expect(codeOf(harness.element.shadowRoot!)).toContain('requests')
   })
 
-  it('labels the block with the client, and offers to copy it', async () => {
+  /*
+   * One bar, reading left to right as the questions a reader asks: what call is this, what language
+   * do I want it in, give it to me. The client's name is on the picker rather than on a label of its
+   * own, which is what the second bar above this one used to be for.
+   */
+  it('titles the block with the call, and puts the picker beside the copy', async () => {
     const { element } = await settledSample('/tags/accounts/getAccount')
+    const sample = deepQuery(element.shadowRoot!, 'openish-code-sample')!
     const block = deepQuery(element.shadowRoot!, 'openish-code-block')!
 
-    expect(textOf(block.shadowRoot!.querySelector('.label'))).toBe('Shell · curl')
+    const target = sample.shadowRoot!.querySelector('[slot="title"]')!
+    expect(textOf(target.querySelector('.method'))).toBe('get')
+    expect(textOf(target.querySelector('.path'))).toBe('/accounts/{accountId}')
+
+    const picker = sample.shadowRoot!.querySelector<HTMLSelectElement>('select')!
+    expect(textOf(picker.selectedOptions[0]!)).toBe('curl')
+
+    /* Both in the block's one toolbar, and the picker ahead of the button it belongs with. */
+    const toolbar = block.shadowRoot!.querySelector('.tools')!
+    expect(toolbar.querySelector('slot[name="toolbar"]')).not.toBeNull()
     expect(deepQuery(block.shadowRoot!, 'button[part="copy"]')).not.toBeNull()
+    expect(
+      toolbar.querySelector('slot[name="toolbar"]')!.compareDocumentPosition(
+        deepQuery(block.shadowRoot!, 'openish-copy-button')!,
+      ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
   })
 
   it('renders no sample for a webhook, which the reader does not call', async () => {

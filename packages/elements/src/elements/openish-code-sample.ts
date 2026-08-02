@@ -17,7 +17,7 @@ import { repeat } from 'lit/directives/repeat.js'
 
 import { documentContext, uiContext, type OpenishUiState } from '../context/contexts.js'
 import { dispatch } from '../events.js'
-import { baseStyles, controlStyles, visuallyHidden } from '../styles/shared.js'
+import { baseStyles, controlStyles, methodStyles, visuallyHidden } from '../styles/shared.js'
 import './openish-code-block.js'
 
 /**
@@ -26,7 +26,9 @@ import './openish-code-block.js'
  * The request itself is built by `@openish/core` from the same reads the parameter table makes, so
  * the sample and the documentation beside it cannot disagree about what an operation takes.
  *
- * Anything slotted into `actions` is placed in the toolbar beside the client picker.
+ * Anything slotted into `actions` is placed in the toolbar beside the client picker - which is the
+ * code block's own toolbar now, not a second bar above it. The bar reads left to right as the
+ * questions a reader asks: what call is this, what language do I want it in, give it to me.
  *
  * Picking a client dispatches `openish-client-change` and changes nothing locally. The root handles
  * it and re-provides `uiContext.selectedClient`, so every sample on the page follows - which is the
@@ -39,6 +41,7 @@ export class OpenishCodeSample extends LitElement {
   static override styles = [
     baseStyles,
     controlStyles,
+    methodStyles,
     visuallyHidden,
     css`
       :host {
@@ -46,15 +49,29 @@ export class OpenishCodeSample extends LitElement {
       }
 
       /*
-       * The picker sits right; anything slotted in sits left. The try-it panel puts its button
-       * there rather than in a bar of its own, so opening the panel costs the page no height.
+       * The title of the card is the call it is a sample of. It was prose in the operation's intro,
+       * a column away from the thing it described.
        */
-      .head {
+      .target {
         display: flex;
         align-items: center;
-        justify-content: space-between;
+        gap: var(--openish-space-2xs);
+        min-width: 0;
+      }
+
+      .path {
+        font: var(--openish-font-code-small);
+        font-family: var(--openish-font-family-mono);
+        color: var(--openish-color-text-muted);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .tools {
+        display: flex;
+        align-items: center;
         gap: var(--openish-space-xs);
-        margin-bottom: var(--openish-space-xs);
       }
 
       select {
@@ -67,13 +84,6 @@ export class OpenishCodeSample extends LitElement {
         font-family: inherit;
       }
 
-      .status {
-        padding: var(--openish-space-md);
-        border: 1px dashed var(--openish-color-border);
-        border-radius: var(--openish-radius-lg);
-        color: var(--openish-color-text-muted);
-        font: var(--openish-font-small);
-      }
     `,
   ]
 
@@ -256,23 +266,29 @@ export class OpenishCodeSample extends LitElement {
         : ''
     const language = authored?.language ?? client?.language ?? 'plaintext'
 
+    const status = this.#snippet.render({
+      pending: () => 'Generating the sample…',
+      error: () => 'This client could not generate a sample.',
+      complete: (snippet) => (snippet ? '' : 'No sample for this client.'),
+    })
+
     return html`
-      <div class="head"><slot name="actions"></slot>${this.#renderPicker()}</div>
-      ${this.#snippet.render({
-        pending: () => html`<p class="status" role="status">Generating the sample…</p>`,
-        error: () => html`<p class="status" role="status">This client could not generate a sample.</p>`,
-        complete: (snippet) =>
-          snippet
-            ? html`
-                <openish-code-block
-                  exportparts="code, code-toolbar, copy"
-                  .code=${snippet}
-                  language=${language}
-                  label=${label}
-                ></openish-code-block>
-              `
-            : html`<p class="status" role="status">No sample for this client.</p>`,
-      })}
+      <openish-code-block
+        exportparts="code, code-toolbar, copy"
+        .code=${this.#snippet.value ?? ''}
+        .status=${typeof status === 'string' ? status : ''}
+        language=${language}
+        label=${label}
+      >
+        <div class="target" slot="title">
+          <span class="method" data-method=${this.node.method}>${this.node.method}</span>
+          <code class="path">${this.node.path}</code>
+        </div>
+        <div class="tools" slot="toolbar">
+          <slot name="actions"></slot>
+          ${this.#renderPicker()}
+        </div>
+      </openish-code-block>
     `
   }
 }
