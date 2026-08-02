@@ -509,7 +509,12 @@ export class OpenishApiReference extends LitElement {
   /** The id the spy last wrote into the URL, so `updated` can tell a follow from a navigation. */
   #writtenId: string | undefined
 
-  /** The section the reader has already been taken to, so arriving there twice does nothing. */
+  /**
+   * Where the reader has already been taken, so arriving there twice does nothing.
+   *
+   * A section, and the heading inside it when the URL named one - the two together are the request,
+   * and a section id on its own cannot tell two headings of the same section apart.
+   */
   #scrolledId: string | undefined
 
   /** Whether the stacked navigation is showing. Meaningless in the two-column layout. */
@@ -1034,7 +1039,8 @@ export class OpenishApiReference extends LitElement {
     const clicked = applySlugPrefix(idFromHash(anchor.hash) || idFromPathname(anchor.pathname, normalizeBasePath(this.basePath)), this.#slugPrefix)
     if (this.routing !== 'none' && clicked === this.ui.activeId) {
       event.preventDefault()
-      this.#sectionsController.scrollTo(this.#resolvedId)
+      const target = this.#scrollTarget
+      this.#sectionsController.scrollTo(target.section, target.anchor)
       return
     }
 
@@ -1123,6 +1129,37 @@ export class OpenishApiReference extends LitElement {
     return overviewAnchors(this.store).has(this.ui.activeId)
   }
 
+  /**
+   * The heading in the overview the URL is asking for, in the form the overview stamps its ids in.
+   *
+   * Two ways to name one, because a heading is both a navigation entry and a fragment: the id itself
+   * when the URL names the heading node, and the browser's own fragment in `history` mode, which is
+   * the only mode with one to spare.
+   */
+  get #overviewHash(): string {
+    return this.#atOverviewAnchor
+      ? (this.ui.slugPrefix ? stripFirstSegment(this.ui.activeId) : this.ui.activeId)
+      : this.ui.hash
+  }
+
+  /**
+   * What the plane is being asked for: a section to mount, and where in it to stop.
+   *
+   * A heading from `info.description` has no section of its own - the overview renders it - so the
+   * section to mount is the front of the document and the heading is where the reader actually
+   * asked to be. Without the pair the click resolved to a section id the plane has never heard of
+   * and nothing moved at all, which is only invisible while the overview happens to be on screen.
+   */
+  get #scrollTarget(): { section: string; anchor: string } {
+    const slug = this.store?.source.slug ?? ''
+    if (this.#atOverviewAnchor) {
+      return { section: slug, anchor: this.#overviewHash }
+    }
+
+    const section = this.#resolvedId
+    return { section, anchor: section === slug ? this.ui.hash : '' }
+  }
+
   /** Whether the URL names anything this document has. False is what the banner is about. */
   get #urlResolves(): boolean {
     const store = this.store
@@ -1152,9 +1189,7 @@ export class OpenishApiReference extends LitElement {
     }
 
     const missing = this.store !== undefined && !this.#urlResolves
-    const overviewHash = this.#atOverviewAnchor
-      ? (this.ui.slugPrefix ? stripFirstSegment(this.ui.activeId) : this.ui.activeId)
-      : this.ui.hash
+    const overviewHash = this.#overviewHash
 
     return html`
       ${missing ? this.#renderNotFound() : nothing}
@@ -1338,13 +1373,20 @@ export class OpenishApiReference extends LitElement {
      * would put the reader back where they had just scrolled away from. One one-shot field is the
      * whole of the feedback-loop defence.
      */
-    const resolved = this.#resolvedId
-    if (resolved !== '' && resolved !== this.#scrolledId) {
-      this.#scrolledId = resolved
+    /*
+     * The heading is part of what was asked for, so it is part of what "already scrolled" means.
+     *
+     * A section and a heading inside it resolve to the same section id, and keying on that alone
+     * meant the second of two headings in one section was a navigation the plane ignored.
+     */
+    const { section, anchor } = this.#scrollTarget
+    const asked = anchor ? `${section}#${anchor}` : section
+    if (section !== '' && asked !== this.#scrolledId) {
+      this.#scrolledId = asked
       if (this.#writtenId === this.ui.activeId) {
         this.#writtenId = undefined
       } else {
-        this.#sectionsController.scrollTo(resolved)
+        this.#sectionsController.scrollTo(section, anchor)
       }
     }
 

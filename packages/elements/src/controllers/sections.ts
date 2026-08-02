@@ -37,6 +37,28 @@ export type SectionsOptions = {
 }
 
 /**
+ * The first match in a subtree, shadow roots included.
+ *
+ * A heading lifted out of `info.description` is stamped inside `<openish-markdown>`'s shadow root,
+ * two boundaries below the section that owns it, and a selector cannot cross one. Only ever run for
+ * a navigation that named a heading, and only over the one section that heading is in.
+ */
+const deepQuery = (root: Element | ShadowRoot, selector: string): Element | null => {
+  const direct = root.querySelector(selector)
+  if (direct) {
+    return direct
+  }
+
+  for (const child of root.querySelectorAll('*')) {
+    const found = child.shadowRoot ? deepQuery(child.shadowRoot, selector) : null
+    if (found) {
+      return found
+    }
+  }
+  return null
+}
+
+/**
  * Where the reader is on the plane, and how to put them somewhere else.
  *
  * Mounting is the virtualiser's job and scrolling accurately is the virtualiser's job - which is
@@ -69,6 +91,13 @@ export class SectionsController implements ReactiveController {
   #programmatic: string | undefined
   /** The section the reader is on their way to, kept so a rebuilt plane can be told again. */
   #target: string | undefined
+  /**
+   * A heading *inside* that section to land on instead of its top, in the form the DOM stamps ids.
+   *
+   * Kept beside the target rather than folded into it, because the two answer different questions:
+   * which item the virtualiser has to mount, and where in it the reader asked to be.
+   */
+  #anchor: string | undefined
   #reattached: VirtualizerHostElement | undefined
   #frame: number | undefined
   #settle: ReturnType<typeof setTimeout> | undefined
@@ -171,16 +200,24 @@ export class SectionsController implements ReactiveController {
     this.#programmatic = undefined
     this.#reported = undefined
     this.#target = undefined
+    this.#anchor = undefined
   }
 
   /**
-   * Put the reader at a section.
+   * Put the reader at a section, or at a heading inside one.
    *
    * Silently does nothing for an id the document has no section for - which is not a swallowed
    * error but the ordinary case of a bookmarked URL outliving the operation it named. The banner
    * above the plane is what says so; scrolling somewhere arbitrary as well would be worse.
+   *
+   * `anchor` is what makes a heading from `info.description` reachable. Those are navigation entries
+   * with no section of their own - the overview renders them, and stamps their ids - so the element
+   * that owns them has always been the one to scroll to them, and on a plane it can only do that
+   * while it happens to be mounted. From anywhere further down the document it is not mounted at
+   * all, and the click did nothing whatsoever. Here the section is mounted first, and the heading
+   * inside it is what the correction measures against.
    */
-  scrollTo(id: string): void {
+  scrollTo(id: string, anchor = ''): void {
     const index = sectionIndex(this.#sections).get(id)
     if (index === undefined) {
       return
@@ -190,6 +227,7 @@ export class SectionsController implements ReactiveController {
     this.#stopFrames()
 
     this.#target = id
+    this.#anchor = anchor || undefined
     this.#programmatic = id
     clearTimeout(this.#settle)
     this.#settle = setTimeout(() => {
@@ -323,27 +361,63 @@ export class SectionsController implements ReactiveController {
          *
          * Asking again re-runs the same estimate and lands in the same wrong place - which is how a
          * section two thirds down a document of tall operations gets guessed past the end, clamps at
-         * the bottom, and stays there however many times it is asked. What *is* reliable is which
-         * way to go: the rendered sections have ids, the ids have indices, and comparing one with
-         * the target says up or down. A viewport at a time closes it, and every step measures more
+         * the bottom, and stays there however many times it is asked. What *is* reliable is where
+         * the reader currently is: the rendered sections have ids, the ids have indices, and the gap
+         * between one and the target says both which way to go and how far. Every step measures more
          * of the document, so the estimates behind the scrollbar improve as it goes.
          */
         const showing = plane.querySelector('.section')?.getAttribute('data-id') ?? ''
-        const at = sectionIndex(this.#sections).get(showing)
-        scroller.scrollTop += at !== undefined && at > index ? -scroller.clientHeight : scroller.clientHeight
+        scroller.scrollTop += this.#step(sectionIndex(this.#sections).get(showing), index, scroller)
         this.#converge(index, tries + 1, 0)
         return
       }
 
-      const delta = section.getBoundingClientRect().top - scroller.getBoundingClientRect().top
+      /*
+       * The heading, once the section that owns it has rendered one.
+       *
+       * Missing is the ordinary state for the first frames rather than a failure: the section has
+       * only just been mounted, and its prose arrives with the markdown pipeline a turn or two
+       * later. Until it does the correction aims at the top of the section - which is where the
+       * reader is going anyway, only less far - and the frame does not count as a stable one, so the
+       * loop cannot declare itself finished short of the heading that was asked for.
+       */
+      const anchor = this.#anchor
+      const heading = anchor === undefined ? section : deepQuery(section, `[id="${CSS.escape(anchor)}"]`)
+
+      const delta = (heading ?? section).getBoundingClientRect().top - scroller.getBoundingClientRect().top
       if (Math.abs(delta) > 1) {
         scroller.scrollTop += delta
         this.#converge(index, tries + 1, 0)
         return
       }
 
-      this.#converge(index, tries + 1, stable + 1)
+      this.#converge(index, tries + 1, heading ? stable + 1 : 0)
     })
+  }
+
+  /**
+   * How far to jump when the target section is out of the rendered range.
+   *
+   * A viewport a frame is safe and, on a long document, far too slow: from the bottom of six hundred
+   * models back to the overview is a hundred thousand pixels, which is more frames than the loop is
+   * allowed - so the walk ran out of budget somewhere in the middle and the reader was left where
+   * the click had not taken them, with the spy then writing *that* into the URL. Scaling the step by
+   * how many sections lie between here and there closes the same distance in a handful of frames:
+   * the mean section height is a poor description of any one section and a good one of a hundred,
+   * and every jump measures more of the document, so the next estimate is better than the last.
+   *
+   * A viewport is the floor: a gap of one section is worth one mean height, which on a document of
+   * short models is a step small enough to render nothing new and get taken again next frame.
+   */
+  #step(at: number | undefined, index: number, scroller: Element): number {
+    const viewport = scroller.clientHeight
+    if (at === undefined) {
+      return viewport
+    }
+
+    const average = scroller.scrollHeight / Math.max(this.#sections.length, 1)
+    const distance = Math.max(Math.abs(index - at) * average, viewport)
+    return at > index ? -distance : distance
   }
 
   /** Whether there is still a plane in a document worth scrolling. */

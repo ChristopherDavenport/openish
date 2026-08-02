@@ -32,7 +32,7 @@ numbers. Read this file for how the code is meant to be written and what has alr
 | M16 design system | Done — one focus ring instead of sixteen, the six control states, semantic borders, selection as an edge, forced colors |
 | M17 the continuous plane | Done — the whole document as one virtualised scroller, the URL following the reader, three columns every section shares, Copy for LLM |
 
-`npm run verify` runs guards → typecheck → tests. 598 tests today across three projects: `core` and
+`npm run verify` runs guards → typecheck → tests. 601 tests today across three projects: `core` and
 `client` in Node, `elements` in real Chromium via Playwright (`npx playwright install chromium`
 once). A `.browser.test.ts` suffix inside `packages/client/test` puts a file in the Chromium project
 instead - that is where the two OAuth transports are tested, and the suffix is what keeps the rest of
@@ -746,9 +746,32 @@ handful of tall operations guesses a section two thirds down to be past the end,
 at the bottom and the layout settles with an empty range waiting for an event that will never come.
 
 So the loop measures off the DOM. When the target is rendered it closes the gap directly; when it is
-not, it walks a viewport at a time in the direction the *rendered* ids say the target lies - never by
-asking the same estimate again. It ends on eight quiet frames, because a section is not finished when
-it stops moving the first time: its prose and highlighting arrive on their own schedule.
+not, it walks towards it by what the *rendered* ids say the distance is worth - the gap in indices
+times the mean section height - never by asking the same estimate again. It ends on eight quiet
+frames, because a section is not finished when it stops moving the first time: its prose and
+highlighting arrive on their own schedule.
+
+The step used to be one viewport a frame, which is safe and, on a real document, too slow to arrive:
+from the bottom of six hundred models back to the overview is a hundred thousand pixels and the loop
+is allowed ninety frames, so the walk stopped in the middle of the document and the spy then wrote
+*that* into the URL. A mean height is a poor description of any one section and a good one of a
+hundred of them, and each jump measures more of the document, so the next estimate is better than the
+last: the same distance now closes in a handful of frames.
+
+### A heading is not a section, and the plane only renders sections
+
+Headings lifted out of `info.description` are navigation entries with no section of their own - the
+overview renders them and stamps their ids - so scrolling to one had always been the overview's own
+job. On a plane it can only do that job while it happens to be mounted, and from anywhere further
+down the document it is not: the URL changed, the sidebar moved, and the page did not, which is the
+worst of the three possible outcomes because it looks like nothing was clicked.
+
+`SectionsController.scrollTo` takes the pair instead - the section to mount, and the heading inside it
+to stop at - and the convergence loop measures the heading rather than the top of the section. A
+heading that has not rendered yet is the ordinary state for the first frames, since the prose arrives
+with the markdown pipeline, so those frames aim at the section and are not counted as quiet ones. The
+root pairs them the same way in `#scrolledId`: two headings of one section resolve to the same section
+id, and keying "already been there" on that alone made the second of them a click the plane ignored.
 
 ### Sticky is not available inside a virtualised item
 
