@@ -6,7 +6,7 @@ import { normalize } from '@scalar/openapi-parser'
 import { upgrade } from '@scalar/openapi-parser'
 
 import { resolveConfig } from '../config.js'
-import { indexNavigation, traverseDocument } from '../navigation/traverse-document.js'
+import { indexNavigation, indexPointers, traverseDocument } from '../navigation/traverse-document.js'
 import type { DocumentStore, OpenishConfig, SourceDescriptor } from '../types.js'
 
 /** Anything `bundle` accepts as a resolver. Typed loosely so callers can pass a stub in tests. */
@@ -96,6 +96,7 @@ export const createDocumentStore = async (
     raw: getRaw(specification),
     navigation,
     bySlug: indexNavigation(navigation),
+    byPointer: indexPointers(navigation),
     config,
     source,
   })

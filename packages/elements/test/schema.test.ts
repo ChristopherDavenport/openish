@@ -7,6 +7,7 @@ import {
   deepTextOf,
   disposeAll,
   mountReference,
+  openBodies,
   schemaFor,
   schemaRows,
   shadowOf,
@@ -164,6 +165,93 @@ describe('expandAllSchemaProperties', () => {
 
     expect(payload.shadowRoot!.querySelector('openish-disclosure')!.hasAttribute('open')).toBe(false)
     expect(schemaRows(payload)).toEqual([])
+  })
+
+  /*
+   * The flag means every level, and the outermost one is a level.
+   *
+   * A body collapses on arrival now, so a host that had switched this on to see whole schemas would
+   * otherwise have got a page that opened everything except the thing they were looking at.
+   */
+  it('opens a collapsed body too', async () => {
+    const harness = await mountReference({
+      path: '/tags/pets/post-pets',
+      spec: COMPOSITION_SPEC,
+      config: { expandAllSchemaProperties: true },
+    })
+    const body = shadowOf(sectionOf(harness), 'openish-request-body')
+
+    expect(schemaRows(deepQuery(body, 'openish-schema')).map((row) => row.name)).toEqual([
+      'id',
+      'name',
+      'legs',
+    ])
+  })
+})
+
+/*
+ * A named body says which shape it is and where the rest of it lives.
+ *
+ * The tree underneath is closed, so this line is the whole of what a reader sees on arrival - and it
+ * has to survive a document that has no section to point at, because `hideModels` and `x-internal`
+ * both remove one while leaving every reference to it perfectly valid.
+ */
+describe('a body naming its model', () => {
+  const bodyTree = async (config?: Record<string, unknown>): Promise<Element> => {
+    const harness = await mountReference(
+      config
+        ? { path: '/tags/pets/post-pets', spec: COMPOSITION_SPEC, config }
+        : { path: '/tags/pets/post-pets', spec: COMPOSITION_SPEC },
+    )
+    return deepQuery(shadowOf(sectionOf(harness), 'openish-request-body'), 'openish-schema')!
+  }
+
+  it('links the name to the section that documents it', async () => {
+    const link = (await bodyTree()).shadowRoot!.querySelector('.type a')
+
+    expect(textOf(link)).toBe('Pet')
+    expect(link?.getAttribute('href')).toContain('models/Pet')
+  })
+
+  it('still names it where the document has no section to link', async () => {
+    const header = (await bodyTree({ hideModels: true })).shadowRoot!.querySelector('.type')
+
+    expect(textOf(header)).toBe('Pet')
+    expect(header?.querySelector('a')).toBeNull()
+  })
+})
+
+/*
+ * A named type inside the tree goes to that type's own section.
+ *
+ * This is what stops a collapsed body being a dead end: the tree is where a reader now meets a named
+ * type, and following it is the whole reason the shape was allowed to live somewhere else.
+ */
+describe('a type naming its model', () => {
+  it('links the name and leaves the array brackets as text beside it', async () => {
+    const { schema } = await modelSchema(CYCLIC_SPEC, 'Node')
+    /* Property rows only: the first `.type` in the root is the header naming the schema itself. */
+    const types = [...schema.shadowRoot!.querySelectorAll('li .type')]
+
+    /* `parent` is `Node`, `children` is `Node[]` - the name is a link in both, the `[]` is not. */
+    expect(types.map((type) => textOf(type))).toEqual(['string', 'Node', 'Node[]'])
+    expect(types.map((type) => textOf(type.querySelector('a')))).toEqual(['', 'Node', 'Node'])
+    expect(types[2]!.querySelector('a')?.getAttribute('href')).toBe('#/models/Node')
+  })
+
+  /* Read off an operation, because `hideModels` is exactly the config with no model page to mount. */
+  it('leaves a type with no section of its own as plain text', async () => {
+    const harness = await mountReference({
+      path: '/tags/tree/get-tree',
+      spec: CYCLIC_SPEC,
+      config: { hideModels: true },
+    })
+    const responses = shadowOf(sectionOf(harness), 'openish-response-list')
+    await openBodies(harness, responses)
+    const schema = deepQuery(responses, 'openish-schema')!
+
+    expect(schema.shadowRoot!.querySelectorAll('li .type a')).toHaveLength(0)
+    expect(schemaRows(schema).map((row) => row.type)).toEqual(['string', 'Node', 'Node[]'])
   })
 })
 

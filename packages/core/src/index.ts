@@ -19,7 +19,7 @@ export {
 } from './navigation/operations.js'
 export { extractHeadings, traverseDescription } from './navigation/traverse-description.js'
 export { resolveOperationNode, type ResolvedOperation } from './navigation/resolve.js'
-export { indexNavigation, traverseDocument } from './navigation/traverse-document.js'
+export { indexNavigation, indexPointers, traverseDocument } from './navigation/traverse-document.js'
 export {
   collectParameters,
   groupParameters,
@@ -71,6 +71,33 @@ export {
   schemaTypeLabel,
   schemaTypeNames,
 } from './schema/type-label.js'
+export {
+  additionalPropertiesName,
+  collectDynamicAnchors,
+  dynamicRefName,
+  ENUM_INLINE_LIMIT,
+  enumDescriptions,
+  enumValues,
+  hasBody,
+  isUnboundAnchor,
+  orderProperties,
+  refPointer,
+  schemaConditional,
+  schemaConstraints,
+  schemaDependentSchemas,
+  schemaExamples,
+  schemaPatternProperties,
+  schemaPrefixItems,
+  schemaProperties,
+  schemaVariants,
+  unwrapArray,
+  variantLabel,
+  variantPointer,
+  type PointerResolver,
+  type SchemaConditional,
+  type SchemaProperty,
+  type SchemaVariants,
+} from './schema/read.js'
 export { resolveSources } from './sources.js'
 export {
   createDocumentStore,

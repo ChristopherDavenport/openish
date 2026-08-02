@@ -397,6 +397,18 @@ export type DocumentStore = {
   readonly raw: unknown
   readonly navigation: readonly NavNode[]
   readonly bySlug: ReadonlyMap<string, NavNode>
+  /**
+   * The same nodes keyed by JSON pointer: which section documents what a `$ref` names.
+   *
+   * `bySlug` answers "the reader asked for this URL"; this answers "the document pointed here". A
+   * schema's `$ref` string and a model node's `pointer` are written the same way, so a body that
+   * references `#/components/schemas/User` can be rendered as the name of the section that documents
+   * it rather than as a copy of it.
+   *
+   * Not every pointer has a section - `hideModels` and `x-internal` both remove one while leaving
+   * the reference valid - so a miss is an ordinary answer, not a fault.
+   */
+  readonly byPointer: ReadonlyMap<string, NavNode>
   readonly config: ResolvedOpenishConfig
   /**
    * Which of the reference's documents this is.

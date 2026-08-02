@@ -1,13 +1,14 @@
 import {
+  asSchema,
   collectParameters,
   getResolvedRef,
   resolveOperationNode,
+  schemaProperties,
+  unwrapArray,
   type DocumentStore,
   type NavNode,
   type SourceDescriptor,
 } from '@openish/core'
-
-import { asSchema, schemaProperties, unwrapArray } from '../schema/summary.js'
 
 export type SearchResult = {
   node: NavNode

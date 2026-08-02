@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
+import { COMPOSITION_SPEC, JSON_SCHEMA_SPEC } from './fixtures.js'
 import { deepQuery, deepQueryAll, disposeAll, mountReference, textOf, type Harness, sectionOf } from './helpers.js'
 
 afterEach(disposeAll)
@@ -29,9 +30,77 @@ describe('copy for LLM', () => {
 
     expect(markdown).toContain('# Get an account')
     expect(markdown).toContain('`GET /accounts/{accountId}`')
-    expect(markdown).toContain('| `accountId` | path |')
-    expect(markdown).toContain('## Responses')
+    expect(markdown).toContain('### Path')
+    expect(markdown).toContain('| `accountId` | string (uuid) | Yes |')
+    expect(markdown).toContain('## Returns')
     expect(markdown).toContain('`404` — No account with that id.')
+  })
+
+  /*
+   * The page abstracts a body: a name and a closed disclosure, because a reader arrives asking what
+   * to send rather than what shape it is. That is only honest while the complete answer is one
+   * action away, and this is the action - so what it hands over is a superset of what is on screen,
+   * not a transcript of it.
+   */
+  it('writes out the whole shape of a body the page has collapsed', async () => {
+    const harness = await mountReference({ path: '/tags/accounts/getAccount' })
+    const markdown = copyTextIn(harness)
+
+    /* Nothing on the page is showing these: the response tree arrived closed. */
+    expect(markdown).toContain('- `id` — `string` · required')
+    expect(markdown).toContain('Opaque account id.')
+  })
+
+  it('prints every branch of a oneOf, where the page shows the tab the reader is on', async () => {
+    const harness = await mountReference({ path: '/models/Payment', spec: COMPOSITION_SPEC })
+    const markdown = copyTextIn(harness)
+
+    expect(markdown).toContain('One of:')
+    expect(markdown).toContain('**Card**')
+    expect(markdown).toContain('**Transfer**')
+    /* Both shapes in full, not just the one a tab set would have had selected. */
+    expect(markdown).toContain('`card`')
+    expect(markdown).toContain('`iban`')
+  })
+
+  it('carries the value an author wrote for a field', async () => {
+    const harness = await mountReference({ path: '/models/Sample', spec: JSON_SCHEMA_SPEC })
+    const markdown = copyTextIn(harness)
+
+    expect(markdown).toContain('Example: `acc_1`')
+    /* The array spelling, one line each, and a value that is not text as JSON. */
+    expect(markdown).toContain('Example: `1`')
+    expect(markdown).toContain('Example: `2`')
+    expect(markdown).toContain('Example: `["live","archived"]`')
+  })
+
+  it('prints every enum member, where the page caps the line and hides the rest', async () => {
+    const harness = await mountReference({ path: '/models/Currency', spec: JSON_SCHEMA_SPEC })
+    const markdown = copyTextIn(harness)
+
+    /* Nine members: the constraint line stops at six and counts the remainder. */
+    for (const code of ['AUD', 'CAD', 'CHF', 'EUR', 'GBP', 'JPY', 'NZD', 'USD', 'ZAR']) {
+      expect(markdown, code).toContain(`\`${code}\``)
+    }
+  })
+
+  /*
+   * The clipboard cannot depend on what the reader happened to open.
+   *
+   * It is built from the document rather than from the DOM - `nodeToMarkdown` never sees an element -
+   * and this is the assertion that keeps it that way, because the cheapest wrong fix for a collapsed
+   * page would be to serialise what is rendered.
+   */
+  it('says the same thing whether the page is open or closed', async () => {
+    const harness = await mountReference({ path: '/tags/accounts/getAccount' })
+    const before = copyTextIn(harness)
+
+    for (const disclosure of deepQueryAll(sectionOf(harness), 'openish-disclosure')) {
+      disclosure.shadowRoot?.querySelector<HTMLButtonElement>('button')?.click()
+    }
+    await harness.settle()
+
+    expect(copyTextIn(harness)).toBe(before)
   })
 
   it('takes every operation under a tag, including ones nothing has rendered', async () => {

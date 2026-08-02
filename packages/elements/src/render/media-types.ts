@@ -58,6 +58,14 @@ export type MediaTypesOptions = {
    * here is the example itself, under a caption naming the type it is in.
    */
   pick?: string
+  /**
+   * Drop the caption naming the media type, for a caller whose own control already says it.
+   *
+   * The caption exists so a block that was picked *elsewhere* still says what it is. Where the thing
+   * that picked it is a select on the heading directly above, the caption is that select's value
+   * printed a second time.
+   */
+  hideLabel?: boolean
   /** Which shape these previews are, so a variant choice inside one can be addressed. */
   scope?: string
   /** The `oneOf`/`anyOf` branches the reader picked, for the example to honour. */
@@ -70,6 +78,11 @@ export type MediaTypesOptions = {
  * More than one media type becomes a tab set, because the alternative - stacking three renderings
  * of nearly the same schema - buries the response that follows. A single media type is just shown,
  * labelled, since a one-tab tablist is a control that cannot do anything.
+ *
+ * Every tree this builds arrives closed, named by its type. This is the one place that decision is
+ * made, and it is made here because everything downstream of it is a body: a request body, a
+ * response, a callback's request. A model's own section mounts `<openish-schema>` directly and is
+ * untouched, which is the distinction - a body is an aside about a shape, a model section *is* one.
  */
 export const renderMediaTypes = (content: unknown, label: string, options: MediaTypesOptions = {}): unknown => {
   if (!isPlainObject(content)) {
@@ -85,6 +98,7 @@ export const renderMediaTypes = (content: unknown, label: string, options: Media
     const media = getResolvedRef(raw) as MediaType | undefined
     return html`
       <openish-schema-preview
+        collapse-root
         ?no-example=${options.noExample === true}
         ?no-schema=${options.noSchema === true}
         label=${ifDefined(showLabel ? mediaType : undefined)}
@@ -105,12 +119,12 @@ export const renderMediaTypes = (content: unknown, label: string, options: Media
   if (options.pick !== undefined) {
     const name = pickMediaType(content, options.pick)
     const picked = entries.find(([mediaType]) => mediaType === name) ?? entries[0]!
-    return preview(picked[0], picked[1], true)
+    return preview(picked[0], picked[1], options.hideLabel !== true)
   }
 
   const [only] = entries
   if (entries.length === 1 && only) {
-    return preview(only[0], only[1], true)
+    return preview(only[0], only[1], options.hideLabel !== true)
   }
 
   const tabs: OpenishTab[] = entries.map(([mediaType, raw]) => ({

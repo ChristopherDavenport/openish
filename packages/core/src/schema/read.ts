@@ -4,14 +4,17 @@ import {
   refName,
   schemaTypeLabel,
   schemaTypeNames,
-} from '@openish/core'
+} from './type-label.js'
 
 /*
- * Naming a type moved to `@openish/core`, and is re-exported here so every call site is unchanged.
+ * Naming a type lives next door in `type-label.ts`, and is re-exported here so every call site can
+ * take the whole of one schema's vocabulary from one import.
  *
- * It went because `nodeToMarkdown` has to name the same types this file names, and a clipboard that
- * said `object` where the table said `Account` would be two answers to one question - which is the
- * failure the merge rule in core was written for in the first place.
+ * These readers followed it into core, and for the same reason it came: `nodeToMarkdown` has to
+ * describe the same shapes the page describes, and a clipboard that said `object` where the tree
+ * said `Account` would be two answers to one question. Copy for LLM is the complete copy of a
+ * section now that the page abstracts a body by default, so it needs every reader the page has -
+ * and it cannot import them from `@openish/elements`, which depends on this package.
  */
 export { asSchema, modelNameFromPointer, refName, schemaTypeLabel }
 
@@ -321,6 +324,32 @@ export const enumValues = (value: unknown): string[] => {
 }
 
 /**
+ * The example values a schema carries, in the order the generator would reach for them.
+ *
+ * Two spellings, because OpenAPI changed its mind: `example` is a single value and is what a 3.0
+ * document writes, `examples` is an array and is what JSON Schema 2020-12 - and therefore 3.1 - says
+ * instead. Both are read, singular first, which is the precedence `schemaExample` already applies
+ * when it builds a value out of a schema. The page and the generated example agree because they ask
+ * the same question in the same order.
+ *
+ * Not the *map* of Example Objects: on a schema that spelling is not valid and `schemaExample`
+ * ignores it, so surfacing it here would put a value on the page that the example beside it denies.
+ * The map belongs to a Media Type or a Parameter, and `mediaTypeExamples` reads it there.
+ */
+export const schemaExamples = (value: unknown): unknown[] => {
+  const schema = asSchema(value)
+  if (!schema) {
+    return []
+  }
+
+  if (schema['example'] !== undefined) {
+    return [schema['example']]
+  }
+
+  return Array.isArray(schema['examples']) ? schema['examples'] : []
+}
+
+/**
  * What each member of an `enum` means, when the document bothered to say.
  *
  * Four spellings are in the wild and generators disagree about which to emit, so all four are read:
@@ -606,6 +635,37 @@ export const schemaVariants = (value: unknown, resolve?: PointerResolver): Schem
     discriminator: typeof discriminator?.['propertyName'] === 'string' ? discriminator['propertyName'] : undefined,
     mapping: mapping.size > 0 ? mapping : undefined,
   }
+}
+
+/**
+ * The pointer one branch was reached by.
+ *
+ * A `oneOf` branch carries its own `$ref`. An inferred branch was resolved out of the document by a
+ * discriminator mapping, so its pointer travels beside it - see {@link SchemaVariants.pointers}.
+ */
+export const variantPointer = (variants: SchemaVariants, index: number): string =>
+  refPointer(variants.branches[index]) ?? variants.pointers?.[index] ?? ''
+
+/**
+ * What to call one branch, in the order a reader would recognise it.
+ *
+ * The discriminator's own word for it first - an author who wrote `mapping` named these branches on
+ * purpose - then the model it references, then whatever `title` says, and a position only when the
+ * document has offered nothing at all.
+ *
+ * Here rather than in the tab set that first needed it, because the Markdown copy prints every
+ * branch and has to call them what the page calls them. Two names for one branch is the same failure
+ * as two answers about one type.
+ */
+export const variantLabel = (variants: SchemaVariants, index: number): string => {
+  const branch = variants.branches[index]
+  const title = asSchema(branch)?.['title']
+  return (
+    variants.mapping?.get(variantPointer(variants, index)) ??
+    refName(branch) ??
+    modelNameFromPointer(variants.pointers?.[index]) ??
+    (typeof title === 'string' ? title : `Option ${index + 1}`)
+  )
 }
 
 /**

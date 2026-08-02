@@ -81,6 +81,22 @@ export class OpenishRequestBody extends LitElement {
   @property({ type: String, attribute: 'media-type' })
   mediaType = ''
 
+  /**
+   * The caller is asking the media-type question somewhere else, so do not ask it here.
+   *
+   * A tab set naming two content types was a band of chrome across the top of the body, wider and
+   * louder than the one line of it a reader ever needs. `<openish-operation>` puts a select on the
+   * `Body` heading instead - out of the reading order, at the right-hand end of a row that was
+   * already there - and sets this so the answer is not offered twice.
+   *
+   * The caption goes with the tabs, for the same reason: the select is showing the value.
+   *
+   * Off by default. A host mounting this element on its own has no such control, and would otherwise
+   * be left with a body it cannot change the media type of.
+   */
+  @property({ type: Boolean, attribute: 'no-media-tabs' })
+  noMediaTabs = false
+
   /** The `oneOf`/`anyOf` branches picked in this body's tree, for the example to honour. */
   @property({ attribute: false })
   variants: VariantChoices | undefined = undefined
@@ -110,7 +126,7 @@ export class OpenishRequestBody extends LitElement {
         : nothing}
       ${renderMediaTypes(body.content, 'Request media types', {
         noExample: this.noExample,
-        selected: this.mediaType,
+        ...(this.noMediaTabs ? { pick: this.mediaType, hideLabel: true } : { selected: this.mediaType }),
         scope: 'request',
         ...(this.variants ? { variants: this.variants } : {}),
         onSelect: (mediaType) => {

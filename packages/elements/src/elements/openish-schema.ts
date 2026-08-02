@@ -1,6 +1,5 @@
 import { consume, provide } from '@lit/context'
 import {
-  joinId,
   resolveLocalPointer,
   VARIANT_PATH_ROOT,
   variantAdditional,
@@ -22,7 +21,7 @@ import {
   type OpenishUiState,
 } from '../context/contexts.js'
 import { externalDocsStyles, renderExternalDocs } from '../render/external-docs.js'
-import { hrefFor } from '../router/urls.js'
+import { renderModelName, renderTypeLabel } from '../render/model-link.js'
 import {
   asSchema,
   hasBody,
@@ -35,21 +34,23 @@ import {
   enumDescriptions,
   enumValues,
   isUnboundAnchor,
-  modelNameFromPointer,
   orderProperties,
   schemaConditional,
   schemaConstraints,
   schemaDependentSchemas,
+  schemaExamples,
   schemaPatternProperties,
   schemaPrefixItems,
   schemaProperties,
   schemaTypeLabel,
   schemaVariants,
   unwrapArray,
+  variantLabel,
+  variantPointer,
   type SchemaProperty,
   type SchemaVariants,
-} from '../schema/summary.js'
-import { baseStyles } from '../styles/shared.js'
+} from '@openish/core'
+import { baseStyles, controlStyles, visuallyHidden } from '../styles/shared.js'
 import type { OpenishTab } from './openish-tabs.js'
 import './openish-disclosure.js'
 import './openish-markdown.js'
@@ -111,7 +112,9 @@ const sameState = (left: OpenishSchemaState, right: OpenishSchemaState | undefin
 export class OpenishSchema extends LitElement {
   static override styles = [
     baseStyles,
+    controlStyles,
     externalDocsStyles,
+    visuallyHidden,
     css`
       :host {
         display: block;
@@ -144,6 +147,73 @@ export class OpenishSchema extends LitElement {
         margin-top: var(--openish-space-3xs);
         font: var(--openish-font-micro);
         color: var(--openish-color-text-muted);
+      }
+
+      /*
+       * The examples marker: one muted word on the row, and the values over the top of it.
+       *
+       * Underlined rather than boxed, because it sits in a run of words that are not controls -
+       * required, read-only - and a button drawn like a button there would be the loudest thing on
+       * a row whose point is the field name.
+       */
+      .hint {
+        position: relative;
+        display: inline-flex;
+      }
+
+      .marker {
+        padding: 0;
+        border: 0;
+        background: none;
+        color: var(--openish-color-text-muted);
+        font: var(--openish-font-micro);
+        text-decoration: underline dotted;
+        text-underline-offset: 0.2em;
+      }
+
+      /*
+       * Above the row, so it never covers the description belonging to the field it describes.
+       *
+       * A layer, so it needs to read as one: its own surface, a border, and a shadow. Nothing pushes
+       * anything - the row is the same height whether this is showing or not, which is the whole
+       * reason the values are not simply printed.
+       */
+      .tip {
+        position: absolute;
+        bottom: calc(100% + var(--openish-space-3xs));
+        inset-inline-start: 0;
+        z-index: 1;
+        display: flex;
+        flex-direction: column;
+        gap: var(--openish-space-3xs);
+        /*
+         * Sized by the value, not by the word it hangs off.
+         *
+         * An absolutely positioned box shrinks to fit its containing block, and the containing block
+         * here is the marker - five characters wide - so a URL came out as a column one word deep.
+         */
+        width: max-content;
+        max-width: 24rem;
+        padding: var(--openish-space-2xs) var(--openish-space-xs);
+        border: 1px solid var(--openish-color-border);
+        border-radius: var(--openish-radius-md);
+        background: var(--openish-color-surface-raised);
+        box-shadow: var(--openish-shadow-md);
+        font: var(--openish-font-micro);
+        white-space: pre-wrap;
+      }
+
+      /*
+       * A class selector beats the UA rule that makes the hidden attribute mean display none, so the
+       * display above kept every tip on the page at once. Stated here rather than removed there,
+       * because the layout is the point of that rule and the attribute is the state.
+       */
+      .tip[hidden] {
+        display: none;
+      }
+
+      .tip code {
+        font-family: var(--openish-font-family-mono);
       }
 
       .recursive {
@@ -291,6 +361,24 @@ export class OpenishSchema extends LitElement {
   inlineProperties = false
 
   /**
+   * Collapse the outermost level too, instead of drawing it open.
+   *
+   * The root is the only level that never had a disclosure - every nesting below it has collapsed to
+   * `Properties · 5` since the tree was written - and the root of a tree inside an operation is
+   * exactly the body. Two whole schemas drawn open is most of what an operation weighs, and the
+   * shape is not what a reader arrives asking: they arrive asking what to send.
+   *
+   * Off by default and set per call site rather than globally, because a model's own section is the
+   * one place where the tree *is* the content. `renderMediaTypes` sets it, which covers every body,
+   * every response and every callback in one place; `<openish-model>` does not.
+   *
+   * `expandAllSchemaProperties` still wins - it means every level, and this is one - so a host that
+   * wants the old page back has the switch it already had.
+   */
+  @property({ type: Boolean, attribute: 'collapse-root' })
+  collapseRoot = false
+
+  /**
    * Which shape on the page this tree describes - `request`, or `response:404`.
    *
    * Set by whatever put the tree on the page, and passed down every nesting unchanged. Empty is a
@@ -322,6 +410,15 @@ export class OpenishSchema extends LitElement {
    */
   @state()
   private enumOpen = false
+
+  /**
+   * Which property's examples are showing, by name. Empty is none.
+   *
+   * A name rather than a boolean because one tree renders many rows and each has its own marker, and
+   * a name rather than an index because the row list is re-ordered by `orderSchemaPropertiesBy`.
+   */
+  @state()
+  private openExample = ''
 
   /** The state this element was rendered under, with `expandAll` filled in from config. */
   get #state(): OpenishSchemaState {
@@ -393,20 +490,97 @@ export class OpenishSchema extends LitElement {
     }
   }
 
-  /** The route to a model, when a `$ref` names one this document has a page for. */
-  #modelLink(target: unknown): TemplateResult | typeof nothing {
-    const name = refName(target)
-    if (!name) {
+  /**
+   * The route to the section documenting what a `$ref` names.
+   *
+   * `renderModelName` rather than an id rebuilt from the name, which is what this was: the pointer
+   * the document wrote is the join, and a guess that misses becomes plain text without saying so.
+   */
+  #modelLink(target: unknown): unknown {
+    return renderModelName(this.store, this.ui, target)
+  }
+
+  /**
+   * What this schema is, on one line above whatever it contains.
+   *
+   * `schemaTypeLabel` already answers with the model's name where there is a `$ref` to answer with,
+   * so on a body this line reads `User` and has since it was written. Linking it is what makes the
+   * collapsed tree underneath an abstraction rather than a hidden one: the name says which shape,
+   * and the section it names says the rest.
+   */
+  #renderHeader(): TemplateResult {
+    const label = schemaTypeLabel(this.schema)
+    return html`<div class="type">${renderTypeLabel(this.store, this.ui, this.schema, label)}</div>`
+  }
+
+  /**
+   * The values an author wrote for one property, on the row and out of the way.
+   *
+   * A parameter has shown its examples since the table was written and a property never had, so a
+   * document saying `example: acc_1` on a field got it into the generated JSON on the right and
+   * nowhere a reader scanning the fields would find it. Printed in the row it would be a second line
+   * under every documented field; behind a marker it costs one word and is a pointer away.
+   *
+   * **Hover is not the affordance, it is one of three.** A tooltip that only answers a mouse is
+   * unreachable from a keyboard and absent on a phone, so the marker is a button: it opens on hover,
+   * on focus, and on tap, and closes on Escape.
+   *
+   * And the values are in the button's own accessible name, not in the panel. A description that
+   * points at a hidden element resolves to nothing, and one that points at a visible element is only
+   * read once it has been opened - so a screen-reader reader would have had to know to open a thing
+   * they could not see. Naming the button with what it holds means focus alone says it, and the
+   * panel is decoration the a11y tree can skip.
+   */
+  #renderExampleMarker(name: string, schema: unknown): TemplateResult | typeof nothing {
+    const { schema: inner, isArray } = unwrapArray(schema)
+    const examples = isArray ? [...schemaExamples(schema), ...schemaExamples(inner)] : schemaExamples(inner)
+    if (examples.length === 0) {
       return nothing
     }
 
-    /* Ids are namespaced by the document they belong to, so the models section is under its slug. */
-    const node = this.store && this.store.bySlug.get(joinId(this.store.source.slug, 'models', name))
-    if (!node) {
-      return html`<code>${name}</code>`
-    }
+    /* A string as it stands, anything else as JSON - what the example block would make of it. */
+    const values = examples.map((example) => (typeof example === 'string' ? example : JSON.stringify(example)))
+    const open = this.openExample === name
 
-    return html`<a href=${hrefFor(node, this.ui)}>${name}</a>`
+    return html`
+      <span class="hint">
+        <button
+          type="button"
+          class="marker"
+          aria-expanded=${open}
+          @pointerenter=${() => {
+            this.openExample = name
+          }}
+          @pointerleave=${(event: PointerEvent) => {
+            /* A pointer leaving a button the reader tabbed to must not close what focus opened. */
+            if (this.shadowRoot?.activeElement !== event.currentTarget) {
+              this.openExample = ''
+            }
+          }}
+          @focus=${() => {
+            this.openExample = name
+          }}
+          @blur=${() => {
+            this.openExample = ''
+          }}
+          @keydown=${(event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+              this.openExample = ''
+            }
+          }}
+        >
+          <span aria-hidden="true">${values.length > 1 ? 'examples' : 'example'}</span>
+          <span class="visually-hidden">for ${name}: ${values.join(', ')}</span>
+        </button>
+        <span class="tip" aria-hidden="true" ?hidden=${!open}>
+          ${repeat(
+            values,
+            (_, index) => index,
+            (value) => html`<code>${value}</code>`,
+          )}
+        </span>
+      </span>
+    `
   }
 
   #renderFlags(value: unknown): TemplateResult | typeof nothing {
@@ -425,17 +599,24 @@ export class OpenishSchema extends LitElement {
    *
    * The nested `<openish-schema>` is what carries the description, the constraints, and the next
    * level down - so a property row has no idea how deep the thing it names goes.
+   *
+   * The type is a link where it names a model, which matters more than it did: with bodies arriving
+   * collapsed, the tree is where a reader meets a named type, and a name they cannot follow is the
+   * abstraction turning into a dead end.
    */
   #renderProperty(property: SchemaProperty): TemplateResult {
     return html`
       <li>
         <div class="head">
           <code class=${classMap({ name: true, deprecated: property.deprecated })}>${property.name}</code>
-          <span class="type">${schemaTypeLabel(property.schema)}</span>
+          <span class="type"
+            >${renderTypeLabel(this.store, this.ui, property.schema, schemaTypeLabel(property.schema))}</span
+          >
           ${property.required
             ? html`<span class="required">required</span>`
             : html`<span class="optional">optional</span>`}
           ${this.#renderFlags(property.schema)}
+          ${this.#renderExampleMarker(property.name, property.schema)}
         </div>
         ${hasBody(property.schema)
           ? html`<openish-schema
@@ -562,28 +743,17 @@ export class OpenishSchema extends LitElement {
   }
 
   #renderVariants(variants: SchemaVariants): TemplateResult {
-    /* An inferred branch is a resolved schema, so its pointer travels beside it rather than on it. */
-    const pointerAt = (branch: unknown, index: number): string =>
-      refPointer(branch) ?? variants.pointers?.[index] ?? ''
-
-    const label = (branch: unknown, index: number): string => {
-      const mapped = variants.mapping?.get(pointerAt(branch, index))
-      const title = asSchema(branch)?.['title']
-      return (
-        mapped ??
-        refName(branch) ??
-        modelNameFromPointer(variants.pointers?.[index]) ??
-        (typeof title === 'string' ? title : `Option ${index + 1}`)
-      )
-    }
-
+    /*
+     * Naming a branch is `variantLabel`, in core, because the Markdown copy prints every branch and
+     * has to call them what these tabs call them.
+     */
     const tabs: OpenishTab[] = variants.branches.map((branch, index) => ({
       id: `${index}`,
-      label: label(branch, index),
+      label: variantLabel(variants, index),
       content: () => html`
         <openish-schema
           .schema=${branch}
-          pointer=${pointerAt(branch, index)}
+          pointer=${variantPointer(variants, index)}
           scope=${this.scope}
           path=${variantBranch(this.path, variants.keyword, index)}
           inline-properties
@@ -605,10 +775,14 @@ export class OpenishSchema extends LitElement {
   }
 
   /**
-   * The property list, inline at the top of a tree and behind a disclosure below it.
+   * The property list, behind a disclosure at every level the caller has not asked to see open.
    *
    * Nothing is rendered into a closed disclosure, so the recursion stops at every branch the reader
    * has not opened. That is the whole reason `<openish-disclosure>` reports its state upward.
+   *
+   * The root used to be exempt unconditionally. It is exempt unless `collapse-root` says otherwise
+   * now, which is what lets a body arrive as its name while a model's own section still opens with
+   * its shape on the page.
    */
   #renderProperties(target: unknown, isArray: boolean): TemplateResult | typeof nothing {
     /*
@@ -650,7 +824,7 @@ export class OpenishSchema extends LitElement {
       </ul>
     `
 
-    if (this.#state.depth === 0 || this.inlineProperties) {
+    if ((this.#state.depth === 0 && !this.collapseRoot) || this.inlineProperties) {
       return list
     }
 
@@ -797,14 +971,12 @@ export class OpenishSchema extends LitElement {
     const dynamicName = dynamicRefName(target)
     if (dynamicName !== undefined) {
       return html`
-        ${this.hideHeader ? nothing : html`<div class="type">${schemaTypeLabel(this.schema)}</div>`}
+        ${this.hideHeader ? nothing : this.#renderHeader()}
         ${this.#renderDynamicRef(dynamicName)}
       `
     }
 
-    const header = this.hideHeader
-      ? nothing
-      : html`<div class="type">${schemaTypeLabel(this.schema)}</div>`
+    const header = this.hideHeader ? nothing : this.#renderHeader()
 
     /*
      * A repeat of a pointer already on the path is where a tree becomes a graph. Linking to the

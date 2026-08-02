@@ -1,9 +1,8 @@
-import { groupParameters, type ParameterEntry, type ParameterLocation } from '@openish/core'
+import { groupParameters, schemaTypeLabel, type ParameterEntry, type ParameterLocation } from '@openish/core'
 import { LitElement, html, css, nothing, type TemplateResult } from 'lit'
 import { customElement, property } from 'lit/decorators.js'
 import { repeat } from 'lit/directives/repeat.js'
 
-import { schemaTypeLabel } from '../schema/summary.js'
 import { baseStyles, controlStyles, rowStyles } from '../styles/shared.js'
 
 const HEADINGS: Record<ParameterLocation, string> = {

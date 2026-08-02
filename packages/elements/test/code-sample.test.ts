@@ -1,7 +1,16 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
 import '../src/index.js'
-import { deepQuery, deepTextOf, disposeAll, mountReference, shadowOf, textOf, sectionOf } from './helpers.js'
+import {
+  deepQuery,
+  deepTextOf,
+  disposeAll,
+  mountReference,
+  pickContentType,
+  shadowOf,
+  textOf,
+  sectionOf,
+} from './helpers.js'
 
 afterEach(() => {
   disposeAll()
@@ -130,19 +139,14 @@ describe('code samples', () => {
   })
 
   /*
-   * The tab and the sample are two halves of one answer. Picking a media type on the left used to
-   * change the schema there and nothing else, so the reader read `application/xml` and copied a
+   * The picker and the sample are two halves of one answer. Choosing a media type on the left used
+   * to change the schema there and nothing else, so the reader read `application/xml` and copied a
    * curl that sent JSON under an `application/xml` header.
    */
-  it('follows the media type the request body tabs are showing', async () => {
+  it('follows the content type the Body heading is set to', async () => {
     const harness = await settledSample('/tags/accounts/replaceAccount')
-    const body = deepQuery(sectionOf(harness.element), 'openish-request-body')!
-    const tabs = deepQuery(body.shadowRoot!, 'openish-tabs')!
 
-    const xml = [...tabs.shadowRoot!.querySelectorAll<HTMLButtonElement>('button[role="tab"]')].find(
-      (tab) => textOf(tab) === 'application/xml',
-    )!
-    xml.click()
+    await pickContentType(harness, 'request', 'application/xml')
     await new Promise((resolve) => setTimeout(resolve, 200))
     await harness.settle()
 
