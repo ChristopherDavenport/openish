@@ -270,6 +270,56 @@ export const methodStyles = css`
 `
 
 /**
+ * The pill that says one short word about the thing beside it.
+ *
+ * Four elements had grown their own copy of the same three declarations before this existed, and a
+ * fifth was about to: the chip on every field row saying where a value travels. The tones are the
+ * semantics `operationBadges` already returns, so a `Deprecated` badge and an `x-badges` one cannot
+ * drift, and a neutral badge is the default because most badges are only a word.
+ *
+ * Shaped after Jack Henry's `jh-tag` rather than after the method chip above: pill radius, the
+ * neutral container, and no `text-transform`. JH's content guidance is sentence case, with all
+ * capitals reserved for initialisms - which is exactly why the method chip keeps its uppercase and
+ * this does not. `GET` is spelled that way by the protocol; `query` is not.
+ */
+export const badgeStyles = css`
+  .badge {
+    display: inline-block;
+    flex: none;
+    padding: 0 var(--openish-space-xs);
+    border-radius: var(--openish-radius-pill);
+    background: var(--openish-color-surface-muted);
+    color: var(--openish-color-text-muted);
+    font: var(--openish-font-small-bold);
+  }
+
+  .badge[data-tone='danger'] {
+    background: var(--openish-color-danger-surface);
+    color: var(--openish-color-danger);
+  }
+
+  .badge[data-tone='success'] {
+    background: var(--openish-color-success-surface);
+    color: var(--openish-color-success);
+  }
+
+  .badge[data-tone='info'] {
+    background: var(--openish-color-info-surface);
+    color: var(--openish-color-info);
+  }
+
+  /*
+   * Forced colors throws the fill away and leaves the pill shapeless, floating in the row as if it
+   * were part of it. The same border the method chip grows, for the same reason.
+   */
+  @media (forced-colors: active) {
+    .badge {
+      border: 1px solid currentColor;
+    }
+  }
+`
+
+/**
  * Loading, failure, and not-found messages.
  *
  * Shared because the same three states are rendered from two places: the root, while the document

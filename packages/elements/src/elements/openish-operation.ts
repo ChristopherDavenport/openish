@@ -6,6 +6,7 @@ import {
   operationBadges,
   operationServer,
   resolveOperationNode,
+  schemaTypeLabel,
   securityRequirements,
   variantKey,
   type DocumentStore,
@@ -24,8 +25,10 @@ import { documentContext, uiContext, type OpenishUiState } from '../context/cont
 import { externalDocsStyles, renderExternalDocs } from '../render/external-docs.js'
 import { heading } from '../render/heading.js'
 import { hasRenderableContent } from '../render/media-types.js'
-import { shownResponseContent, shownResponseMediaType } from '../render/responses.js'
+import { renderTypeLabel } from '../render/model-link.js'
+import { pickMediaType, responseMediaTypes, shownResponseMediaType } from '../render/responses.js'
 import {
+  badgeStyles,
   baseStyles,
   controlStyles,
   methodStyles,
@@ -58,6 +61,7 @@ import type { OpenishVariantChange } from './openish-schema.js'
 @customElement('openish-operation')
 export class OpenishOperation extends LitElement {
   static override styles = [
+    badgeStyles,
     baseStyles,
     externalDocsStyles,
     controlStyles,
@@ -229,25 +233,7 @@ export class OpenishOperation extends LitElement {
       }
 
       /*
-       * The body is one more group of inputs, so it is titled like the others.
-       *
-       * Path, Query and Header are written by openish-parameters inside its own shadow root; this
-       * matches that rule rather than inventing a second weight for a heading standing beside them.
-       * Both take a level one below the section holding them, so the outline says what the layout
-       * says - these were h3s under an h4 section, which read as groups outranking their own section.
-       */
-      .group {
-        font: var(--openish-font-heading-3);
-        margin: var(--openish-space-lg) 0 var(--openish-space-xs);
-      }
-
-      /* Nothing above it but the section's own title, which brought its own space. */
-      .section-title + [part~='body-section'] .heading-row .group {
-        margin-top: 0;
-      }
-
-      /*
-       * A heading, and the one control that acts on everything under it.
+       * A heading, what the section is about, and the one control that acts on it.
        *
        * The same arrangement the operation's own title has with Copy for LLM, for the same reason:
        * the control belongs to the section rather than to any block inside it, and a reader going
@@ -259,7 +245,7 @@ export class OpenishOperation extends LitElement {
       .heading-row {
         display: flex;
         align-items: baseline;
-        justify-content: space-between;
+        flex-wrap: wrap;
         gap: var(--openish-space-md);
       }
 
@@ -267,9 +253,49 @@ export class OpenishOperation extends LitElement {
         min-width: 0;
       }
 
-      /* The row gives way first; a content type has nothing to gain from being half shown. */
+      /*
+       * The picker is pushed to the end rather than the row being spaced apart.
+       *
+       * Parameters has three things on it now - the heading, what the body is, and the control -
+       * and space-between would have put the middle one in the middle of the column, a long way
+       * from either thing it belongs to. Pushed, the body's identity sits beside its own heading and
+       * the control stays at the end where a reader working down the left edge never meets it.
+       */
       .media-picker {
         flex: none;
+        margin-left: auto;
+      }
+
+      /*
+       * What the body is, beside the heading of the section its rows are in.
+       *
+       * Gapped like the row above it and set in the row's own small type, because it is a caption
+       * rather than a second heading - the thing this change removed was a heading, and putting one
+       * back in a smaller size would be the same mistake with better manners.
+       */
+      .body-identity {
+        display: flex;
+        align-items: baseline;
+        flex-wrap: wrap;
+        gap: var(--openish-space-xs);
+        margin: 0 0 var(--openish-space-sm);
+        min-width: 0;
+      }
+
+      .body-identity .type {
+        font: var(--openish-font-code-small);
+        color: var(--openish-color-text-muted);
+        overflow-wrap: anywhere;
+      }
+
+      .body-identity .required {
+        color: var(--openish-color-danger);
+        font: var(--openish-font-micro);
+      }
+
+      .body-identity .optional {
+        color: var(--openish-color-text-muted);
+        font: var(--openish-font-micro);
       }
 
       /*
@@ -284,29 +310,6 @@ export class OpenishOperation extends LitElement {
       .media-picker select {
         background: var(--openish-color-surface);
         color: var(--openish-color-text-muted);
-      }
-
-      .badge {
-        padding: 0 var(--openish-space-xs);
-        border-radius: var(--openish-radius-pill);
-        background: var(--openish-color-surface-muted);
-        color: var(--openish-color-text-muted);
-        font: var(--openish-font-micro);
-      }
-
-      .badge[data-tone='danger'] {
-        background: var(--openish-color-danger-surface);
-        color: var(--openish-color-danger);
-      }
-
-      .badge[data-tone='success'] {
-        background: var(--openish-color-success-surface);
-        color: var(--openish-color-success);
-      }
-
-      .badge[data-tone='info'] {
-        background: var(--openish-color-info-surface);
-        color: var(--openish-color-info);
       }
 
       section {
@@ -410,12 +413,15 @@ export class OpenishOperation extends LitElement {
   private requestMediaType = ''
 
   /**
-   * Which response the reader is on, and in which media type.
+   * Which response the examples column is showing, and in which media type.
    *
-   * Held for the same reason as the request's: the documentation column and the examples column each
-   * showed the status, and moving one left the other behind - a schema for the `200` beside an
-   * example of the `404`. The examples column now offers nothing but the status, and that status is
-   * this one.
+   * It was held here because both columns showed the status and moving one left the other behind.
+   * Only the examples column has a selection now, and this still lives on the operation for a
+   * different reason: `#accept()` turns it into the `Accept` on the code sample, and the examples
+   * column cannot reach the sample beside it.
+   *
+   * The media type is still one answer for both columns - the question is put once, on the `Returns`
+   * heading, and a response that does not declare the chosen type falls back to its own first.
    */
   @state()
   private responseStatus = ''
@@ -539,14 +545,60 @@ export class OpenishOperation extends LitElement {
    * The `id` is scoped by `kind`, because a body and a response can both have one on the same page
    * and a `<label for>` matching two controls labels neither.
    */
+  /**
+   * What the body is, said once on the section's own heading row.
+   *
+   * The body used to have a heading of its own and, under it, a type line reading `object` over a
+   * disclosure that already said "Properties". Its members are rows in the list below now, so
+   * neither survives - but two facts they carried have nowhere else to go, and both are worth
+   * keeping: which shape this is, and whether it has to be sent at all.
+   *
+   * The type is a **link**, and that is the point of putting it here rather than dropping it.
+   * `renderTypeLabel` is the only route from a body to the section documenting it, and with the
+   * root object no longer drawn there is no other line to hang it on. A bare `object` is suppressed:
+   * it names nothing, and standing over a list of that object's own properties it says less than
+   * nothing.
+   *
+   * Whether the body is required stays in words rather than being left to a missing marker - it is
+   * the single most consequential fact on the page after the URL, and the rows below no longer print
+   * `optional` for anything.
+   *
+   * The chip is what ties all three to the body rather than to the parameters beside them: it is the
+   * same chip every promoted row wears, in the same column of meaning.
+   */
+  #renderBodyIdentity(requestBody: unknown, content: unknown): TemplateResult | typeof nothing {
+    const body = getResolvedRef(requestBody) as { required?: boolean } | undefined
+    if (!body) {
+      return nothing
+    }
+
+    const picked = pickMediaType(content, this.requestMediaType)
+    const media =
+      content !== null && typeof content === 'object'
+        ? ((content as Record<string, unknown>)[picked ?? ''] as { schema?: unknown } | undefined)
+        : undefined
+    const label = schemaTypeLabel(media?.schema)
+
+    return html`
+      <p class="body-identity">
+        <span class="badge" data-where="body">body</span>
+        ${label !== '' && label !== 'object'
+          ? html`<span class="type">${renderTypeLabel(this.store, this.ui, media?.schema, label)}</span>`
+          : nothing}
+        ${body.required === true
+          ? html`<span class="required">required</span>`
+          : html`<span class="optional">optional</span>`}
+      </p>
+    `
+  }
+
   #renderMediaPicker(
     kind: string,
-    content: unknown,
+    types: readonly string[],
     selected: string,
     label: string,
     onChange: (mediaType: string) => void,
   ): TemplateResult | typeof nothing {
-    const types = content !== null && typeof content === 'object' ? Object.keys(content) : []
     if (types.length < 2) {
       return nothing
     }
@@ -735,28 +787,26 @@ export class OpenishOperation extends LitElement {
           ${parameters.length > 0 || operation?.requestBody
             ? html`
                 <section part="parameters-section">
-                  ${heading(this.level + 1, 'Parameters', { 'section-title': true })}
+                  <div class="heading-row">
+                    ${heading(this.level + 1, 'Parameters', { 'section-title': true })}
+                    ${this.#renderBodyIdentity(operation?.requestBody, bodyContent)}
+                    ${this.#renderMediaPicker(
+                      'request',
+                      bodyContent !== null && typeof bodyContent === 'object' ? Object.keys(bodyContent) : [],
+                      this.requestMediaType,
+                      'Request body content type',
+                      this.#pickRequestMediaType,
+                    )}
+                  </div>
                   ${parameters.length > 0
-                    ? html`<openish-parameters
-                        .parameters=${parameters}
-                        .level=${this.level + 2}
-                      ></openish-parameters>`
+                    ? html`<openish-parameters .parameters=${parameters}></openish-parameters>`
                     : nothing}
                   ${operation?.requestBody
                     ? html`
                         <div part="body-section">
-                          <div class="heading-row">
-                            ${heading(this.level + 2, 'Body', { group: true })}
-                            ${this.#renderMediaPicker(
-                              'request',
-                              bodyContent,
-                              this.requestMediaType,
-                              'Request content type',
-                              this.#pickRequestMediaType,
-                            )}
-                          </div>
                           <openish-request-body
                             no-media-tabs
+                            ?continues-list=${parameters.length > 0}
                             ?no-example=${tryIt || payload !== undefined}
                             media-type=${this.requestMediaType}
                             .requestBody=${operation.requestBody}
@@ -776,21 +826,27 @@ export class OpenishOperation extends LitElement {
                     ${heading(this.level + 1, 'Returns', { 'section-title': true })}
                     ${this.#renderMediaPicker(
                       'response',
-                      shownResponseContent(operation.responses, this.responseStatus),
+                      responseMediaTypes(operation.responses),
                       this.responseMediaType,
                       'Response content type',
                       this.#pickResponseMediaType,
                     )}
                   </div>
                   <slot name="response-start"></slot>
+                  <!--
+                    No status here, and nothing reported back.
+
+                    The documentation column shows every status at once, so it has no selection to
+                    keep in step with the examples column - which is the whole point of the change,
+                    and the reason the two are allowed to disagree. The tab set over the examples
+                    stays the one place a status is chosen.
+                  -->
                   <openish-response-list
                     no-example
                     no-media-tabs
-                    status=${this.responseStatus}
                     media-type=${this.responseMediaType}
                     .responses=${operation.responses}
                     .variants=${this.variants}
-                    @openish-status-change=${this.#onStatus}
                     @openish-variant-change=${this.#onVariant}
                   ></openish-response-list>
                   <slot name="response-end"></slot>

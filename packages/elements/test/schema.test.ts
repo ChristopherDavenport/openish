@@ -1,13 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
 import '../src/index.js'
-import { COMPOSITION_SPEC, CYCLIC_SPEC, SCALAR_REGRESSIONS_SPEC } from './fixtures.js'
+import { VARIANTS_SPEC, COMPOSITION_SPEC, CYCLIC_SPEC, SCALAR_REGRESSIONS_SPEC } from './fixtures.js'
 import {
   deepQuery,
   deepTextOf,
   disposeAll,
   mountReference,
-  openBodies,
   schemaFor,
   schemaRows,
   shadowOf,
@@ -44,8 +43,8 @@ describe('recursion', () => {
 
     expect(schemaRows(schema)).toEqual([
       { name: 'id', type: 'string', required: 'required' },
-      { name: 'parent', type: 'Node', required: 'optional' },
-      { name: 'children', type: 'Node[]', required: 'optional' },
+      { name: 'parent', type: 'Node', required: '' },
+      { name: 'children', type: 'Node[]', required: '' },
     ])
   })
 
@@ -75,7 +74,7 @@ describe('recursion', () => {
     disclosure.shadowRoot!.querySelector('button')!.click()
     await harness.settle()
 
-    expect(schemaRows(left)).toEqual([{ name: 'back', type: 'Pair', required: 'optional' }])
+    expect(schemaRows(left)).toEqual([{ name: 'back', type: 'Pair', required: '' }])
 
     /* Other -> Pair is, so it stops. */
     const back = schemaFor(left, 'back')!
@@ -109,8 +108,8 @@ describe('composition', () => {
 
     expect(schemaRows(schema)).toEqual([
       { name: 'id', type: 'string (uuid)', required: 'required' },
-      { name: 'name', type: 'string', required: 'optional' },
-      { name: 'legs', type: 'integer', required: 'optional' },
+      { name: 'name', type: 'string', required: '' },
+      { name: 'legs', type: 'integer', required: '' },
     ])
     /* `required` came from one branch and the property from another; the merge keeps both. */
     expect(deepTextOf(schema.shadowRoot!)).toContain('What to call it.')
@@ -192,32 +191,58 @@ describe('expandAllSchemaProperties', () => {
 /*
  * A named body says which shape it is and where the rest of it lives.
  *
- * The tree underneath is closed, so this line is the whole of what a reader sees on arrival - and it
- * has to survive a document that has no section to point at, because `hideModels` and `x-internal`
- * both remove one while leaving every reference to it perfectly valid.
+ * The body's members are rows in the list of inputs now, so the shape has no row of its own to be
+ * named on - the name sits on the section's heading row instead, beside the chip that says which
+ * rows it is about. It is the only route from a body to the section documenting it, and it has to
+ * survive a document that has no such section: `hideModels` and `x-internal` both remove one while
+ * leaving every reference to it perfectly valid.
  */
 describe('a body naming its model', () => {
-  const bodyTree = async (config?: Record<string, unknown>): Promise<Element> => {
+  const bodyIdentity = async (config?: Record<string, unknown>): Promise<Element> => {
     const harness = await mountReference(
       config
         ? { path: '/tags/pets/post-pets', spec: COMPOSITION_SPEC, config }
         : { path: '/tags/pets/post-pets', spec: COMPOSITION_SPEC },
     )
-    return deepQuery(shadowOf(sectionOf(harness), 'openish-request-body'), 'openish-schema')!
+    return shadowOf(sectionOf(harness), 'openish-operation').querySelector('.body-identity')!
   }
 
   it('links the name to the section that documents it', async () => {
-    const link = (await bodyTree()).shadowRoot!.querySelector('.type a')
+    const link = (await bodyIdentity()).querySelector('.type a')
 
     expect(textOf(link)).toBe('Pet')
     expect(link?.getAttribute('href')).toContain('models/Pet')
   })
 
   it('still names it where the document has no section to link', async () => {
-    const header = (await bodyTree({ hideModels: true })).shadowRoot!.querySelector('.type')
+    const type = (await bodyIdentity({ hideModels: true })).querySelector('.type')
 
-    expect(textOf(header)).toBe('Pet')
-    expect(header?.querySelector('a')).toBeNull()
+    expect(textOf(type)).toBe('Pet')
+    expect(type?.querySelector('a')).toBeNull()
+  })
+})
+
+/*
+ * A response names its shape too, and for the same reason.
+ *
+ * The request body says it on the section's heading row; a response is one row in a list of
+ * statuses and has no heading, so it says it inside the region its row opens. Both exist for the
+ * link: with the root object rendered as rows rather than as a named tree, this is the only route
+ * from a payload to the section documenting it.
+ */
+describe('a response naming its model', () => {
+  it('names the shape it answers with, and links it', async () => {
+    const harness = await mountReference({ path: '/tags/pets/createPet', spec: VARIANTS_SPEC })
+    await harness.settle()
+    const responses = shadowOf(sectionOf(harness), 'openish-response-list')
+
+    const identity = responses.querySelector('.payload-identity')
+    expect(identity, 'the open status has no payload identity').not.toBeNull()
+    expect(textOf(identity!.querySelector('.badge[data-where]'))).toBe('body')
+
+    const link = identity!.querySelector('.type a')
+    expect(textOf(link)).toBe('Pet')
+    expect(link?.getAttribute('href')).toContain('models/Pet')
   })
 })
 
@@ -247,7 +272,6 @@ describe('a type naming its model', () => {
       config: { hideModels: true },
     })
     const responses = shadowOf(sectionOf(harness), 'openish-response-list')
-    await openBodies(harness, responses)
     const schema = deepQuery(responses, 'openish-schema')!
 
     expect(schema.shadowRoot!.querySelectorAll('li .type a')).toHaveLength(0)
@@ -266,7 +290,7 @@ describe('shapes Scalar gets wrong', () => {
     /* One row per field, once each. The base contributed `petType` and kept it required. */
     expect(schemaRows(schema)).toEqual([
       { name: 'petType', type: 'string', required: 'required' },
-      { name: 'huntingSkill', type: 'string', required: 'optional' },
+      { name: 'huntingSkill', type: 'string', required: '' },
     ])
     /* The base is merged, not offered as a variant: a discriminator alone is not a choice. */
     expect(deepQuery(schema.shadowRoot!, 'openish-tabs')).toBeNull()
@@ -323,7 +347,7 @@ describe('the model page', () => {
 
     expect(schemaRows(model.querySelector('openish-schema'))).toEqual([
       { name: 'id', type: 'string', required: 'required' },
-      { name: 'balance', type: 'integer', required: 'optional' },
+      { name: 'balance', type: 'integer', required: '' },
     ])
     expect(deepTextOf(model)).toContain('Opaque account id.')
   })

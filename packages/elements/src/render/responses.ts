@@ -75,11 +75,37 @@ export const pickMediaType = (content: unknown, preferred: string): string | und
 }
 
 /**
+ * Every media type any response declares, in first-seen order.
+ *
+ * The picker beside the `Returns` heading used to offer the types of whichever response was
+ * *showing*, which was a coherent question while the documentation column had a selected status.
+ * It shows every status at once now, so there is no "the response showing" for the picker to ask
+ * about, and the union is the only honest answer.
+ *
+ * Offering a type one status does not declare is already handled and always was: `renderMediaTypes`'
+ * `pick` falls back to a response's own first, which is what a `404` that is only ever JSON has
+ * always got when the reader chose XML for its neighbours.
+ */
+export const responseMediaTypes = (responses: unknown): string[] => {
+  const types: string[] = []
+  for (const [, raw] of responseEntries(responses, { withContentOnly: true })) {
+    const content = (getResolvedRef(raw) as { content?: unknown } | undefined)?.content
+    if (isPlainObject(content)) {
+      for (const type of Object.keys(content)) {
+        if (!types.includes(type)) {
+          types.push(type)
+        }
+      }
+    }
+  }
+  return types
+}
+
+/**
  * The `content` of the response the section is showing, whichever status that is.
  *
- * Two things ask it. The sample's `Accept` needs the media type inside it, and the picker beside the
- * `Returns` heading needs the whole map - it offers the types *this* response declares, because a
- * `404` that is only ever JSON must not be offered the XML its neighbour has.
+ * The sample's `Accept` needs the media type inside it - which is the only caller left, now that
+ * the picker asks `responseMediaTypes` instead.
  */
 export const shownResponseContent = (responses: unknown, status: string): unknown => {
   const entries = responseEntries(responses, { withContentOnly: true })

@@ -137,13 +137,24 @@ export class OpenishSchemaPreview extends LitElement {
   noSchema = false
 
   /**
-   * Let the tree arrive closed. Passed straight through to `<openish-schema>`; see the note there.
+   * Skip the tree's own type line. Passed straight through to `<openish-schema>`.
    *
-   * Off by default because this element is usable on its own and a host mounting one has asked to
-   * see a schema. `renderMediaTypes` sets it, which is every body and every response on an operation.
+   * `renderMediaTypes` sets it, which is every body and every response on an operation: the shape a
+   * body is gets named on the section's heading row instead, where the reader meets it before the
+   * rows rather than between them.
    */
-  @property({ type: Boolean, attribute: 'collapse-root' })
-  collapseRoot = false
+  @property({ type: Boolean, attribute: 'hide-header' })
+  hideHeader = false
+
+  /**
+   * The chip every row of this tree wears. Passed straight through; see the note on `<openish-schema>`.
+   */
+  @property({ type: String })
+  where = ''
+
+  /** These rows continue a list begun in another element. Passed straight through. */
+  @property({ type: Boolean, attribute: 'continues-list' })
+  continuesList = false
 
   /** Which example the reader picked. Clamped rather than reset - see `#chosen`. */
   @state()
@@ -243,7 +254,10 @@ export class OpenishSchemaPreview extends LitElement {
       ${this.schema === undefined || this.noSchema
         ? nothing
         : html`<openish-schema
-            ?collapse-root=${this.collapseRoot}
+            .variants=${this.variants}
+            ?hide-header=${this.hideHeader}
+            ?continues-list=${this.continuesList}
+            where=${this.where}
             .schema=${this.schema}
             scope=${this.scope}
           ></openish-schema>`}

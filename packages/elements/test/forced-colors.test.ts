@@ -73,6 +73,27 @@ describe('forced colors', () => {
     expect(Number.parseFloat(style.borderTopWidth)).toBeGreaterThan(0)
   })
 
+  /*
+   * The same loss as the method chip, one row further down.
+   *
+   * Where a value travels is a neutral pill, so forced colors throws its fill away entirely and
+   * leaves the word floating in the row as if it were part of the field name beside it. On a list
+   * whose group boundaries are carried by a run of pills rather than by headings, that is not a
+   * cosmetic loss.
+   */
+  it('keeps the where-chip a chip once its fill is thrown away', async () => {
+    const harness = await mountReference({ path: '/tags/accounts/getAccount' })
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    await harness.settle()
+
+    const chip = deepQuery(harness.element.shadowRoot!, '.badge[data-where]')
+    expect(chip).not.toBeNull()
+
+    const style = computed(harness, chip!)
+    expect(style.borderTopStyle).toBe('solid')
+    expect(Number.parseFloat(style.borderTopWidth)).toBeGreaterThan(0)
+  })
+
   it('marks the page the reader is on, which the selected fill no longer can', async () => {
     const harness = await mountReference({ path: '/tags/accounts' })
     await harness.settle()

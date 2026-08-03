@@ -141,6 +141,7 @@
   --openish-font-body: var(--jh-font-body-regular-1);
   --openish-font-body-bold: var(--jh-font-body-bold-1);
   --openish-font-small: var(--jh-font-helper-regular);
+  --openish-font-small-bold: var(--jh-font-helper-bold);
   --openish-font-micro: var(--jh-font-micro-regular);
   --openish-font-code: var(--jh-font-code-regular-1);
   --openish-font-code-small: var(--jh-font-code-regular-2);

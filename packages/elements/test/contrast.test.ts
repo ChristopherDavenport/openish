@@ -130,6 +130,14 @@ const TEXT_PAIRS: Array<[string, string]> = [
   ['--openish-color-text', '--openish-color-surface-raised'],
   ['--openish-color-text-muted', '--openish-color-page'],
   ['--openish-color-text-muted', '--openish-color-surface'],
+  /*
+   * The pill's own pair, and it was never measured.
+   *
+   * It was already load-bearing - an operation's badges and the overview's version chip both sit on
+   * it - and every field row on the page wears one now, saying where the value travels. That is the
+   * one word telling a query parameter from a body field, so it has to be readable.
+   */
+  ['--openish-color-text-muted', '--openish-color-surface-muted'],
   ['--openish-color-link', '--openish-color-page'],
   ['--openish-color-accent', '--openish-color-surface-selected'],
   ['--openish-color-danger', '--openish-color-page'],

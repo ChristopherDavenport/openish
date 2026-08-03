@@ -68,6 +68,14 @@ export type MediaTypesOptions = {
   hideLabel?: boolean
   /** Which shape these previews are, so a variant choice inside one can be addressed. */
   scope?: string
+  /**
+   * These rows continue a list that began in another element - the parameters beside a body.
+   *
+   * Passed straight through to the tree, which is the only thing that can act on it: a first row
+   * draws no rule, and whether this row is really first is a fact about the page rather than about
+   * the list it is in.
+   */
+  continuesList?: boolean
   /** The `oneOf`/`anyOf` branches the reader picked, for the example to honour. */
   variants?: VariantChoices
 }
@@ -79,10 +87,19 @@ export type MediaTypesOptions = {
  * of nearly the same schema - buries the response that follows. A single media type is just shown,
  * labelled, since a one-tab tablist is a control that cannot do anything.
  *
- * Every tree this builds arrives closed, named by its type. This is the one place that decision is
- * made, and it is made here because everything downstream of it is a body: a request body, a
- * response, a callback's request. A model's own section mounts `<openish-schema>` directly and is
- * untouched, which is the distinction - a body is an aside about a shape, a model section *is* one.
+ * **Every tree this builds shows its first level, badged `body`, with its own type line suppressed.**
+ * This is the one place that decision is made, and it is made here because everything downstream of
+ * it is a body: a request body, a response, a callback's request. So `where` is a fact about this
+ * function rather than an option it takes, and the caller writes the caption that names the shape.
+ *
+ * The trees used to arrive *closed*, which is what this reverses. The argument for closing them was
+ * page weight, and the weight was real - but it was recursive: a level of `<openish-schema>` costs a
+ * context provider and an update cycle per property, and it was levels all the way down that made an
+ * operation expensive. One level is bounded per object, and it is the level a reader arrived asking
+ * about. Everything below it is still a disclosure, so the recursion still stops where nobody looked.
+ *
+ * A model's own section mounts `<openish-schema>` directly and is untouched, which is the
+ * distinction - a body is an aside about a shape, a model section *is* one.
  */
 export const renderMediaTypes = (content: unknown, label: string, options: MediaTypesOptions = {}): unknown => {
   if (!isPlainObject(content)) {
@@ -98,7 +115,9 @@ export const renderMediaTypes = (content: unknown, label: string, options: Media
     const media = getResolvedRef(raw) as MediaType | undefined
     return html`
       <openish-schema-preview
-        collapse-root
+        hide-header
+        where="body"
+        ?continues-list=${options.continuesList === true}
         ?no-example=${options.noExample === true}
         ?no-schema=${options.noSchema === true}
         label=${ifDefined(showLabel ? mediaType : undefined)}
