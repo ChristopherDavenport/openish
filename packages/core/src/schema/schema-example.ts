@@ -1,4 +1,5 @@
 import { getResolvedRef, isRefObject } from '../ref.js'
+import { modelNameFromPointer } from './type-label.js'
 import {
   VARIANT_PATH_ROOT,
   variantAdditional,
@@ -39,6 +40,26 @@ export type SchemaExampleOptions = {
 }
 
 const DEFAULT_MAX_DEPTH = 12
+
+/**
+ * What an example puts where it stopped.
+ *
+ * Both places this walker gives up - the depth backstop and a `$ref` that has come round again -
+ * used to emit `null`, which is a value the document might genuinely have meant. So the sample a
+ * reader copies into curl said `"parent": null` for a field that is never null, and there was no way
+ * to tell the two apart from the outside.
+ *
+ * A string, because the output has to stay valid JSON and paste into a request unchanged. An
+ * ellipsis is not a value any document means literally, and it is the same word the property tree
+ * uses at the same two places - "Recursive - see Account", "Nested too deeply to show here".
+ */
+export const ELIDED = '…'
+
+/** The ellipsis, carrying the name of what was cut where a pointer knows it. */
+const elidedRef = (ref: string): string => {
+  const name = modelNameFromPointer(ref)
+  return name === undefined ? ELIDED : `${ELIDED} (${name})`
+}
 
 /** Placeholder values by `format`, then by `type`. Recognisable as samples, not real data. */
 const FORMAT_SAMPLES: Record<string, string> = {
@@ -166,20 +187,30 @@ export const schemaExample = (schema: unknown, options: SchemaExampleOptions = {
     path: string,
   ): unknown => {
     if (depth >= maxDepth) {
-      return null
+      return ELIDED
     }
 
     let refs = seenRefs
     if (isRefObject(input)) {
       if (refs.has(input.$ref)) {
-        return null
+        return elidedRef(input.$ref)
       }
       refs = new Set(refs).add(input.$ref)
     }
 
     const resolved = getResolvedRef(input)
 
-    if (!isPlainObject(resolved) || seenObjects.has(resolved)) {
+    /*
+     * The third way round: a YAML anchor shares one object between two places with no `$ref` to
+     * name, so the identity guard is what catches it. Elided rather than null for the same reason
+     * the other two are - it is the walker stopping, not the document saying "nothing here".
+     */
+    if (seenObjects.has(resolved as object)) {
+      return ELIDED
+    }
+
+    /* Genuinely nothing to build from: not a schema, so there is no example of it. */
+    if (!isPlainObject(resolved)) {
       return null
     }
 

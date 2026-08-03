@@ -29,7 +29,7 @@ import {
   type OpenishUiState,
 } from '../context/contexts.js'
 import { AuthController } from '../controllers/auth.js'
-import { MediaQueryController } from '../controllers/media-query.js'
+import { ElementWidthController } from '../controllers/element-width.js'
 import { RoutingController } from '../controllers/routing.js'
 import { SectionsController } from '../controllers/sections.js'
 import { ServerChoiceController } from '../controllers/server-choice.js'
@@ -94,7 +94,7 @@ export class OpenishApiReference extends LitElement {
       }
 
       /*
-       * One column, whether because the viewport is narrow or because the host asked for it.
+       * One column, whether because the element is narrow or because the host asked for it.
        *
        * A flex column rather than a grid: the number of children changes when the disclosure opens,
        * and a grid with a fixed row list either runs out of rows or has to be told about the extra
@@ -112,6 +112,19 @@ export class OpenishApiReference extends LitElement {
 
       main {
         overflow-y: auto;
+        /*
+         * Stated, because the default is not what it looks like: a box that scrolls vertically and
+         * says nothing about x computes x to auto as well. So one long line anywhere in
+         * the document - a deep property tree, a pattern with no spaces in it - did not overflow its
+         * own column, it put a horizontal scrollbar under the entire page and moved the sidebar off
+         * the side of it.
+         *
+         * The things that legitimately need to scroll sideways carry their own scroller and their
+         * own focus ring: a table wraps one, a code block wraps one. This is the backstop for
+         * everything that should have wrapped instead, and the layout test says it is never load
+         * bearing.
+         */
+        overflow-x: hidden;
         /*
          * Explicit, so a host's own smooth-scroll rule cannot turn every correction the virtualiser
          * makes while it converges on a deep link into an animation it then chases.
@@ -141,10 +154,19 @@ export class OpenishApiReference extends LitElement {
        * wide as the plane, and the shared column tracks would land somewhere different on every one
        * of them. The sidebar paid for this once already; see the same rule on its rows.
        */
+      /*
+       * The gutter is narrower than the space between sections, and deliberately.
+       *
+       * Vertical space separates one section from the next and there is nothing competing for it.
+       * Horizontal space comes straight out of the two columns: three rems of gutter is three rems
+       * the content does not have, and it was the difference between a 1200px window getting the
+       * two-column arrangement and not. The columns are the measure; the gutter only has to stop the
+       * text touching the edge.
+       */
       .section {
         width: 100%;
         box-sizing: border-box;
-        padding: var(--openish-space-xl) var(--openish-space-lg);
+        padding: var(--openish-space-xl) var(--openish-space-md);
         scroll-margin-top: var(--openish-space-lg);
       }
 
@@ -420,14 +442,19 @@ export class OpenishApiReference extends LitElement {
   }
 
   /**
-   * Whether the viewport is too narrow for two columns.
+   * Whether this reference is too narrow for a navigation column beside the page.
    *
    * A media query in CSS could hide the sidebar, and used to - but hiding it left a navigation tree
    * that was invisible and still focusable, and no way to reach it at all. Knowing the answer in
    * JavaScript is what lets the element render a different *thing*: a disclosure, with a button that
    * says whether it is open.
+   *
+   * *This* element's width, not the window's. It asked the window until now, which is the right
+   * answer only for a reference that fills the page: a host that puts one in a column of its own had
+   * a narrow reference on a wide viewport, and got the eighteen-rem sidebar and whatever was left.
+   * The container queries inside every section already ask the question this way.
    */
-  readonly #narrow = new MediaQueryController(this, '(max-width: 48rem)')
+  readonly #narrow = new ElementWidthController(this, 48)
 
   /**
    * Where the reader is on the plane, and how to put them somewhere else.
@@ -776,7 +803,7 @@ export class OpenishApiReference extends LitElement {
 
   /** One column when the host asked for it, or when there is not room for two. */
   get #stacked(): boolean {
-    return this.#narrow.matches
+    return this.#narrow.narrow
   }
 
   /**

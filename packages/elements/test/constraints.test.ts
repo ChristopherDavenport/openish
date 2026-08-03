@@ -41,6 +41,16 @@ describe('schema constraints', () => {
     expect(text).toContain('unique items')
   })
 
+  /*
+   * The object form of `additionalProperties` is a row in the property list. The booleans had
+   * nowhere to be said and so were said nowhere - and "these properties and no others" is most of
+   * what an object's contract is.
+   */
+  it('says whether anything else may be sent', async () => {
+    expect(textOfModel(await model('Closed'))).toContain('no other properties')
+    expect(textOfModel(await model('Open'))).toContain('any other properties')
+  })
+
   it('states object property counts', async () => {
     const text = textOfModel(await model('Bounded'))
 

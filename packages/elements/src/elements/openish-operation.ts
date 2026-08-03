@@ -4,6 +4,7 @@ import {
   describeSecurityScheme,
   getResolvedRef,
   operationBadges,
+  operationServer,
   resolveOperationNode,
   securityRequirements,
   variantKey,
@@ -124,14 +125,11 @@ export class OpenishOperation extends LitElement {
        *
        * The loss is smaller than it sounds: a section is bounded now rather than being the whole
        * page, so the sample is beside its own documentation for the length of one operation.
+       *
+       * Where the column goes when there is room for two is planeColumnStyles', with the other
+       * three sections that have a second column - the position and the threshold are one decision
+       * about the plane, and it was being made in five files.
        */
-      @container section (min-width: 56rem) {
-        .examples {
-          grid-column: 2;
-          /* Beside the documentation rather than after it, so the sample starts level with the title. */
-          margin-top: 0;
-        }
-      }
 
       .badges {
         display: flex;
@@ -188,21 +186,41 @@ export class OpenishOperation extends LitElement {
        * ten thousand across the scrollbar. The plane test that walks a hundred thousand pixels back
        * up the document is the one that says so.
        */
+      /*
+       * Baseline rather than centre, because the path may now be two lines and the method chip
+       * belongs beside the first of them.
+       */
       .target {
         display: flex;
-        align-items: center;
+        align-items: baseline;
         gap: var(--openish-space-2xs);
         min-width: 0;
         margin: 0 0 var(--openish-space-md);
+      }
+
+      /*
+       * The path wraps rather than being cut.
+       *
+       * It used to ellipsise on one line, with no title to recover the rest from - so
+       * a path of six segments and three parameters simply stopped, in the one place
+       * on the page where the path is the point rather than a caption. The sidebar and the section
+       * index can cut theirs because both title the element and both are a row in a list of rows;
+       * this is the operation saying what it is.
+       *
+       * It breaks anywhere rather than on a word boundary, because a path has no spaces to break at.
+       */
+      /* The part of the URL the document's own servers do not cover, said in the quieter weight. */
+      .base {
+        color: var(--openish-color-text-muted);
+        opacity: 0.85;
       }
 
       .path {
         font: var(--openish-font-code-small);
         font-family: var(--openish-font-family-mono);
         color: var(--openish-color-text-muted);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        min-width: 0;
+        overflow-wrap: anywhere;
       }
 
       .section-title {
@@ -663,6 +681,12 @@ export class OpenishOperation extends LitElement {
      * correctly, is a list nobody can navigate by.
      */
     const badges = operationBadges(operation, { deprecated })
+    /*
+     * Undefined unless this operation, or its path item, declares a server of its own - see
+     * `operationServer`. The same call decides what the code sample and the try-it panel use, so the
+     * three cannot disagree about where the request goes.
+     */
+    const server = operationServer(resolved?.pathItem, operation)
     /* The media types the body declares, for the picker on its heading. May be a `$ref` to one. */
     const bodyContent = (getResolvedRef(operation?.requestBody) as { content?: unknown } | undefined)?.content
 
@@ -675,7 +699,19 @@ export class OpenishOperation extends LitElement {
           </div>
           <div class="target" part="operation-target">
             <span class="method" data-method=${node.method}>${node.method}</span>
-            <code class="path">${node.type === 'webhook' ? node.name : node.path}</code>
+            <!--
+              The base URL only when this operation is not on the document's own servers.
+
+              Written into the path rather than beside it, because together they are one URL and that
+              is the thing the reader is being told. Saying it on every operation would be repeating
+              the server picker under every heading; saying it on none is what let the page document
+              a call to one host while the sample beside it called another.
+            -->
+            <code class="path"
+              >${server ? html`<span class="base">${server}</span>` : nothing}${node.type === 'webhook'
+                ? node.name
+                : node.path}</code
+            >
           </div>
           ${deprecated || badges.length > 0
             ? html`

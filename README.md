@@ -152,11 +152,18 @@ Light and dark are chosen in CSS, not in script. Every colour is declared once a
 `openish-color-scheme-change` is still re-dispatched, so a host can persist the choice and match its
 own UI — but the reference no longer needs anything done for it.
 
-There is one layout, and it answers the viewport rather than a config value. Below 48rem the
-navigation stacks into a disclosure rather than being hidden by a media query: a sidebar that CSS has
-hidden is still in the tab order and still read out, and there was no way to reach it at all. Above
-that it is a column beside the page, and on a wide enough page the code samples move into a column of
-their own — see [Reading layout](#reading-layout).
+There is one layout, and it answers how wide *the element* is rather than a config value or the
+window. Below 48rem the navigation stacks into a disclosure rather than being hidden by a media
+query: a sidebar that CSS has hidden is still in the tab order and still read out, and there was no
+way to reach it at all. Above that it is a column beside the page. Measuring the element rather than
+the viewport is what makes a reference embedded in a column of your own page behave — a narrow
+reference on a wide screen stacks, which a media query cannot see.
+
+A second threshold sits inside every section: at 48rem of section width the examples — the request
+sample, the response bodies, a tag's index — move into a column of their own beside the
+documentation. With the sidebar showing that arrives at roughly 1103px of window. Both measures are
+yours to move: `--openish-sidebar-width`, `--openish-docs-column` and `--openish-examples-column` are
+declared in `@openish/theme`.
 
 **Give it a height.** The element fills its container and does not decide how tall it is, so the
 chain has to reach it — every ancestor from `html` down needs a height, or the reference is as tall
@@ -459,17 +466,24 @@ a throwaway directory — installing it here would put Vue in the graph and fail
 
 | Bundle | Raw | gzip |
 |---|---|---|
-| **Entry chunk — what arrives before first paint** | 269.7 kB | **73.4 kB** |
+| **Entry chunk — what arrives before first paint** | 355.2 kB | **99.0 kB** |
 | Deferred chunks, fetched when first needed | 803.3 kB | 242.3 kB |
-| `@openish/elements`, everything | 1081.0 kB | 313.9 kB |
-| `@openish/core` alone | 255.7 kB | 81.3 kB |
-| `@openish/client` alone | 10.3 kB | 3.8 kB |
+| `@openish/elements`, everything | 1166.6 kB | 339.7 kB |
+| `@openish/core` alone | 275.4 kB | 87.8 kB |
+| `@openish/client` alone | 10.7 kB | 4.0 kB |
 | `@scalar/api-reference` 1.64.0, for reference | 1226.8 kB | 334.4 kB |
 
-The entry chunk was 65.6 kB before the document-fidelity pass that added named examples, callbacks,
-per-operation security, `externalDocs`, the rest of the `info` object, the OAuth flow detail, the
-parameter serialization keywords and `links`. That is 7.8 kB gzipped for the things the reference was
-parsing and not saying, which is the trade this project should make every time.
+The entry chunk was 65.6 kB gzipped before the M9 document-fidelity pass that added named examples,
+callbacks, per-operation security, `externalDocs`, the rest of the `info` object, the OAuth flow
+detail, the parameter serialization keywords and `links`; 73.4 kB after it. It is 99.0 kB now, and
+almost all of that is the same trade made again — the plane, the section index, the descriptive
+column, and the document fidelity of M20. The last of those cost 3.8 kB for `encoding`, the rest of
+the Header Object, the `not` subschema, the server-override rules and a width controller.
+
+**This table drifted for ten milestones**, which is worth more than the numbers in it: a budget is
+only visible if it is re-measured, and nothing in `npm run verify` does it. Run
+`node scripts/measure-bundle.mjs` at the end of a milestone — it is step five of the loop in
+`PLAN.md` — and correct the table in the same commit that moves it.
 
 The number that matters is the first row. Three things are deferred, because none of them is needed
 for the page to exist:

@@ -53,6 +53,7 @@ describe('the section list', () => {
       'api-1/tags/accounts/createAccount',
       'api-1/tags/accounts/getAccount',
       'api-1/tags/accounts/replaceAccount',
+      'api-1/tags/accounts/attachDocument',
       'api-1/tags/administration',
       'api-1/tags/administration/purge',
       'api-1/webhooks',

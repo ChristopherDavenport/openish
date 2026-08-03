@@ -62,6 +62,15 @@ import './openish-tabs.js'
  */
 const MAX_DEPTH = 12
 
+/**
+ * How many levels are indented by the full step before the tree settles for the border alone.
+ *
+ * Four, because that is about as deep as a reader gets by hand - every level below the first is a
+ * disclosure somebody opened - and because twelve levels of the full step is more of a narrow column
+ * than the column has. See the rule in the stylesheet.
+ */
+const INDENT_LIMIT = 4
+
 const EMPTY_STATE: OpenishSchemaState = { depth: 0, seenRefs: new Set(), expandAll: false, anchors: new Map() }
 
 /** Which `oneOf`/`anyOf` a reader answered, and how. See `variant-path.ts` for the addressing. */
@@ -302,6 +311,32 @@ export class OpenishSchema extends LitElement {
         margin-left: var(--openish-space-sm);
         padding-left: var(--openish-space-sm);
         border-left: 1px solid var(--openish-color-border);
+      }
+
+      /*
+       * Past the fourth level the step narrows to the border and its padding.
+       *
+       * Both halves are cumulative and the tree goes twelve levels deep, so the full step spent
+       * eighteen rems of a twenty-three rem column on nothing but indentation before a property name
+       * was drawn - in a column that has no scroller of its own, so what did not fit pushed a
+       * horizontal scrollbar across the whole page.
+       *
+       * The border stays at every level, because the border is what says this is nested; the margin
+       * is what says how deeply, and after four levels the answer is "deeply" either way.
+       */
+      ul.deep > li > openish-schema {
+        margin-left: 0;
+      }
+
+      /*
+       * A name, a type or a constraint can be one long unbreakable token - a pattern, a URI-shaped
+       * enum member, a generated property name. Breaking anywhere is what keeps it inside the column
+       * it belongs to; a path or a regex has no spaces to break at.
+       */
+      .name,
+      .type,
+      .constraints {
+        overflow-wrap: anywhere;
       }
     `,
   ]
@@ -804,7 +839,7 @@ export class OpenishSchema extends LitElement {
     }
 
     const list = html`
-      <ul>
+      <ul class=${classMap({ deep: this.#state.depth >= INDENT_LIMIT })}>
         ${repeat(
           positions,
           (position) => position.name,
@@ -931,6 +966,59 @@ export class OpenishSchema extends LitElement {
   }
 
   /**
+   * What the value may not be.
+   *
+   * A type label says the whole of it where there is one - `not string` is complete, and costs a
+   * line. Where there is not, this used to render `not the schema below` and there was no schema
+   * below: the excluded schema was never rendered anywhere, so the reader was pointed at an absence.
+   *
+   * It is rendered now, in the same rule grammar `if`/`then`/`else` and `dependentSchemas` use,
+   * because it is the same kind of thing - a constraint that happens to be shaped like a schema.
+   *
+   * Two shapes have no body to render and no type to name, and both are said in words instead. A
+   * bare `required` list is the commonest `not` in a real document and means the properties must not
+   * appear *together*; `not: {}` excludes everything, which is a real thing for a document to say
+   * and the only case where "nothing satisfies this" is the honest answer rather than a shrug.
+   */
+  #renderNot(not: unknown): TemplateResult | typeof nothing {
+    if (not === undefined) {
+      return nothing
+    }
+
+    const label = schemaTypeLabel(not)
+
+    if (hasBody(not)) {
+      return html`
+        <div class="rule">
+          <!-- No type in the label: it would say object nine times in ten, over a tree that says so. -->
+          <div class="rule-label">Must not match</div>
+          <openish-schema
+            .schema=${not}
+            scope=${this.scope}
+            path=${variantAside(this.path, 'not', '')}
+            hide-header
+            inline-properties
+          ></openish-schema>
+        </div>
+      `
+    }
+
+    if (label !== '') {
+      return html`<div class="constraints">not ${label}</div>`
+    }
+
+    const required = asSchema(not)?.['required']
+    if (Array.isArray(required) && required.length > 0) {
+      const names = required.filter((name): name is string => typeof name === 'string')
+      /* Both, not either: `not` negates the whole schema, so it is only violated when all are there. */
+      const phrase = names.length > 1 ? `all of ${names.join(', ')}` : names[0]
+      return html`<div class="constraints">must not have ${phrase}</div>`
+    }
+
+    return html`<div class="constraints">nothing satisfies this</div>`
+  }
+
+  /**
    * A `$dynamicRef`, resolved against the anchors in scope.
    *
    * This is the one place the renderer needs the *dynamic* scope rather than the lexical one: the
@@ -1020,9 +1108,7 @@ export class OpenishSchema extends LitElement {
       ${constraints.length > 0 ? html`<div class="constraints">${constraints.join(' · ')}</div>` : nothing}
       ${renderExternalDocs(resolved?.['externalDocs'])}
       ${this.#renderEnumValues(target)}
-      ${not !== undefined
-        ? html`<div class="constraints">not ${schemaTypeLabel(not) || 'the schema below'}</div>`
-        : nothing}
+      ${this.#renderNot(not)}
       ${variants ? this.#renderVariants(variants) : this.#renderProperties(target, isArray)}
       ${this.#renderDependentSchemas(target)} ${this.#renderConditional(target)}
     `

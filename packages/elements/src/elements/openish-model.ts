@@ -55,19 +55,9 @@ export class OpenishModel extends LitElement {
        * ran down the page and then stopped dead at the Models group, which is where six hundred
        * examples are.
        *
-       * The top margin is dropped only in the two-column arrangement, where the example has to start
-       * level with the title beside it.
+       * Where it goes, and what its top margin is in each arrangement, is planeColumnStyles' - the
+       * same rule every other section on the plane is placed by.
        */
-      @container section (min-width: 56rem) {
-        .examples {
-          grid-column: 2;
-        }
-
-        .docs > :first-child,
-        .examples > :first-child {
-          margin-top: 0;
-        }
-      }
     `,
   ]
 

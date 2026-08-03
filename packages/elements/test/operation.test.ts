@@ -374,6 +374,141 @@ describe('request body', () => {
   })
 })
 
+/*
+ * An operation on a host of its own. The document declared one server, the reader's picker offers
+ * that one, and the specification says the operation's own wins - so the page has to say so, or it
+ * documents a call to one host while the sample beside it calls another.
+ */
+/*
+ * The Header Object carries more than a type and a description, and this table read three of those
+ * fields and then dropped them: whether the server always sends it, whether it is deprecated, and
+ * what one looks like.
+ */
+/*
+ * The Encoding Object, which was read nowhere: a multipart body rendered as a plain object, so the
+ * one fact a reader needs in order to build the request - that `scan` is a PNG, not a string - was
+ * the one fact missing.
+ */
+describe('the parts of a multipart body', () => {
+  it('names the content type each part is sent with, and the headers it carries', async () => {
+    const harness = await operationOf('attachDocument')
+    const rows = rowsOf(sectionOf(harness), 'Body parts')
+
+    expect(rows).toEqual([
+      ['scan', 'image/png', 'X-Checksum'],
+      ['metadata', 'application/json', ''],
+    ])
+  })
+
+  it('is absent from a body with no encoding to describe', async () => {
+    const harness = await operationOf('replaceAccount')
+
+    expect(
+      deepQueryAll(sectionOf(harness), 'openish-table').some(
+        (table) => table.getAttribute('caption') === 'Body parts',
+      ),
+    ).toBe(false)
+  })
+})
+
+describe('response headers', () => {
+  const headerRows = async () => {
+    const harness = await operationOf('getAccount')
+    return rowsOf(sectionOf(harness), 'Response headers')
+  }
+
+  it('says which headers are always sent, and shows an example of one', async () => {
+    const rows = await headerRows()
+    const requestId = rows.find((row) => row[0]?.includes('X-Request-Id'))!
+
+    expect(requestId[2]).toContain('Always sent')
+    expect(requestId[2]).toContain('req_8f2b')
+  })
+
+  it('marks a deprecated header rather than listing it like the rest', async () => {
+    const rows = await headerRows()
+    const legacy = rows.find((row) => row[0]?.includes('X-Legacy-Cursor'))!
+
+    expect(legacy[2]).toContain('Deprecated')
+  })
+})
+
+describe('an operation with a server of its own', () => {
+  const ELSEWHERE_SPEC = {
+    openapi: '3.1.0',
+    info: { title: 'Elsewhere', version: '1.0.0' },
+    servers: [{ url: 'https://api.example.com/v1' }],
+    paths: {
+      '/uploads': {
+        post: {
+          tags: ['files'],
+          summary: 'Upload a file',
+          operationId: 'uploadFile',
+          servers: [{ url: 'https://uploads.example.com' }],
+          responses: { '201': { description: 'Created' } },
+        },
+      },
+      '/files': {
+        get: {
+          tags: ['files'],
+          summary: 'List files',
+          operationId: 'listFiles',
+          responses: { '200': { description: 'OK' } },
+        },
+      },
+    },
+  }
+
+  it('names the host in the header, beside the path it belongs to', async () => {
+    const harness = await mountReference({ path: '/tags/files/uploadFile', spec: ELSEWHERE_SPEC })
+    const target = shadowOf(sectionOf(harness), 'openish-operation').querySelector('[part~="operation-target"]')!
+
+    expect(textOf(target)).toContain('https://uploads.example.com/uploads')
+  })
+
+  it('says nothing for an operation the document already covers', async () => {
+    const harness = await mountReference({ path: '/tags/files/listFiles', spec: ELSEWHERE_SPEC })
+    const target = shadowOf(sectionOf(harness), 'openish-operation').querySelector('[part~="operation-target"]')!
+
+    expect(textOf(target)).toBe('get /files')
+  })
+})
+
+describe('the path in the header', () => {
+  const LONG = '/institutions/{institutionId}/users/{userId}/accounts/{accountId}/transactions'
+  const LONG_SPEC = {
+    openapi: '3.1.0',
+    info: { title: 'Long', version: '1.0.0' },
+    paths: {
+      [LONG]: {
+        get: {
+          tags: ['things'],
+          summary: 'Read the transactions',
+          operationId: 'longOne',
+          responses: { '200': { description: 'OK' } },
+        },
+      },
+    },
+  }
+
+  /*
+   * It used to ellipsise on one line with no title to recover the rest from, so the end of a long
+   * path - the part that distinguishes it - was unreadable in the one place it is the point.
+   */
+  it('shows the whole of it rather than cutting the end off', async () => {
+    const harness = await mountReference({ path: '/tags/things/longOne', spec: LONG_SPEC })
+    harness.frame.style.width = '900px'
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    await harness.settle()
+
+    const path = shadowOf(sectionOf(harness), 'openish-operation').querySelector('.path')!
+
+    expect(textOf(path)).toBe(LONG)
+    /* Nothing clipped: it wraps to a second line instead of scrolling out of its own box. */
+    expect(path.scrollWidth).toBeLessThanOrEqual(path.clientWidth + 1)
+  })
+})
+
 describe('disclosure', () => {
   it('opens and closes its region, and says so', async () => {
     const { element, settle } = await operationOf('getAccount')

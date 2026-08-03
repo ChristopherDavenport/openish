@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
 import '../src/index.js'
+import type { OpenishCodeBlock } from '../src/elements/openish-code-block.js'
 import {
   deepQuery,
   deepTextOf,
@@ -178,5 +179,41 @@ describe('code samples', () => {
       '.hljs-string',
     )!
     expect(harness.frame.contentWindow!.getComputedStyle(string).color).toBe('rgb(1, 2, 3)')
+  })
+})
+
+/**
+ * The cap on a code block, and saying when it is doing something.
+ *
+ * Built directly rather than through a document: what is under test is the block's own measurement
+ * of itself, and a fixture large enough to overflow twenty-four rems of code would be a fixture
+ * written to make a scrollbar appear.
+ */
+describe('a block taller than its cap', () => {
+  const blockWith = async (code: string): Promise<OpenishCodeBlock> => {
+    const block = document.createElement('openish-code-block')
+    block.language = 'json'
+    block.code = code
+    document.body.append(block)
+    /* Twice: the first render draws it, and the measurement in `updated` schedules the second. */
+    await block.updateComplete
+    await block.updateComplete
+    return block
+  }
+
+  it('says how many lines it is holding', async () => {
+    const block = await blockWith(
+      Array.from({ length: 400 }, (_, index) => `  "line${index}": true,`).join('\n'),
+    )
+
+    expect(textOf(block.shadowRoot)).toContain('400 lines')
+    block.remove()
+  })
+
+  it('says nothing about a block the reader can already see all of', async () => {
+    const block = await blockWith('{\n  "id": "acc_1"\n}')
+
+    expect(textOf(block.shadowRoot)).not.toContain('lines')
+    block.remove()
   })
 })

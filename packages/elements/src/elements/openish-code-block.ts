@@ -1,5 +1,5 @@
 import { LitElement, html, css, nothing, type TemplateResult } from 'lit'
-import { customElement, property } from 'lit/decorators.js'
+import { customElement, property, state } from 'lit/decorators.js'
 import { unsafeHTML } from 'lit/directives/unsafe-html.js'
 
 import { LazyModuleController } from '../controllers/lazy-module.js'
@@ -64,6 +64,13 @@ export class OpenishCodeBlock extends LitElement {
         gap: var(--openish-space-2xs);
         min-width: 0;
         overflow: hidden;
+      }
+
+      /* Metadata beside the name of the block, in the weight the name is not. */
+      .lines {
+        flex: none;
+        color: var(--openish-color-text-muted);
+        font: var(--openish-font-micro);
       }
 
       .tools {
@@ -142,6 +149,29 @@ export class OpenishCodeBlock extends LitElement {
   @property({ type: String })
   status = ''
 
+  /**
+   * Whether the cap is hiding part of the block.
+   *
+   * Measured rather than guessed from a line count: the cap is a token a host can re-point, the
+   * font is a token too, and a wrapped line is two lines on screen and one in the source. Comparing
+   * the scroller against its own content is the only form of this question with a right answer.
+   *
+   * An assignment in `updated()`, which is where this project otherwise keeps imperative DOM calls
+   * rather than state - but a measurement cannot happen before layout, and this one cannot chase its
+   * own tail: what it adds is a word in the toolbar, and the toolbar is not inside the scroller.
+   */
+  @state()
+  private clipped = false
+
+  protected override updated(): void {
+    const scroll = this.renderRoot.querySelector('.scroll')
+    /* A pixel of tolerance: a fractional line height rounds against you at some zoom levels. */
+    const clipped = scroll !== null && scroll.scrollHeight - scroll.clientHeight > 1
+    if (clipped !== this.clipped) {
+      this.clipped = clipped
+    }
+  }
+
   /** The syntax highlighter, once it has arrived. See `controllers/lazy-module.ts`. */
   readonly #highlighter = new LazyModuleController(this, codeNow, loadCode)
 
@@ -186,6 +216,16 @@ export class OpenishCodeBlock extends LitElement {
         <div class="head" part="code-toolbar">
           <div class="heading">
             <slot name="title"><span class="label">${this.label || this.language}</span></slot>
+            <!--
+              How long the thing in the box actually is.
+
+              The box stops at the cap and scrolls, and a thousand-line generated body looked from
+              the outside exactly like a twenty-line one. Said only when something is hidden: a
+              sample that fits is not qualified by its own length.
+            -->
+            ${this.clipped
+              ? html`<span class="lines">${this.code.split('\n').length} lines</span>`
+              : nothing}
           </div>
           <div class="tools">
             <slot name="toolbar"></slot>

@@ -16,7 +16,7 @@ import {
 } from '../context/contexts.js'
 import { HotkeyController } from '../controllers/hotkey.js'
 import { hrefFor } from '../router/urls.js'
-import { searchNodes, type SearchResult } from '../search/search.js'
+import { searchNodes, type SearchMatches, type SearchResult } from '../search/search.js'
 import { baseStyles, controlStyles, methodStyles, visuallyHidden } from '../styles/shared.js'
 
 /**
@@ -180,6 +180,20 @@ export class OpenishSearch extends LitElement {
         font: var(--openish-font-small);
       }
 
+      /*
+       * How many matches are not on the list.
+       *
+       * Under the last row rather than over the first, because it is the end of the list and not a
+       * heading for it - a reader who has found what they wanted on row three never has to read it.
+       */
+      .more {
+        margin: 0;
+        padding: var(--openish-space-2xs) var(--openish-space-md);
+        border-top: 1px solid var(--openish-border-decorative-color);
+        color: var(--openish-color-text-muted);
+        font: var(--openish-font-micro);
+      }
+
       /* Which document the results below are in. Only rendered when there is more than one. */
       .group {
         position: sticky;
@@ -245,7 +259,7 @@ export class OpenishSearch extends LitElement {
    * when it changed, so there is no reason for it to exist between renders - and no second copy to
    * keep in step with the query it came from.
    */
-  get #results(): SearchResult[] {
+  get #matches(): SearchMatches {
     return searchNodes(this.#stores, this.query)
   }
 
@@ -327,7 +341,7 @@ export class OpenishSearch extends LitElement {
   }
 
   #onKeydown(event: KeyboardEvent): void {
-    const results = this.#results
+    const { results } = this.#matches
     if (results.length === 0) {
       return
     }
@@ -376,7 +390,14 @@ export class OpenishSearch extends LitElement {
         ${method ? html`<span class="method" data-method=${method}>${method}</span>` : nothing}
         <span class="title">${node.title}</span>
         ${result.context ? html`<span class="context">${result.context}</span>` : nothing}
-        ${result.detail ? html`<span class="detail">${result.detail}</span>` : nothing}
+        <!--
+          Titled, because this is the one cell that ellipsises: a long path is cut where the row
+          runs out, and the part that gets cut is the end - which is the part that distinguishes it
+          from the other four results above it.
+        -->
+        ${result.detail
+          ? html`<span class="detail" title=${result.detail}>${result.detail}</span>`
+          : nothing}
       </a>
     `
   }
@@ -428,8 +449,24 @@ export class OpenishSearch extends LitElement {
     `
   }
 
+  /**
+   * What the reader is being shown, out of what matched.
+   *
+   * One sentence for both the live region and the line under the list, so the two cannot disagree
+   * about a number. The uncut case says the count and nothing else - "Showing 12 of 12" is a
+   * qualification about a list that has not been qualified.
+   */
+  #summary({ results, total }: SearchMatches): string {
+    const plural = total === 1 ? '' : 's'
+    return results.length < total
+      ? `Showing ${results.length} of ${total} result${plural}`
+      : `${total} result${plural}`
+  }
+
   override render(): TemplateResult {
-    const results = this.#results
+    const matches = this.#matches
+    const { results, total } = matches
+    const hidden = total - results.length
 
     return html`
       <button
@@ -462,9 +499,21 @@ export class OpenishSearch extends LitElement {
           ${this.query !== '' && results.length === 0
             ? html`<p class="empty">Nothing matches <code>${this.query}</code>.</p>`
             : nothing}
+          <!--
+            The rest of the matches, said rather than dropped.
+
+            role="presentation", like the document headings above it: the listbox's options carry one
+            flat, gapless index for aria-activedescendant and the arrow keys, and a row they can land
+            on but not open would break both.
+          -->
+          ${hidden > 0
+            ? html`<p class="more" role="presentation">
+                ${hidden} more — keep typing to narrow
+              </p>`
+            : nothing}
         </div>
         <span class="visually-hidden" role="status">
-          ${this.query === '' ? '' : `${results.length} result${results.length === 1 ? '' : 's'}`}
+          ${this.query === '' ? '' : this.#summary(matches)}
         </span>
       </dialog>
     `

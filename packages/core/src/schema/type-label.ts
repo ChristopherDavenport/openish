@@ -107,8 +107,34 @@ export const schemaTypeLabel = (value: unknown, depth = 0): string => {
     }
   }
 
+  /*
+   * An inline object's title, which is the name the author gave a shape the document did not put in
+   * `components`.
+   *
+   * Only where the label would otherwise be the bare word `object`: a schema with a type worth
+   * printing already has a better label than any prose, and a `title` on a string is a caption, not
+   * a type. Only where there is no `$ref` either, because a referenced schema is named by the
+   * section that documents it and that is the word to look for in the sidebar.
+   *
+   * `title` was read in exactly one place before this - as the last-resort label on a `oneOf` tab -
+   * so an author who named their shapes had that name shown only if the shapes were alternatives.
+   */
+  const title = schema['title']
+  if (named === undefined && (label === '' || label === 'object') && typeof title === 'string' && title.trim() !== '') {
+    label = title.trim()
+  }
+
+  /*
+   * The format, including on a named model.
+   *
+   * It used to be dropped whenever the type came from a `$ref`, which is where a document is most
+   * likely to have put it: a scalar worth naming - `AccountId`, `Timestamp` - is a scalar with a
+   * format, and the reader was shown the name and not what to type into the field. It is kept unless
+   * the name already says it, because `Uuid (uuid)` says it twice.
+   */
   const format = schema['format']
-  if (typeof format === 'string' && named === undefined) {
+  const plain = (text: string): string => text.toLowerCase().replace(/[^a-z0-9]/g, '')
+  if (typeof format === 'string' && (named === undefined || plain(named) !== plain(format))) {
     label = label === '' ? format : `${label} (${format})`
   }
 

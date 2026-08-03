@@ -113,6 +113,34 @@ export const resolveServerUrl = (
 }
 
 /**
+ * The server an operation is on, where it is not the one the rest of the document is on.
+ *
+ * OpenAPI lets `servers` be declared at three levels and the innermost wins: an operation overrides
+ * its path item, which overrides the document. Real documents use it - an upload endpoint on a
+ * different host, an auth endpoint on the identity provider, a sandbox for one call - and openish
+ * read none of it. The generated sample named the document's host, the try-it panel *sent* to the
+ * document's host, and nothing on the page said otherwise.
+ *
+ * `undefined` where the operation is on the document's own servers, which is the common case and is
+ * what lets a caller tell "no override" from "overridden, and here it is". Only the first entry is
+ * used, the same way the document's own list is: a picker among an operation's private servers would
+ * be a control for a case that does not arise.
+ */
+export const operationServer = (
+  pathItem: PathItemObject | undefined,
+  operation: OperationObject | undefined,
+  overrides: Record<string, string> = {},
+): string | undefined => {
+  const declared = operation?.servers?.[0] ?? pathItem?.servers?.[0]
+  if (declared === undefined) {
+    return undefined
+  }
+
+  const url = resolveServerUrl(getResolvedRef(declared), overrides)
+  return url === '' ? undefined : url
+}
+
+/**
  * The sample value for a parameter, preferring what the author supplied.
  *
  * `example` on the parameter wins, then the first entry of `examples`, then a value generated from
@@ -268,9 +296,16 @@ export const operationToHar = (input: OperationToHarInput, options: OperationToH
 
   applySecurity(document, operation, headers, queryString, options)
 
+  /*
+   * An operation's own server beats the one the reader picked, and that is the right way round: the
+   * picker offers the document's servers, and an operation that declares its own is saying it is not
+   * on any of them. It used to be the other way - `options.server` is set on every call the element
+   * layer makes, so the override was read and then discarded on the next line.
+   */
   const serverUrl =
+    operationServer(pathItem, operation, options.serverVariables ?? {}) ??
     options.server ??
-    resolveServerUrl(getResolvedRef(operation.servers?.[0] ?? document.servers?.[0]), options.serverVariables ?? {})
+    resolveServerUrl(getResolvedRef(document.servers?.[0]), options.serverVariables ?? {})
 
   const request: HarRequest = {
     method: method.toUpperCase(),

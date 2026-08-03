@@ -122,6 +122,33 @@ paths:
       responses:
         '201':
           description: Created
+  # An operation on a host of its own, which the document's servers do not cover and the reader's
+  # server picker cannot reach. The innermost `servers` wins, per the specification.
+  /uploads:
+    servers:
+      - url: https://path-level.example.com
+    post:
+      summary: Upload a file
+      operationId: uploadFile
+      tags: [notes]
+      servers:
+        - url: https://uploads.example.com/{stage}
+          variables:
+            stage:
+              default: live
+      responses:
+        '201':
+          description: Created
+  /uploads/status:
+    servers:
+      - url: https://path-level.example.com
+    get:
+      summary: Check an upload
+      operationId: uploadStatus
+      tags: [notes]
+      responses:
+        '200':
+          description: OK
 components:
   securitySchemes:
     bearerAuth:

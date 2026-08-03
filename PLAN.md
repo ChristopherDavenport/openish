@@ -33,11 +33,12 @@ numbers. Read this file for how the code is meant to be written and what has alr
 | M17 the continuous plane | Done — the whole document as one virtualised scroller, the URL following the reader, three columns every section shares, Copy for LLM |
 | M18 the section index | Done — every section with a body uses both columns, and every header carries an index of what is inside it: operations, the events that declare its tag, the models that carry `x-tags` |
 | M19 the descriptive column | Done — the introduction in two columns, `x-openish-aside` and section-level `x-codeSamples`, an `overview-aside` slot for the host, and a scroll correction that survives a page nobody is painting |
+| M20 what the page says | Done — a count, an elided example and a `not` line that are true; two columns from 1103px rather than 1247px; overflow contained; per-operation `servers`, multipart `encoding`, and the rest of the Header Object |
 
 `npm run verify` runs guards → typecheck → tests. Four guards: no Vue in the graph, no committed specs
 outside the fixtures directory, no `outline: none`, and `lit-analyzer` over every template - the last
 because `tsc` sees an `html` template as a string, so everything inside one was checked by nothing.
-707 tests today across four projects: `core`, `client` and `elements-pure` in Node, `elements` in real
+794 tests today across four projects: `core`, `client` and `elements-pure` in Node, `elements` in real
 Chromium via Playwright (`npx playwright install chromium` once). `elements-pure` is
 `packages/elements/test/pure/`, and the split is enforcement rather than speed - the URL and id maths,
 the plane's scroll target, the convergence arithmetic and the OAuth flow precedence rules are pure
@@ -472,7 +473,9 @@ Extensions real documents carry, and constraints a reference has to be able to s
   resolve a background through nested shadow roots.
 - **Mobile.** The sidebar was `display: none` under 48rem - hidden, still focusable, unreachable. It
   is a disclosure now, driven by `MediaQueryController` so the element renders a different thing
-  rather than painting the same thing differently. (`layout="classic"` was that same composition at
+  rather than painting the same thing differently. *(Corrected at M20: still JavaScript, still a
+  different tree, but it measures the element rather than the window - see below. `MediaQueryController`
+  is gone.)* (`layout="classic"` was that same composition at
   any width; M14 removed it, because "the narrow composition on purpose" is a debugging affordance,
   not a design.)
 - **Bundle.** `scripts/measure-bundle.mjs`, numbers in the README - as a budget, not as a claim.
@@ -620,11 +623,13 @@ Two things worth keeping:
   is a debugging affordance with a config key on it. Scalar's `classic` is a Swagger-UI accordion and
   shares nothing with it but the name, so the value was also actively misleading to anyone moving
   over. Nothing consumed `uiContext.layout` - the removal was a deletion, not a refactor.
-- **Three width bands, two mechanisms.** The navigation switch stays a `MediaQueryController`,
-  because it changes the element *tree* - a sidebar becomes a disclosure, and a hidden tree that is
-  still focusable was the M6 bug. The examples column is the same DOM in a different place, so it is
-  a **container query** on the content pane, which is also the only correct thing: the pane's width
-  depends on whether the sidebar is showing, and a media query cannot see that.
+- **Three width bands, two mechanisms.** The navigation switch stays in JavaScript, because it
+  changes the element *tree* - a sidebar becomes a disclosure, and a hidden tree that is still
+  focusable was the M6 bug. The examples column is the same DOM in a different place, so it is a
+  **container query** on the content pane, which is also the only correct thing: the pane's width
+  depends on whether the sidebar is showing, and a media query cannot see that. *(M20: the first half
+  was a media query until then, which had the same blind spot for the same reason - it is
+  `ElementWidthController` now, and the threshold moved from 56rem to 48rem.)*
 - **The seam already existed.** `<openish-schema-preview>` has taken `no-example` since M6, so the
   try-it editor could own the request body's example. `<openish-response-list>` gained the same
   property and the same threading through `renderMediaTypes`, and that is the whole of moving
@@ -1001,6 +1006,171 @@ The test noise is worth recording too, because it cost more than the faults did.
 the runner's own timeout reports as **"Test timed out"**, not as the assertion it was waiting for - so
 a 15-second settle inside a 15-second test looked for three runs like a plane that never arrived.
 
+## M20 — what the page says (done)
+
+Not a feature. A read of the rendered document against the source, asking what a reader is actually
+being told, and it found three kinds of thing: places the page stated something untrue, layout that
+cost a reader content, and content the parser had in hand and never drew. Print and find-in-page -
+the real bill for the virtualised plane - were left out on purpose and are still their own milestone.
+
+### Three things that were not true
+
+Ranked first because a reader cannot tell they are being misled, which is the one class of defect
+that gets worse the more the page is trusted.
+
+- **A cap reported as a total.** `searchNodes` sliced to twenty and returned an array, so the dialog
+  announced `20 results` for a query a hundred and thirty-seven nodes matched - to a screen reader as
+  well, in the live region. It returns `{ results, total }` now, which is the shape the bug was made
+  of: the limit is applied inside the function and a caller holding only the sliced list has no way
+  to know it was sliced. **This changed a public export**, and deliberately - the old signature could
+  not express the truth.
+- **`null` where the walk gave up.** `schemaExample` emitted `null` at the depth cap, at a `$ref`
+  cycle and at the object-identity guard, which in the JSON a reader pastes into curl is
+  indistinguishable from a field that really is null - and `parent` on a self-referential `Node` is
+  never null, it is another Node. It writes `"… (Node)"` and `"…"` now, carrying the name where a
+  pointer knows it. The property tree had said `Recursive — see Node` at the same two places since
+  M4; only the example lacked the vocabulary.
+- **A line pointing at nothing.** `not` rendered `not the schema below` whenever the excluded schema
+  had no one-word type label, and nothing rendered the schema below. It goes in the same `.rule`
+  grammar `if`/`then`/`else` and `dependentSchemas` use. Two shapes have neither a type to name nor a
+  body to draw and are said in words instead: a bare `required` list - the commonest real `not`, and
+  it means the properties must not appear *together* - and `not: {}`, which excludes everything.
+
+### The band the threshold actually fell in
+
+The two-column arrangement is a container query at what was 56rem, and the container is the window
+less the sidebar less the section's gutters: 18rem + 2 × 1.5rem + the scroller ≈ 21.9rem of overhead,
+so it wanted about **1247px of viewport**. Past a browser windowed to 1200. Past a 1152px screen.
+Every one of those readers got the arrangement the layout exists to avoid - the sample a screen below
+the parameters it demonstrates - and the suite was equally happy either way, because `layout.test.ts`
+tested 820 and 1600 and stepped straight over the cliff.
+
+48rem, and a 1rem gutter instead of 1.5rem, puts it at about **1103px**. 1024 is still one column on
+purpose: 43rem of content divided in two is two columns of twenty-one, which is narrower than either
+half is worth. The test asserts all four widths, including the one that must *not* split.
+
+**A grid max-track does not yield.** The first attempt gave the sidebar `minmax(13rem, 18rem)` on the
+theory that the navigation should give way before the content does. It does not: with
+`minmax(0, 1fr)` beside it the sidebar sizes to its max and the content absorbs the whole loss. The
+levers that actually move this number are the threshold and the gutter.
+
+### Where a section's second column goes is one decision
+
+`56rem` was written in five files - `shared.ts` and then once per page element, each naming its own
+right-hand column (`.examples`, `.examples`, `.facts`, `.index`) - and a container condition cannot
+take a `var()`, so the literal could not be tokenised out. It is one rule in `planeColumnStyles` now,
+`:is()` over the four names.
+
+It has to be matched **through the parent**. A section's own stylesheet comes after the shared
+fragment in `static styles`, so a bare `.examples` here loses to the `margin-top` the stacked
+arrangement needs - equal specificity, later in the cascade - and the examples column lands 32px
+below the title it is supposed to start level with. `.columns > :is(...)` is both a specificity fix
+and simply true.
+
+### Overflow had nowhere to go
+
+`main` declared `overflow-y: auto` and nothing about x, which per spec computes `overflow-x` to
+`auto` as well - so one long line anywhere in the document did not overflow its own column, it put a
+horizontal scrollbar under the whole page. The property tree was the source: `margin-left` **plus**
+`padding-left` per level, cumulative, uncapped, twelve levels deep - eighteen rems of a twenty-three
+rem column spent on indentation before a property name was drawn.
+
+Three changes, in the order that matters: the indent step narrows to the border after four levels,
+names and types and constraints break anywhere, and only then `overflow-x: hidden` as the backstop.
+Tables and code blocks keep their own scrollers and their own focus rings; this is for what should
+have wrapped instead.
+
+**A test on a clipping box cannot fail.** The first version of that assertion measured
+`main.scrollWidth - main.clientWidth`, which is zero by construction once the box clips - it was
+asserting that hidden means hidden. It measures `.section`, which has no overflow rule of its own.
+Confirmed by putting the faults back: 372px of overflow at 380px wide.
+
+### The switch was asking the wrong element
+
+The navigation stacked on `(max-width: 48rem)` - the *window*. A host that puts a reference in a
+600px column of a wide page had a narrow reference on a wide viewport, and got the 18rem sidebar and
+whatever was left. `MediaQueryController` is replaced by `ElementWidthController`, a `ResizeObserver`
+on the host: same argument as before about deciding in JavaScript so the element renders a different
+*thing*, only now it measures the thing being laid out. It measures once on connect as well as
+observing, or the first render is the wide arrangement and the reader watches the sidebar arrive and
+leave. Rems, not pixels, so a reader who has scaled their text moves all the thresholds together.
+
+### Servers below the document
+
+The one item here that was not an omission but a wrong answer on the page. OpenAPI declares `servers`
+at three levels and the innermost wins; openish read `operation.servers` only inside the HAR builder,
+and then `options.server` - which the element layer sets on **every** call, from the document's own
+list - overrode it on the next line. `pathItem.servers` was read nowhere at all. So an upload
+endpoint on its own host got a curl command against the wrong origin, and try-it *sent* there.
+
+`operationServer(pathItem, operation)` is the one answer, and it beats the reader's pick rather than
+losing to it: the picker offers the document's servers, and an operation that declares its own is
+saying it is not on any of them. Where it applies, the header prints it into the path - one URL,
+because that is the thing being said - and the sample, the panel and the header cannot disagree.
+
+### What the objects were already carrying
+
+Four smaller ones, all the same shape: the parser had it and the renderer dropped it.
+
+- **`encoding`** was read nowhere, so a `multipart/form-data` body rendered as a plain object - the
+  one fact needed to build the request, that `scan` is a PNG and not a string, was the one fact
+  missing. `mediaTypeEncoding` in core, a Parts table under the body. An entry that says nothing
+  earns no row, because a generator that writes `encoding: { file: {} }` for every property would
+  otherwise fill the table with nothing.
+- **The Header Object** declared `required` and `deprecated` in the local type and rendered neither,
+  and ignored its examples. "Always sent" rather than "required": on a *response* header it is a
+  promise the server makes, and the parameter table two sections up uses the word for the other
+  meaning. The example list moved to `render/example-list.ts` rather than being copied - a parameter
+  and a response header carry examples in the same shape, which is why `mediaTypeExamples` already
+  read both.
+- **`additionalProperties: false`** rendered nothing, because only the object form was handled - so a
+  closed object and an open one looked identical, which is often the whole contract. It is a
+  constraint line, by the rule `schemaConstraints` already states: only what changes what a caller
+  may send.
+- **`format` on a `$ref`** was dropped by a `named === undefined` guard, which is exactly where a
+  document puts it - a scalar worth naming is a scalar with a format. Kept unless the name already
+  says it. And **`title`** on an inline object is used as its label, where the label would otherwise
+  be the bare word `object`.
+
+### Four traps, none of them interesting
+
+Written down because each cost a build and none of them will announce itself the second time.
+
+- **A backtick inside a `css` or `html` template literal ends it.** Three separate transform failures
+  from CSS comments containing `` `var()` `` or a `{id}`-shaped path; the second kind fails *later*
+  and worse, as `ReferenceError: institutions is not defined`, because `${...}` in the middle of a
+  comment is an interpolation. No existing comment in component CSS uses backticks, which is not a
+  coincidence anyone had recorded.
+- **`deepTextOf(element)` does not include that element's own shadow root.** It reads `textContent`
+  and then descends into the shadow roots of *descendants*, so passing a custom element returns `''`
+  and every `toContain` against it passes vacuously. Pass `element.shadowRoot`.
+- **Adding an operation to `SHELL_SPEC` ripples.** `pure/sections.test.ts` enumerates every section
+  and `section-index.test.ts` counts a tag's operations, so a fixture gains a row in two places that
+  do not mention it.
+- **`updated()` may measure, and only measure.** `<openish-code-block>` sets a `@state` from a
+  post-layout measurement, which the conventions above otherwise forbid - it is allowed here because
+  a measurement cannot happen before layout and because what it adds (a line count in the toolbar)
+  is outside the box being measured, so it cannot chase its own tail.
+
+### Measured
+
+794 tests, up from 707; the new ones are the search total, the `not` disclosure, the column
+arrangement at 1024/1152/1200/1600, `scrollWidth` on a deep fixture at three widths, the embedded
+narrow case, and the operation-`servers` URL in both core and the element. `packages/core/test/fixtures/request.yaml`
+gained two operations for the server-override rules and is still under the 64 KB ceiling.
+
+The entry chunk went from 95.2 kB gzipped to **99.0 kB** - 3.8 kB for `encoding`, the rest of the
+Header Object, the `not` subschema, the server-override precedence and `ElementWidthController`. That
+is the trade this project says it should make every time, and it is the first milestone in ten to
+have said so out loud, because the README's budget table had drifted 21.8 kB behind reality with
+nothing in the pipeline to notice. Re-measuring is step five of the loop now.
+
+One thing left open, and it is a test rather than a fault: `schema.test.ts` failed twice under full
+parallel runs, a different test each time, both of the "element not present yet" shape, and neither
+reproduced in isolation or across four subsequent full runs. It predates this milestone. If it comes
+back, the thing to suspect is the first test in a file racing the plane's first paint - see the note
+in M19 about what a wait that outlives its own timeout reports as.
+
 ## The loop
 
 At the end of every milestone:
@@ -1030,6 +1200,10 @@ At the end of every milestone:
    Vite will actually serve. `/@fs/<absolute path>` works and stays same-origin; a separate static
    server does not, because it sends no CORS header and the fetch fails silently into an empty page.
 4. Anything it breaks becomes a small committed fixture, then a fix. Never encode its contents in a test.
+5. `node scripts/measure-bundle.mjs`, and correct the table in the README when it has moved. Nothing
+   in `npm run verify` measures the bundle, so a budget nobody re-runs is a budget that drifts - the
+   table was ten milestones and 26 kB gzipped out of date when M20 checked it, which is long enough
+   that no single milestone could be held responsible for any of it.
 
 ### The panel is a client, not a section of the page
 

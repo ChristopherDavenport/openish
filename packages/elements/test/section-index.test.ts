@@ -55,6 +55,7 @@ describe('the section index', () => {
       'post Create an account /accounts',
       'get Get an account /accounts/{accountId}',
       'put Replace an account /accounts/{accountId}',
+      'post Attach a document /accounts/{accountId}/documents',
     ])
 
     /* The chip is the coloured one the sidebar and the operation header use, not a word in the row. */
@@ -95,7 +96,7 @@ describe('the section index', () => {
     const harness = await mountReference({ path: '/tags/accounts' })
 
     expect(tabsOf(harness, 'tags/accounts').map((tab) => textOf(tab))).toEqual([
-      'Operations 4',
+      'Operations 5',
       'Events 1',
       'Models 1',
     ])

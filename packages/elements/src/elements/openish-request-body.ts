@@ -1,10 +1,16 @@
-import { getResolvedRef, type VariantChoices } from '@openish/core'
+import { getResolvedRef, mediaTypeEncoding, type EncodingEntry, type VariantChoices } from '@openish/core'
 import { LitElement, html, css, nothing, type TemplateResult } from 'lit'
 import { customElement, property } from 'lit/decorators.js'
 
+import { pickMediaType } from '../render/responses.js'
 import { renderMediaTypes } from '../render/media-types.js'
 import { baseStyles } from '../styles/shared.js'
+import type { OpenishTableRow } from './openish-table.js'
 import './openish-markdown.js'
+import './openish-table.js'
+
+/** Hoisted so the binding does not hand `openish-table` a new array on every render. */
+const PART_COLUMNS = ['Part', 'Content type', 'Headers']
 
 type RequestBody = {
   description?: string
@@ -42,6 +48,28 @@ export class OpenishRequestBody extends LitElement {
         margin-bottom: var(--openish-space-xs);
         color: var(--openish-color-text-muted);
         font: var(--openish-font-micro);
+      }
+
+      .parts {
+        margin-top: var(--openish-space-sm);
+      }
+
+      .parts-label {
+        margin-bottom: var(--openish-space-3xs);
+        font: var(--openish-font-micro);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--openish-color-text-muted);
+      }
+
+      .serialization {
+        margin-top: var(--openish-space-3xs);
+        font: var(--openish-font-micro);
+        color: var(--openish-color-text-muted);
+      }
+
+      code {
+        font-family: var(--openish-font-family-mono);
       }
     `,
   ]
@@ -101,6 +129,50 @@ export class OpenishRequestBody extends LitElement {
   @property({ attribute: false })
   variants: VariantChoices | undefined = undefined
 
+  /**
+   * How the parts of the body go on the wire, where the document says.
+   *
+   * Under the schema rather than inside it: the tree describes the *value* of each property, and this
+   * describes the envelope one is sent in - which is a different question, and the one an upload
+   * endpoint is actually asking. Only the media type on screen, because the encoding belongs to it:
+   * the `multipart/form-data` form of a body has parts and the `application/json` form has none.
+   */
+  #renderEncoding(content: unknown): TemplateResult | typeof nothing {
+    const map = getResolvedRef(content)
+    if (typeof map !== 'object' || map === null) {
+      return nothing
+    }
+
+    const name = pickMediaType(map, this.mediaType)
+    const entries: EncodingEntry[] = mediaTypeEncoding((map as Record<string, unknown>)[name ?? ''])
+    if (entries.length === 0) {
+      return nothing
+    }
+
+    const rows: OpenishTableRow[] = entries.map((entry) => ({
+      key: entry.property,
+      cells: [
+        html`<code>${entry.property}</code>`,
+        entry.contentType ? html`<code>${entry.contentType}</code>` : nothing,
+        html`
+          ${entry.headers.length > 0
+            ? html`${entry.headers.map((header, index) => html`${index > 0 ? ', ' : ''}<code>${header}</code>`)}`
+            : nothing}
+          ${entry.serialization.length > 0
+            ? html`<div class="serialization">${entry.serialization.join(' · ')}</div>`
+            : nothing}
+        `,
+      ],
+    }))
+
+    return html`
+      <div class="parts">
+        <div class="parts-label">Parts</div>
+        <openish-table .columns=${PART_COLUMNS} .rows=${rows} caption="Body parts"></openish-table>
+      </div>
+    `
+  }
+
   override render(): TemplateResult | typeof nothing {
     const body = getResolvedRef(this.requestBody) as RequestBody | undefined
     if (!body) {
@@ -140,6 +212,7 @@ export class OpenishRequestBody extends LitElement {
           )
         },
       })}
+      ${this.#renderEncoding(body.content)}
     `
   }
 }

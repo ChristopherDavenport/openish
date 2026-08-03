@@ -382,11 +382,24 @@ export const highlightStyles = css`
  * section* is depends on whether the sidebar is showing, which a media query cannot see - and an
  * element is never its own container, so the query has to be answered by a descendant.
  *
- * 56rem, which is two columns of about twenty-eight. A narrow column of documentation beside a
+ * 48rem, which is two columns of about twenty-three. A narrow column of documentation beside a
  * narrow column of examples is still two things a reader can compare; one wide column with the
  * example a screen below the parameters is not, and holding out for a comfortable width meant most
  * laptops never saw the layout the page is designed around. The literal is deliberate - a container
  * condition cannot take a `var()`, and trying to make it a token will silently do nothing.
+ *
+ * It was 56rem, and the arithmetic is why it is not any more. The container is the window less the
+ * sidebar and the section's own gutters, so 56rem asked for about 1247px of viewport - past a
+ * browser windowed to 1200 and past a 1152px screen, which is to say past most of the laptops this
+ * is read on. Every one of them got the arrangement the layout exists to avoid: the sample a screen
+ * below the parameters it demonstrates. At 48rem, and with a narrower gutter, two columns arrive at
+ * about 1103px. A 1024px window is still one column, on purpose - 43rem of content split in two is
+ * two columns of twenty-one, which is smaller than either half is worth.
+ *
+ * The whole of the two-column arrangement is written here, once. It used to be five copies of the
+ * same query - one per page element, each naming its own right-hand column - and a literal that
+ * cannot be tokenised is a literal that has to be changed in five places or the sections stop
+ * agreeing about where the band begins.
  */
 export const planeColumnStyles = css`
   :host {
@@ -415,9 +428,36 @@ export const planeColumnStyles = css`
     min-width: 0;
   }
 
-  @container section (min-width: 56rem) {
+  @container section (min-width: 48rem) {
     .columns {
       grid-template-columns: var(--openish-docs-column) var(--openish-examples-column);
+    }
+
+    /*
+     * The right-hand column, under whichever name the section has for it.
+     *
+     * An operation and a model put examples there, the introduction puts the facts about the
+     * document, and a tag puts the index of what is inside it - four names for one position, which
+     * is why they are listed here rather than each declaring the position for itself.
+     *
+     * The top margin goes with the arrangement: stacked, the column follows the documentation and
+     * needs air above it; side by side it has to start level with the title beside it.
+     */
+    /*
+     * Matched through the parent rather than on its own, and that is not decoration: a section's own
+     * stylesheet comes after this fragment, so a bare class selector here would lose to the top
+     * margin the stacked arrangement needs - equal specificity, later in the cascade. The child
+     * combinator is also simply true: these are the grid's own items.
+     */
+    .columns > :is(.examples, .facts, .index) {
+      grid-column: 2;
+      margin-top: 0;
+    }
+
+    /* Whatever opens a column brought its own space, and the column is what it opens. */
+    .docs > :first-child,
+    .examples > :first-child {
+      margin-top: 0;
     }
   }
 `

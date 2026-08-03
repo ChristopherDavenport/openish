@@ -86,7 +86,18 @@ export const SHELL_SPEC = {
           '200': {
             description: 'The account.',
             headers: {
-              'X-Request-Id': { description: 'Correlation id.', schema: { type: 'string' } },
+              'X-Request-Id': {
+                description: 'Correlation id.',
+                required: true,
+                schema: { type: 'string' },
+                example: 'req_8f2b',
+              },
+              /* On its way out, and the table has to say so rather than listing it like the rest. */
+              'X-Legacy-Cursor': {
+                description: 'Use the Link header.',
+                deprecated: true,
+                schema: { type: 'string' },
+              },
             },
             content: {
               'application/json': { schema: { $ref: '#/components/schemas/Account' } },
@@ -113,6 +124,40 @@ export const SHELL_SPEC = {
           },
         },
         responses: { '204': { description: 'Replaced.' } },
+      },
+    },
+    '/accounts/{accountId}/documents': {
+      post: {
+        summary: 'Attach a document',
+        operationId: 'attachDocument',
+        tags: ['accounts'],
+        parameters: [{ name: 'accountId', in: 'path', required: true, schema: { type: 'string' } }],
+        /*
+         * An upload, described the way the specification provides for: the parts carry their own
+         * content types, and without them a reader has a `string` where a PNG goes.
+         */
+        requestBody: {
+          required: true,
+          content: {
+            'multipart/form-data': {
+              schema: {
+                type: 'object',
+                properties: {
+                  scan: { type: 'string', format: 'binary' },
+                  metadata: { type: 'object', properties: { kind: { type: 'string' } } },
+                  note: { type: 'string' },
+                },
+              },
+              encoding: {
+                scan: { contentType: 'image/png', headers: { 'X-Checksum': { schema: { type: 'string' } } } },
+                metadata: { contentType: 'application/json' },
+                /* Says nothing, so it earns no row. */
+                note: {},
+              },
+            },
+          },
+        },
+        responses: { '201': { description: 'Attached.' } },
       },
     },
     '/admin/purge': {
@@ -340,6 +385,43 @@ export const JSON_SCHEMA_SPEC = {
           label: { type: 'string', example: 'Primary', examples: ['Ignored'] },
           size: { type: 'integer', examples: [1, 2] },
         },
+      },
+      /*
+       * The three shapes of `not`.
+       *
+       * `Excluded` has a body and gets the schema rendered; `NotText` is said by its type alone;
+       * `NotBoth` is the commonest real one - two properties that may not appear together - and has
+       * neither a type to name nor a body to draw, so it is said in words.
+       */
+      Excluded: {
+        type: 'object',
+        properties: { kind: { type: 'string' } },
+        not: { properties: { legacyField: { type: 'string' } }, required: ['legacyField'] },
+      },
+      NotText: { not: { type: 'string' } },
+      NotBoth: {
+        type: 'object',
+        properties: { card: { type: 'string' }, iban: { type: 'string' } },
+        not: { required: ['card', 'iban'] },
+      },
+      /* A shape the author named without putting it in components; the tree used to say "object". */
+      Titled: {
+        type: 'object',
+        properties: {
+          address: {
+            type: 'object',
+            title: 'Postal address',
+            properties: { line1: { type: 'string' }, postcode: { type: 'string' } },
+          },
+          /* A title on something that already has a better label is a caption, not a type. */
+          reference: { type: 'string', title: 'Reference' },
+        },
+      },
+      /* A named scalar whose format is the only thing telling a reader what to send. */
+      AccountId: { type: 'string', format: 'uuid' },
+      Holder: {
+        type: 'object',
+        properties: { account: { $ref: '#/components/schemas/AccountId' } },
       },
       /* A condition too involved to paraphrase: the `if` schema renders in full instead. */
       Complex: {
@@ -1014,6 +1096,17 @@ export const CONSTRAINTS_SPEC = {
         type: 'object',
         'x-additionalPropertiesName': 'currency',
         additionalProperties: { type: 'integer' },
+      },
+      /* The two boolean forms, which are a contract and used to render as nothing at all. */
+      Closed: {
+        type: 'object',
+        properties: { id: { type: 'string' } },
+        additionalProperties: false,
+      },
+      Open: {
+        type: 'object',
+        properties: { id: { type: 'string' } },
+        additionalProperties: true,
       },
     },
   },

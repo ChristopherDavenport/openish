@@ -28,6 +28,21 @@ export type SearchResult = {
   source: SourceDescriptor
 }
 
+/**
+ * The matches for one query: the ones being shown, and how many there were.
+ *
+ * Two fields rather than an array, because the limit is applied inside `searchNodes` and a caller
+ * holding only the sliced list has no way to know it was sliced. The dialog was reporting the cap as
+ * the total for exactly that reason - twenty rows and "20 results" for a query a hundred and
+ * thirty-seven nodes matched, which is the one number a reader cannot check for themselves.
+ */
+export type SearchMatches = {
+  /** The results to show, already ordered and capped. */
+  results: SearchResult[]
+  /** How many nodes matched. Equal to `results.length` only when nothing was cut. */
+  total: number
+}
+
 /** Everything one node can be found by, in the order a match on it counts for most. */
 type Haystack = {
   title: string
@@ -266,12 +281,16 @@ export const buildSearchIndex = (store: DocumentStore): IndexEntry[] => {
  *
  * Results are ordered by score and then by document order, which is stable: the same query returns
  * the same list in the same order every time, including where scores tie.
+ *
+ * Returns the count alongside the list. The limit exists so a two-letter query does not render six
+ * hundred rows, and the number it cut is a fact about the search that only this function is in a
+ * position to know - see `SearchMatches`.
  */
 export const searchNodes = (
   stores: DocumentStore | readonly DocumentStore[] | undefined,
   query: string,
   limit = DEFAULT_LIMIT,
-): SearchResult[] => {
+): SearchMatches => {
   const terms = query.toLowerCase().trim().split(/\s+/).filter(Boolean)
   /*
    * One store or several. A reference with one document is by far the common case and should not
@@ -280,7 +299,7 @@ export const searchNodes = (
    */
   const list = stores === undefined ? [] : Array.isArray(stores) ? stores : [stores as DocumentStore]
   if (list.length === 0 || terms.length === 0) {
-    return []
+    return { results: [], total: 0 }
   }
 
   const results: Array<SearchResult & { order: number; document: number }> = []
@@ -320,11 +339,15 @@ export const searchNodes = (
    * needed for the list to be stable: without the middle one, two equally good matches in two
    * documents would swap places depending on which finished loading first.
    */
-  return results
-    .sort(
-      (left, right) =>
-        right.score - left.score || left.document - right.document || left.order - right.order,
-    )
-    .slice(0, limit)
-    .map(({ node, score, context, detail, source }) => ({ node, score, context, detail, source }))
+  return {
+    results: results
+      .sort(
+        (left, right) =>
+          right.score - left.score || left.document - right.document || left.order - right.order,
+      )
+      .slice(0, limit)
+      .map(({ node, score, context, detail, source }) => ({ node, score, context, detail, source })),
+    /* Counted before the slice, which is the whole reason it is reported separately. */
+    total: results.length,
+  }
 }

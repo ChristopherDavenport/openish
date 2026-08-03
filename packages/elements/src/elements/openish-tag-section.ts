@@ -54,16 +54,6 @@ export class OpenishTagSection extends LitElement {
         margin-top: var(--openish-space-lg);
       }
 
-      @container section (min-width: 56rem) {
-        .index {
-          grid-column: 2;
-          margin-top: 0;
-        }
-
-        .docs > :first-child {
-          margin-top: 0;
-        }
-      }
     `,
   ]
 
