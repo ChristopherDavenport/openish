@@ -13,6 +13,10 @@ entry points.
 
 If you already ship web components, you should not have to adopt a second framework to render API docs.
 
+**[christopherdavenport.github.io/openish](https://christopherdavenport.github.io/openish/)** — the
+documentation site, with a real document open in a real reference on the front page, and every
+number below linked to the test that produces it. It is built with the elements it documents.
+
 > Status: a reader can read it and call it. A document loads, the sidebar, search, and the URL
 > navigate it, every schema is an expandable property tree that self-referential types cannot hang,
 > and an operation page will send the request its code sample describes — including obtaining an
@@ -427,6 +431,11 @@ the route table was an elaborate way of arriving at a lookup that `renderNodeByI
 anyway. Removing it took two dependencies, one element, and the workarounds with them, and made
 `routing` changeable on a live element.
 
+`apps/site` does use one, and that is not the argument being abandoned: a documentation site has a
+dozen genuinely distinct pages and resolving a URL to one of them is what a route table is for. The
+reference has one continuous page whose ids are already paths. Nothing in `packages/` depends on a
+router, and nothing in `packages/` may.
+
 ## OpenAPI documents in this repo
 
 Committed API documents live in exactly one place: `packages/core/test/fixtures/`, capped at 64 KB each,
@@ -480,16 +489,16 @@ a throwaway directory — installing it here would put Vue in the graph and fail
 
 | Bundle | Raw | gzip |
 |---|---|---|
-| **Entry chunk — what arrives before first paint** | 358.0 kB | **100.4 kB** |
+| **Entry chunk — what arrives before first paint** | 362.1 kB | **101.7 kB** |
 | Deferred chunks, fetched when first needed | 803.3 kB | 242.3 kB |
-| `@openish/elements`, everything | 1169.4 kB | 341.1 kB |
-| `@openish/core` alone | 275.4 kB | 87.8 kB |
+| `@openish/elements`, everything | 1173.5 kB | 342.4 kB |
+| `@openish/core` alone | 276.0 kB | 88.0 kB |
 | `@openish/client` alone | 10.7 kB | 4.0 kB |
-| `@scalar/api-reference` 1.64.0, for reference | 1226.8 kB | 334.4 kB |
+| `@scalar/api-reference` 1.64.0, for reference | 1226.9 kB | 334.4 kB |
 
 The entry chunk was 65.6 kB gzipped before the M9 document-fidelity pass that added named examples,
 callbacks, per-operation security, `externalDocs`, the rest of the `info` object, the OAuth flow
-detail, the parameter serialization keywords and `links`; 73.4 kB after it. It is 100.4 kB now, and
+detail, the parameter serialization keywords and `links`; 73.4 kB after it. It is 101.7 kB now, and
 almost all of that is the same trade made again — the plane, the section index, the descriptive
 column, and the document fidelity of M20. The last of those cost 3.8 kB for `encoding`, the rest of
 the Header Object, the `not` subschema, the server-override rules and a width controller.

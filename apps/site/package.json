@@ -1,0 +1,27 @@
+{
+  "name": "@openish/site",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The openish documentation and demo site, deployed to GitHub Pages",
+  "scripts": {
+    "predev": "npm run build -w @openish/elements",
+    "dev": "vite",
+    "prebuild": "npm run build -w @openish/elements",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@lit-labs/router": "^0.1.4",
+    "@openish/client": "0.0.0",
+    "@openish/core": "0.0.0",
+    "@openish/elements": "0.0.0",
+    "@openish/theme": "0.0.0",
+    "lit": "^3.3.3",
+    "urlpattern-polyfill": "^10.1.0"
+  },
+  "devDependencies": {
+    "@scalar/galaxy": "^0.6.12",
+    "vite": "^7.1.9"
+  }
+}

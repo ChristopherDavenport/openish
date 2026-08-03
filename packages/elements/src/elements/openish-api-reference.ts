@@ -77,6 +77,27 @@ export class OpenishApiReference extends LitElement {
        * height gets a page that scrolls as one - see the sticky rule on .menu below, and the note in
        * the README.
        */
+      /*
+       * The scheme a host decided, applied by the element to itself.
+       *
+       * The light-dark() function reads the used value of color-scheme, so choosing a scheme is
+       * setting that property and never restating a palette. This lives here rather than in
+       * @openish/theme because a stylesheet the *document* loads cannot reach an element inside
+       * someone else's shadow root - and a host that wraps the reference in a component of their
+       * own is doing an ordinary thing. The attribute used to be honoured only in light DOM,
+       * silently, and the reference simply followed the reader instead.
+       *
+       * The theme keeps the two document-level class rules, which are genuinely its to own: a rule
+       * inside this shadow root could never match a class on the root element.
+       */
+      :host([color-scheme='light']) {
+        color-scheme: light;
+      }
+
+      :host([color-scheme='dark']) {
+        color-scheme: dark;
+      }
+
       :host {
         display: block;
         height: 100%;
@@ -566,6 +587,18 @@ export class OpenishApiReference extends LitElement {
    * context's `hasChanged` then decides whether anything downstream needs to hear about it.
    */
   protected override willUpdate(): void {
+    /*
+     * The store first, and the configuration read out of it second. That order is load-bearing.
+     *
+     * The store owns the resolved configuration - it is built with one, and `hideModels`, the sort
+     * orders and the slug scheme all shape the traversal it produced, so the copy it holds is the
+     * one the page has to agree with. Reading `this.store` *before* refreshing it from the sources
+     * controller meant `ui.config` was always one store behind: on first load nobody could tell,
+     * because the property and the store agree, but a `config` changed on a live element rebuilt
+     * the store and then published the previous configuration to every element on the page. The
+     * document sorted itself and the sidebar did not disappear.
+     */
+    this.store = this.#sources.store
     const config = this.store?.config ?? resolveConfig(this.config)
 
     /*
@@ -580,7 +613,6 @@ export class OpenishApiReference extends LitElement {
       }
     }
 
-    this.store = this.#sources.store
     this.sourcesState = this.#sources.state
     this.#auth.applyPrefilled()
 

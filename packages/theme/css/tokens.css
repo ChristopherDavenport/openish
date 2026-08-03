@@ -211,20 +211,23 @@
 }
 
 /*
- * Deciding the scheme, for a host that wants to rather than leaving it to the reader.
+ * Deciding the scheme for the whole page, for a host that wants to rather than leaving it to the
+ * reader.
  *
- * These are the *only* rules needed for it, because there is one palette above and `light-dark()`
- * reads `color-scheme` to choose from it. The element attribute is here rather than in the
- * component's own stylesheet for the same reason the tokens are: `--openish-*` values set on the
- * host element inherit into its shadow tree, and a rule inside the shadow root could not have
- * matched an attribute on the host's own light-DOM ancestors anyway.
+ * There is one palette above and `light-dark()` reads `color-scheme` to choose from it, so choosing
+ * a scheme is setting that property and never restating a palette.
+ *
+ * Only the document-level classes are here. The `color-scheme` *attribute* on a reference is
+ * applied by the element to its own `:host`, in `openish-api-reference.ts` - it used to be a rule
+ * here, matching `openish-api-reference[color-scheme='dark']`, and that silently did nothing for
+ * any host who had wrapped the reference in a component of their own, because a stylesheet the
+ * document loads cannot reach into someone else's shadow root. These two cannot move with it: a
+ * rule inside a shadow root could never match a class on `<html>`.
  */
-:root.openish-light,
-openish-api-reference[color-scheme='light'] {
+:root.openish-light {
   color-scheme: light;
 }
 
-:root.openish-dark,
-openish-api-reference[color-scheme='dark'] {
+:root.openish-dark {
   color-scheme: dark;
 }

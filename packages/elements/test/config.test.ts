@@ -312,3 +312,55 @@ describe('page-level options', () => {
     expect(seen.at(-1)?.message).toContain('definitely-not-there')
   })
 })
+
+/**
+ * Configuration set after a document has loaded.
+ *
+ * Every test above configures a reference before it mounts, which is the ordinary case and the one
+ * that always worked. This is the other one: a host that changes `config` on a live element - a
+ * settings panel, a preference the reader just toggled - and it did not work at all.
+ *
+ * `willUpdate` read the resolved configuration out of `this.store` *before* refreshing `this.store`
+ * from the sources controller, so `ui.config` was permanently one store behind. The new config
+ * rebuilt the store correctly and then the previous one was published to every element on the page.
+ * Nothing threw; the page simply kept rendering the old configuration.
+ */
+describe('changing the configuration on a live element', () => {
+  const settle = async (harness: Harness): Promise<void> => {
+    /* The store is rebuilt asynchronously - the document is re-resolved before anything re-renders. */
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    await harness.settle()
+  }
+
+  it('takes the sidebar away, and gives it back', async () => {
+    const harness = await at('/')
+    expect(deepQuery(harness.element.shadowRoot!, 'openish-sidebar')).not.toBeNull()
+
+    harness.element.config = { showSidebar: false }
+    await settle(harness)
+    expect(deepQuery(harness.element.shadowRoot!, 'openish-sidebar')).toBeNull()
+
+    harness.element.config = { showSidebar: true }
+    await settle(harness)
+    expect(deepQuery(harness.element.shadowRoot!, 'openish-sidebar')).not.toBeNull()
+  })
+
+  it('publishes the store’s own configuration rather than the previous one', async () => {
+    const harness = await at('/')
+
+    harness.element.config = { hideModels: true }
+    await settle(harness)
+
+    /*
+     * The two halves that used to disagree. `store.config` is what the traversal was built with and
+     * `ui.config` is what every element on the page reads; a difference between them is the bug.
+     */
+    const element = harness.element as unknown as {
+      store?: { config: Record<string, unknown> }
+      ui: { config: Record<string, unknown> }
+    }
+    expect(element.ui.config).toBe(element.store?.config)
+    expect(element.ui.config['hideModels']).toBe(true)
+    expect(labels(harness)).not.toContain('Models')
+  })
+})

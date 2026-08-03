@@ -1,0 +1,150 @@
+import { LitElement, html, css, type TemplateResult } from 'lit'
+import { customElement, property } from 'lit/decorators.js'
+import { createRef, ref } from 'lit/directives/ref.js'
+
+import './site-code.js'
+import './site-demo-scope.js'
+import { ElementsLoader } from '../controllers/elements-loader.js'
+import { printExample, type SiteExampleSpec } from '../data/example.js'
+import { siteStyles } from '../styles/shared.js'
+
+/**
+ * An example, shown as code and as the thing that code produces - from one source.
+ *
+ * The failure this is built to rule out is a code listing that drifts from the demo beside it. So
+ * there is only ever one artefact: the `markup` string. The code pane prints it, and the result
+ * pane is *parsed* from it. There is no second template, and no way for the two to disagree.
+ *
+ * `createContextualFragment` rather than `unsafeHTML`, and the difference matters. Both would put
+ * the right element on the page, but the fragment hands over the element *before* insertion, which
+ * is what lets `props` be assigned before the first update. `unsafeHTML` would mean querying for
+ * the element after render and racing the update that has already happened - and the properties
+ * this exists to demonstrate, `spec`, `sources` and `config`, are exactly the ones with no
+ * attribute form and no second chance.
+ *
+ * Because an example is *data* rather than a template, `lit-analyzer` cannot check it - so
+ * `apps/site/test/examples.test.ts` does, in Node, against `custom-elements.json`: every tag, every
+ * attribute and every property key on every example, checked against what the elements actually
+ * declare. That test is the reason this shape was chosen over a template per example.
+ */
+@customElement('site-example')
+export class SiteExample extends LitElement {
+  static override styles = [
+    siteStyles,
+    css`
+      :host {
+        display: block;
+        margin-bottom: var(--openish-space-lg);
+      }
+
+      .listing {
+        margin-bottom: var(--openish-space-sm);
+      }
+
+      .result {
+        display: flex;
+        flex-direction: column;
+        min-block-size: 0;
+        block-size: 100%;
+      }
+
+      .waiting {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        block-size: 100%;
+        margin: 0;
+        color: var(--openish-color-text-muted);
+        font: var(--openish-font-small);
+      }
+    `,
+  ]
+
+  readonly #elements = new ElementsLoader(this)
+  readonly #result = createRef<HTMLDivElement>()
+
+  /** What the example is. One object, so a page cannot pass markup without its properties. */
+  @property({ attribute: false })
+  example: SiteExampleSpec | undefined
+
+  /** An optional caption above the listing. */
+  @property({ type: String })
+  label = ''
+
+  /** The markup last mounted, so a props-only change mutates in place instead of remounting. */
+  #mounted = ''
+
+  /** The element the fragment produced, kept so properties can be re-applied without a query. */
+  #instance: Element | undefined
+
+  /**
+   * The one place this component touches the DOM directly, which is where the repo's rules put it.
+   *
+   * A remount is deliberately avoided when only `props` changed: rebuilding the element would throw
+   * away whatever the reader had done to it - a scroll position, an open disclosure, a chosen tab -
+   * and the pages that change props at all are the ones with a control panel beside the example.
+   */
+  protected override updated(): void {
+    const host = this.#result.value
+    const example = this.example
+    if (!host || !example || !this.#elements.ready) {
+      return
+    }
+
+    if (this.#mounted !== example.markup) {
+      /*
+       * Properties are assigned while the element is still inside the fragment, and the fragment is
+       * inserted afterwards. That order is the entire reason this parses markup rather than
+       * interpolating a template: a custom element does not run `connectedCallback` until it is in a
+       * document, so everything set here is in place before the element acts on any of it.
+       *
+       * It matters most for `config`, which `<openish-api-reference>` resolves while building its
+       * document store. Assign it after insertion and the store has already been built without it.
+       */
+      const fragment = document.createRange().createContextualFragment(example.markup)
+      const instance = fragment.firstElementChild ?? undefined
+      if (instance) {
+        Object.assign(instance, example.props ?? {})
+      }
+      host.replaceChildren(fragment)
+      this.#instance = instance
+      this.#mounted = example.markup
+      return
+    }
+
+    if (this.#instance) {
+      Object.assign(this.#instance, example.props ?? {})
+    }
+  }
+
+  override render(): TemplateResult {
+    const example = this.example
+    if (!example) {
+      return html``
+    }
+
+    return html`
+      <site-code class="listing" .code=${printExample(example)} label=${this.label}></site-code>
+      <site-demo-scope .height=${example.height ?? 'min(70vh, 40rem)'}>
+        ${this.#elements.ready
+          ? ''
+          : html`<p class="waiting">
+              ${this.#elements.failed ? 'This example could not be loaded.' : 'Loading…'}
+            </p>`}
+        <!--
+          Deliberately empty, and deliberately containing no expression. The updated() hook replaces
+          this element's children directly, which is only safe because Lit has no child part inside
+          it - a binding here would put markers in the way and the first mount would break them. The
+          waiting message is therefore a sibling rather than a placeholder inside.
+        -->
+        <div class="result" ${ref(this.#result)}></div>
+      </site-demo-scope>
+    `
+  }
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    'site-example': SiteExample
+  }
+}

@@ -43,6 +43,7 @@ const ROOTS = [
   join(ROOT, 'packages/core/src'),
   join(ROOT, 'packages/client/src'),
   join(ROOT, 'apps/playground/src'),
+  join(ROOT, 'apps/site/src'),
 ]
 
 function* walk(dir) {

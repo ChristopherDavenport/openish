@@ -251,6 +251,7 @@ An operation's responses.
 
 | Property | Attribute | Type | Default | |
 |---|---|---|---|---|
+| `store` | — | `DocumentStore \| undefined` | — | The parsed document. Provided by `<openish-api-reference>` through context. |
 | `ui` | — | `OpenishUiState \| undefined` | — | Presentation state. Provided by `<openish-api-reference>` through context. |
 | `responses` | — | `unknown` | `undefined` | A Responses Object: status codes to Response Objects. |
 | `noExample` | `no-example` | `boolean` | `false` | Document the response schemas without their examples. |
