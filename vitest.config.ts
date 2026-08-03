@@ -8,6 +8,8 @@ const alias = {
   '@openish/core': resolve('./packages/core/src/index.ts'),
   '@openish/client': resolve('./packages/client/src/index.ts'),
   '@openish/elements': resolve('./packages/elements/src/index.ts'),
+  /* Mirrors `apps/site/vite.config.ts`, so the site's tests resolve fixtures the way the site does. */
+  '@fixtures': resolve('./packages/core/test/fixtures'),
 }
 
 /**
@@ -61,6 +63,24 @@ export default defineConfig({
         },
       },
       {
+        /*
+         * `@openish/site` is an application, but the parts of it worth testing without a browser are
+         * the same shape as `elements-pure`: the base-path arithmetic, which is a pure function and
+         * is the one thing here that a local browser cannot catch - a path that is wrong under
+         * `/openish/` resolves perfectly against a dev server rooted at `/`.
+         *
+         * Anything in the site's tests that reaches a page module reaches `customElements.define`,
+         * and is named `.browser.test.ts` so it runs in the project below.
+         */
+        resolve: { alias },
+        test: {
+          name: 'site',
+          environment: 'node',
+          include: ['apps/site/test/**/*.test.ts'],
+          exclude: ['apps/site/test/**/*.browser.test.ts'],
+        },
+      },
+      {
         resolve: { alias, dedupe: ['lit', 'lit-html', 'lit-element', '@lit/reactive-element'] },
         /*
          * Named up front rather than discovered.
@@ -76,11 +96,18 @@ export default defineConfig({
             '@lit-labs/virtualizer',
             '@lit-labs/virtualizer/virtualize.js',
             '@lit-labs/virtualizer/layouts/flow.js',
+            /* The site's own late arrivals, for the same reason: only its tests reach for them. */
+            '@lit-labs/router',
+            'lit/directives/style-map.js',
           ],
         },
         test: {
           name: 'elements',
-          include: ['packages/elements/test/**/*.test.ts', 'packages/client/test/**/*.browser.test.ts'],
+          include: [
+            'packages/elements/test/**/*.test.ts',
+            'packages/client/test/**/*.browser.test.ts',
+            'apps/site/test/**/*.browser.test.ts',
+          ],
           exclude: ['packages/elements/test/pure/**'],
           browser: {
             enabled: true,

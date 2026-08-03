@@ -1,0 +1,46 @@
+/*
+ * The site's global layer, and deliberately almost nothing.
+ *
+ * Every site element carries its own styles in its own shadow root, built from `--openish-*` in
+ * `styles/shared.ts`. What is left for a global stylesheet is the two things a shadow root cannot
+ * reach: the document element itself, and the height chain.
+ */
+
+body {
+  margin: 0;
+  background: var(--openish-color-page);
+  color: var(--openish-color-text);
+  font: var(--openish-font-body);
+}
+
+/*
+ * The height chain, all the way down.
+ *
+ * `<openish-api-reference>` fills its container - it does not decide how tall it is. Break the chain
+ * anywhere and it falls back to the height of its content, which means nothing inside it scrolls on
+ * its own: the sidebar and, on a narrow viewport, the navigation disclosure scroll off the top of
+ * the page with no way back to them. On this site the chain stops at `<site-app>`, because content
+ * pages scroll normally and only the full-bleed reference page hands its height to a reference; the
+ * per-page half of this lives with the element that embeds one.
+ */
+html,
+body,
+site-app {
+  height: 100%;
+}
+
+/*
+ * Undefined until the module loads, and an unknown element is inline - so on a slow connection the
+ * shell is an inline box of no height rather than a page waiting to be filled.
+ *
+ * `:not(:defined)` and not a bare `site-app`, which is the trap this rule was first written as. A
+ * declaration in the *document* beats a `:host` rule in the shadow tree whatever their specificities
+ * say - `:host` is sorted below the outer tree, by design, so that a host can always restyle an
+ * element it has adopted. So `site-app { display: block }` here silently won over the shell's own
+ * `:host { display: flex }`, the column stopped being a flex container, and the layout collapsed to
+ * the height of its content with the navigation border stopping in mid-air. The selector that only
+ * matches before the upgrade cannot reach the element afterwards, which is the whole intent.
+ */
+site-app:not(:defined) {
+  display: block;
+}

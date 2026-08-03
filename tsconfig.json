@@ -4,6 +4,7 @@
     { "path": "./packages/core" },
     { "path": "./packages/client" },
     { "path": "./packages/elements" },
-    { "path": "./apps/playground" }
+    { "path": "./apps/playground" },
+    { "path": "./apps/site" }
   ]
 }
