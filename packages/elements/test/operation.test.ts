@@ -5,13 +5,16 @@ import {
   contentTypePicker,
   deepQuery,
   deepQueryAll,
+  deepFieldRows,
   deepTextOf,
   disposeAll,
+  fieldRows,
   mountReference,
-  openBodies,
+  openStatus,
   openTryIt,
   schemaRows,
   shadowOf,
+  statusRows,
   textOf,
   sectionOf,
   type Harness,
@@ -24,7 +27,13 @@ afterEach(() => {
 const operationOf = async (id: string, config?: Record<string, unknown>): Promise<Harness> =>
   mountReference(config ? { path: `/tags/accounts/${id}`, config } : { path: `/tags/accounts/${id}` })
 
-/** The rendered cells of one `openish-table`, chosen by its caption. */
+/**
+ * The rendered cells of one `openish-table`, chosen by its caption.
+ *
+ * Two callers left. The parameter tables and the response-header table are field rows now - see
+ * `fieldRows` - and what stays tabular is what is genuinely a table: the parts of a multipart body,
+ * and the links a response offers.
+ */
 const rowsOf = (root: Element | ShadowRoot, caption: string): string[][] => {
   const table = deepQueryAll(root, 'openish-table').find((element) => element.getAttribute('caption') === caption)
   if (!table?.shadowRoot) {
@@ -37,20 +46,25 @@ const rowsOf = (root: Element | ShadowRoot, caption: string): string[][] => {
   )
 }
 
+/**
+ * One field row, chosen by the name in it.
+ *
+ * Rows are no longer grouped into tables a test can pick by caption, and that is the point of the
+ * change - so a test names the row it means, which is what a reader does too.
+ */
+const rowNamed = (root: Element | ShadowRoot, name: string): Element => {
+  const rows = deepQueryAll(root, 'ul.fields > li.field')
+  const row = rows.find((one) => textOf(one.querySelector('.name')) === name)
+  if (!row) {
+    throw new Error(`No row named "${name}". Found: ${rows.map((one) => textOf(one.querySelector('.name'))).join(', ')}`)
+  }
+  return row
+}
+
 /** The buttons of the nearest tab set below `root` - not any tab set nested inside its panel. */
 const tabsIn = (root: Element | ShadowRoot): HTMLButtonElement[] => {
   const tabs = deepQuery(root, 'openish-tabs')
   return tabs?.shadowRoot ? [...tabs.shadowRoot.querySelectorAll<HTMLButtonElement>('button[role="tab"]')] : []
-}
-
-/** The panel of the nearest tab set below `root`. */
-const panelIn = (root: Element | ShadowRoot): Element => {
-  const tabs = deepQuery(root, 'openish-tabs')
-  const panel = tabs?.shadowRoot?.querySelector('[role="tabpanel"]')
-  if (!panel) {
-    throw new Error('No tab panel below the given root.')
-  }
-  return panel
 }
 
 describe('parameters', () => {
@@ -58,34 +72,36 @@ describe('parameters', () => {
     const { element } = await operationOf('getAccount')
     const operation = shadowOf(sectionOf(element), 'openish-operation')
 
-    const [row] = rowsOf(operation, 'Query parameters')
+    const row = rowNamed(operation, 'expand')
 
-    expect(row?.[0]).toBe('expand')
-    expect(row?.[3]).toContain('Declared on the operation.')
-    expect(row?.[3]).not.toContain('Declared on the path item.')
+    expect(textOf(row.querySelector('.badge[data-where]'))).toBe('query')
+    expect(deepTextOf(row)).toContain('Declared on the operation.')
+    expect(deepTextOf(row)).not.toContain('Declared on the path item.')
     /* The override brings its own schema with it, constraints and all. */
-    expect(row?.[3]).toContain('one of balance, owner')
+    expect(deepTextOf(row)).toContain('one of balance, owner')
   })
 
   it('inherits a parameter the path item declares and the operation does not', async () => {
     const { element } = await operationOf('getAccount')
     const operation = shadowOf(sectionOf(element), 'openish-operation')
 
-    const [row] = rowsOf(operation, 'Path parameters')
+    const [row] = fieldRows(shadowOf(operation, 'openish-parameters'))
 
-    expect(row?.[0]).toBe('accountId')
-    expect(row?.[1]).toBe('string (uuid)')
-    expect(row?.[2]).toBe('required')
+    expect(row).toEqual({ name: 'accountId', where: 'path', type: 'string (uuid)', required: 'required' })
   })
 
-  it('lists an optional parameter with no example, which the sample request omits', async () => {
+  it('leaves the required column blank for an optional parameter, rather than saying so', async () => {
     const { element } = await operationOf('getAccount')
     const operation = shadowOf(sectionOf(element), 'openish-operation')
 
-    const [row] = rowsOf(operation, 'Header parameters')
+    /*
+     * `optional` used to be printed on every row that was not required, which on a twenty-field
+     * object is eighteen lines saying the default. With one fixed slot per row, blank is unambiguous.
+     */
+    const row = rowNamed(operation, 'X-Trace-Id')
 
-    expect(row?.[0]).toBe('X-Trace-Id')
-    expect(row?.[2]).toBe('optional')
+    expect(textOf(row.querySelector('.badge[data-where]'))).toBe('header')
+    expect(row.querySelector('.required')).toBeNull()
   })
 
   it('renders no parameter section for an operation that takes none', async () => {
@@ -142,7 +158,7 @@ describe('parameters', () => {
    * OpenAPI stores a body somewhere else from the parameters travelling beside it. The body is a
    * group within the answer now, named for where it goes, exactly as `Path` and `Query` are.
    */
-  it('puts the body under Parameters, as another group of inputs', async () => {
+  it('promotes the body’s own members into the one list of inputs', async () => {
     const { element } = await operationOf('replaceAccount')
     const operation = shadowOf(sectionOf(element), 'openish-operation')
 
@@ -155,122 +171,114 @@ describe('parameters', () => {
     expect(section.querySelector('[part~="body-section"]')).not.toBeNull()
 
     /*
-     * A level below the section holding it, not above. These were `h3`s under an `h4` - nested on
-     * the page and outranking it in the outline, which is the half of "moved under Parameters" that
-     * a reader following headings would not have got.
+     * No group heading anywhere in the section - not `Body`, and not the `Path`/`Query` ones that
+     * stood beside it. Where each input travels is a chip on its row, so a reader answering "what do
+     * I send?" reads one list instead of crossing five headings and two grammars.
      */
-    const group = section.querySelector('.group')!
-    expect(textOf(group)).toBe('Body')
-    expect(group.tagName).toBe('H5')
+    expect(section.querySelector('.group')).toBeNull()
+
+    /* One sequence, across the shadow boundary between the parameters and the promoted body. */
+    expect(deepFieldRows(section).map((row) => `${row.where} ${row.name}`)).toEqual([
+      'path accountId',
+      'query expand',
+      'body id',
+      'body balance',
+    ])
   })
 
   /*
-   * The heading is short because the section above it already said the word; the table's name is not,
-   * because it is announced when a screen-reader user enters the table, where the heading is out of
-   * earshot and `Path` alone names nothing.
+   * The chip is doing what four headings and four tables used to do, and it can only do it because
+   * the rows stay in group order - `groupParameters` walks `PARAMETER_LOCATIONS`, so every `query`
+   * row is contiguous and the chips read as a run rather than an interleaving.
    */
-  it('shortens the group heading without shortening the table it names', async () => {
+  it('badges each input with where it travels, in place of the group headings', async () => {
     const { element } = await operationOf('getAccount')
     const parameters = shadowOf(sectionOf(element), 'openish-parameters')
 
-    expect([...parameters.querySelectorAll('h5')].map((one) => textOf(one))).toEqual([
-      'Path',
-      'Query',
-      'Header',
-    ])
-    expect(parameters.querySelector('openish-table')?.getAttribute('caption')).toBe('Path parameters')
+    expect(parameters.querySelectorAll('h5')).toHaveLength(0)
+    expect(parameters.querySelector('openish-table')).toBeNull()
+
+    expect(fieldRows(parameters).map((row) => row.where)).toEqual(['path', 'query', 'header'])
   })
 })
 
 describe('responses', () => {
-  it('tabs by status code, with default last however the document ordered it', async () => {
+  /*
+   * The two columns are two representations of one set of statuses, and they are deliberately not
+   * synchronised. The documentation column lists every status at once, because "what can this
+   * return" is a question about all of them; the examples column tabs, because an example answers
+   * one call and the code sample beside it asks for one `Accept`.
+   */
+  it('lists every status with its description, rather than tabbing between them', async () => {
     const { element } = await operationOf('getAccount')
     const responses = shadowOf(sectionOf(element), 'openish-response-list')
 
-    expect(tabsIn(responses).map((tab) => textOf(tab))).toEqual(['200', '404', 'default'])
-  })
+    expect(responses.querySelector('openish-tabs[label="Response status codes"]')).toBeNull()
+    expect(statusRows(responses).map((row) => row.status)).toEqual(['200', '404', 'default'])
 
-  it('moves between tabs with the arrow keys, and wraps at the ends', async () => {
-    const { element, settle } = await operationOf('getAccount')
-    const responses = shadowOf(sectionOf(element), 'openish-response-list')
-    const press = async (key: string) => {
-      tabsIn(responses)[0]!.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
-      await settle()
-    }
-
-    expect(tabsIn(responses).map((tab) => tab.getAttribute('aria-selected'))).toEqual(['true', 'false', 'false'])
-
-    await press('ArrowRight')
-    expect(tabsIn(responses).map((tab) => tab.getAttribute('aria-selected'))).toEqual(['false', 'true', 'false'])
+    /* Five descriptions a reader used to have to click a tab to find are on the page at once. */
+    expect(deepTextOf(responses)).toContain('The account.')
     expect(deepTextOf(responses)).toContain('No account with that id.')
-
-    await press('End')
-    expect(tabsIn(responses)[2]!.getAttribute('aria-selected')).toBe('true')
-
-    /* Past the last tab is the first one, not a dead end. */
-    await press('ArrowRight')
-    expect(tabsIn(responses)[0]!.getAttribute('aria-selected')).toBe('true')
-
-    await press('ArrowLeft')
-    expect(tabsIn(responses)[2]!.getAttribute('aria-selected')).toBe('true')
+    expect(deepTextOf(responses)).toContain('Unexpected error.')
   })
 
-  it('keeps the tab list a single tab stop by roving tabindex', async () => {
+  it('opens the first success and leaves the errors closed', async () => {
     const { element } = await operationOf('getAccount')
     const responses = shadowOf(sectionOf(element), 'openish-response-list')
 
-    expect(tabsIn(responses).map((tab) => tab.getAttribute('tabindex'))).toEqual(['0', '-1', '-1'])
+    /*
+     * What the operation normally does is what a reader arrived to see, so it costs no click. The
+     * errors are one press away and cost nothing until pressed - a closed region renders no
+     * elements, which is what lets every status be on the page at once.
+     */
+    expect(statusRows(responses).filter((row) => row.open).map((row) => row.status)).toEqual(['200'])
   })
 
-  it('renders a response with no content as its description alone', async () => {
-    const { element, settle } = await operationOf('getAccount')
+  it('renders a response with no content as a plain row, not an expander over nothing', async () => {
+    const { element } = await operationOf('getAccount')
     const responses = shadowOf(sectionOf(element), 'openish-response-list')
 
-    tabsIn(responses)[1]!.click()
-    await settle()
-
-    const panel = panelIn(responses)
-    expect(deepTextOf(panel)).toContain('No account with that id.')
-    expect(deepQuery(panel, 'openish-schema-preview')).toBeNull()
-    expect(deepQuery(panel, 'pre')).toBeNull()
+    /* A `404` here has a description and nothing else - a control that reveals nothing is worse
+       than no control. */
+    const row = [...responses.querySelectorAll('ul.statuses > li')].find((one) =>
+      textOf(one.querySelector('.status')) === '404',
+    )!
+    expect(row.querySelector('openish-disclosure')).toBeNull()
+    expect(deepTextOf(row)).toContain('No account with that id.')
   })
 
-  it('renders response headers and the body schema for a response that has both', async () => {
+  it('renders response headers as rows beside the body’s, badged for which is which', async () => {
     const harness = await operationOf('getAccount')
     const responses = shadowOf(sectionOf(harness.element), 'openish-response-list')
 
-    const [header] = rowsOf(responses, 'Response headers')
-    expect(header?.[0]).toBe('X-Request-Id')
-    expect(header?.[2]).toContain('Correlation id.')
+    expect(responses.querySelector('openish-table')).toBeNull()
 
-    /* The two media types this response offers are the picker's options, on the Returns heading. */
-    expect(tabsIn(panelIn(responses))).toEqual([])
+    const header = rowNamed(responses, 'X-Request-Id')
+    expect(textOf(header.querySelector('.badge[data-where]'))).toBe('header')
+    expect(deepTextOf(header)).toContain('Correlation id.')
+
+    /* The body's first level is on the page too, which is what a reader arrived asking about. */
+    expect(deepTextOf(responses)).toContain('Opaque account id.')
+
+    /*
+     * Every media type any response declares is the picker's options now. The column shows all the
+     * statuses at once, so there is no "the response showing" for it to ask about.
+     */
     expect([...contentTypePicker(harness, 'response').options].map((option) => option.value)).toEqual([
       'application/json',
       'text/csv',
     ])
-
-    /* The body arrives named and closed, so the shape is there once the reader asks for it. */
-    expect(deepTextOf(responses)).not.toContain('Opaque account id.')
-    await openBodies(harness, responses)
-    expect(deepTextOf(responses)).toContain('Opaque account id.')
   })
 
-  /*
-   * A tab set nobody is controlling keeps what the reader picked. Response statuses are that case -
-   * no parent has an opinion about which one is showing - and they must not be disturbed by the
-   * re-renders that a request body's controlled tabs now cause elsewhere in the section.
-   */
-  it('keeps the response status the reader picked across a re-render', async () => {
+  it('keeps a status the reader opened across a re-render', async () => {
     const harness = await mountReference({ path: '/tags/accounts/getAccount' })
     await harness.settle()
     const responses = shadowOf(sectionOf(harness), 'openish-response-list')
 
-    tabsIn(responses)[1]!.click()
-    await harness.settle()
-    expect(tabsIn(responses)[1]!.getAttribute('aria-selected')).toBe('true')
+    await openStatus(harness, responses, 'default')
+    expect(statusRows(responses).filter((row) => row.open).map((row) => row.status)).toEqual(['200', 'default'])
 
-    /* Something else on the section changes; the reader's tab is not something else's business. */
+    /* Something else on the section changes; what the reader opened is not something else's business. */
     const sample = deepQuery<HTMLSelectElement>(sectionOf(harness), 'openish-code-sample')!
     const client = sample.shadowRoot!.querySelector<HTMLSelectElement>('select')!
     client.value = 'python/requests'
@@ -278,20 +286,71 @@ describe('responses', () => {
     await new Promise((resolve) => setTimeout(resolve, 150))
     await harness.settle()
 
-    expect(tabsIn(responses)[1]!.getAttribute('aria-selected')).toBe('true')
+    expect(statusRows(responses).filter((row) => row.open).map((row) => row.status)).toEqual(['200', 'default'])
   })
 
-  it('stacks every response when expandAllResponses is set', async () => {
+  it('opens every status when expandAllResponses is set', async () => {
     const { element } = await operationOf('getAccount', { expandAllResponses: true })
     const responses = shadowOf(sectionOf(element), 'openish-response-list')
 
-    /* The media-type tab set inside a response stays; it is the status tabs that go away. */
-    expect(responses.querySelector('openish-tabs[label="Response status codes"]')).toBeNull()
-    expect(deepQueryAll(responses, 'h3').map((heading) => textOf(heading))).toEqual(['200', '404', 'default'])
-    /* Every description is on the page at once, not one at a time. */
-    expect(deepTextOf(responses)).toContain('The account.')
-    expect(deepTextOf(responses)).toContain('No account with that id.')
-    expect(deepTextOf(responses)).toContain('Unexpected error.')
+    /* `default` has content, `404` has only a description - so two rows open and one has no
+       expander to open. */
+    expect(statusRows(responses).filter((row) => row.open).map((row) => row.status)).toEqual(['200', 'default'])
+    expect(deepTextOf(responses)).toContain('Opaque account id.')
+  })
+
+  /*
+   * The examples column keeps its tab set, and it is the only place a status is chosen. A tab set
+   * nobody is controlling keeps what the reader picked, which is this one's case now that the
+   * documentation column no longer reports a status back.
+   */
+  it('tabs by status in the examples column, with default last', async () => {
+    const { element } = await operationOf('getAccount')
+    const examples = deepQueryAll(sectionOf(element), 'openish-response-list').at(-1)!.shadowRoot!
+
+    expect(tabsIn(examples).map((tab) => textOf(tab))).toEqual(['200', 'default'])
+    expect(tabsIn(examples).map((tab) => tab.getAttribute('tabindex'))).toEqual(['0', '-1'])
+  })
+
+  it('moves between the examples column’s tabs with the arrow keys, and wraps at the ends', async () => {
+    const { element, settle } = await operationOf('getAccount')
+    const examples = deepQueryAll(sectionOf(element), 'openish-response-list').at(-1)!.shadowRoot!
+    const press = async (key: string) => {
+      tabsIn(examples)[0]!.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
+      await settle()
+    }
+
+    expect(tabsIn(examples).map((tab) => tab.getAttribute('aria-selected'))).toEqual(['true', 'false'])
+
+    await press('ArrowRight')
+    expect(tabsIn(examples).map((tab) => tab.getAttribute('aria-selected'))).toEqual(['false', 'true'])
+
+    await press('End')
+    expect(tabsIn(examples).at(-1)!.getAttribute('aria-selected')).toBe('true')
+
+    /* Past the last tab is the first one, not a dead end. */
+    await press('ArrowRight')
+    expect(tabsIn(examples)[0]!.getAttribute('aria-selected')).toBe('true')
+
+    await press('ArrowLeft')
+    expect(tabsIn(examples).at(-1)!.getAttribute('aria-selected')).toBe('true')
+  })
+
+  /*
+   * The two columns are allowed to disagree, and this is the test that says so on purpose rather
+   * than by omission: moving the examples column leaves the documentation column exactly as the
+   * reader left it.
+   */
+  it('does not move the documentation column when the examples column changes status', async () => {
+    const harness = await operationOf('getAccount')
+    const docs = shadowOf(sectionOf(harness.element), 'openish-response-list')
+    const examples = deepQueryAll(sectionOf(harness.element), 'openish-response-list').at(-1)!.shadowRoot!
+
+    tabsIn(examples).at(-1)!.click()
+    await harness.settle()
+
+    expect(tabsIn(examples).at(-1)!.getAttribute('aria-selected')).toBe('true')
+    expect(statusRows(docs).filter((row) => row.open).map((row) => row.status)).toEqual(['200'])
   })
 })
 
@@ -303,11 +362,19 @@ describe('request body', () => {
    * most readers never make - and it appeared again under every response. It is one control on a row
    * that already existed now, at the end a reader going down the left edge never reaches.
    */
-  it('says whether the body is required, and picks its media type from the heading', async () => {
+  it('says whether the body is required on the section heading, where it has something to attach to', async () => {
     const harness = await operationOf('replaceAccount')
+    const operation = shadowOf(sectionOf(harness), 'openish-operation')
     const body = shadowOf(sectionOf(harness), 'openish-request-body')
 
-    expect(textOf(body.querySelector('.required'))).toBe('Required')
+    /*
+     * The body has no heading of its own any more, so a lone `Required` above its rows would read as
+     * a fact about the first row. On the section's heading row it sits beside the chip that says
+     * which rows it is about.
+     */
+    const identity = operation.querySelector('.body-identity')!
+    expect(textOf(identity.querySelector('.badge[data-where]'))).toBe('body')
+    expect(textOf(identity.querySelector('.required'))).toBe('required')
     expect(deepTextOf(body)).toContain('The replacement account.')
 
     expect(tabsIn(body)).toEqual([])
@@ -323,20 +390,24 @@ describe('request body', () => {
    * shape one click away. The whole shape is still here - it is not a summary - which is what makes
    * the abstraction honest rather than a truncation.
    */
-  it('names the referenced model, links it, and keeps the tree a click away', async () => {
+  it('names the referenced model on the heading row, and shows its first level below', async () => {
     const harness = await operationOf('replaceAccount')
+    const operation = shadowOf(sectionOf(harness.element), 'openish-operation')
     const body = shadowOf(sectionOf(harness.element), 'openish-request-body')
-    const tree = deepQuery(body, 'openish-schema')!
 
-    const link = tree.shadowRoot!.querySelector('.type a')
+    /*
+     * The link is the only route from a body to the section documenting it, and with the root object
+     * no longer drawn as a row there is nowhere else to hang it. Deleting it with the type line is
+     * the mistake this test exists to catch.
+     */
+    const link = operation.querySelector('.body-identity .type a')
     expect(textOf(link)).toBe('Account')
     expect(link?.getAttribute('href')).toContain('models/Account')
 
-    expect(schemaRows(tree)).toEqual([])
-    await openBodies(harness, body)
-    expect(schemaRows(tree)).toEqual([
+    /* One flat level, unasked for. Everything below it is still a disclosure. */
+    expect(schemaRows(deepQuery(body, 'openish-schema'))).toEqual([
       { name: 'id', type: 'string', required: 'required' },
-      { name: 'balance', type: 'integer', required: 'optional' },
+      { name: 'balance', type: 'integer', required: '' },
     ])
   })
 
@@ -412,24 +483,27 @@ describe('the parts of a multipart body', () => {
 })
 
 describe('response headers', () => {
-  const headerRows = async () => {
+  /*
+   * "Always sent" and not "required", which matters more now than when these were a table of their
+   * own: a response header's `required` is a promise the server makes, not something a caller
+   * supplies, and the rows a few inches above use "required" for the other meaning. One grammar
+   * puts the two side by side; it must not make them the same word.
+   */
+  it('says which headers are always sent, without calling them required', async () => {
     const harness = await operationOf('getAccount')
-    return rowsOf(sectionOf(harness), 'Response headers')
-  }
+    const row = rowNamed(sectionOf(harness), 'X-Request-Id')
 
-  it('says which headers are always sent, and shows an example of one', async () => {
-    const rows = await headerRows()
-    const requestId = rows.find((row) => row[0]?.includes('X-Request-Id'))!
-
-    expect(requestId[2]).toContain('Always sent')
-    expect(requestId[2]).toContain('req_8f2b')
+    expect(deepTextOf(row)).toContain('Always sent')
+    expect(deepTextOf(row)).toContain('req_8f2b')
+    expect(row.querySelector('.required')).toBeNull()
   })
 
   it('marks a deprecated header rather than listing it like the rest', async () => {
-    const rows = await headerRows()
-    const legacy = rows.find((row) => row[0]?.includes('X-Legacy-Cursor'))!
+    const harness = await operationOf('getAccount')
+    const row = rowNamed(sectionOf(harness), 'X-Legacy-Cursor')
 
-    expect(legacy[2]).toContain('Deprecated')
+    expect(deepTextOf(row)).toContain('deprecated')
+    expect(row.querySelector('.name.deprecated')).not.toBeNull()
   })
 })
 

@@ -557,11 +557,54 @@ export const shadowOf = (root: Element | ShadowRoot, selector: string): ShadowRo
   return host.shadowRoot
 }
 
+/** One row of a field list: what it is called, where it travels, its shape, and whether it is required. */
+export type FieldRowText = { name: string; where: string; type: string; required: string }
+
+/**
+ * The field rows in one root.
+ *
+ * One root, not the whole page: `<openish-parameters>` and the promoted request body beside it are
+ * two elements, and a nested schema is a third - so a caller asking about a level asks the element
+ * that draws it. `deepFieldRows` is the one that reads across the seam.
+ *
+ * `required` is empty rather than "optional" because the row prints nothing when a field is not
+ * required. With the word gone, blank is unambiguous and a twenty-field object stops carrying
+ * eighteen lines of muted noise.
+ */
+export const fieldRows = (root: Element | ShadowRoot | null): FieldRowText[] => {
+  if (!root) {
+    throw new Error('No root to read field rows from.')
+  }
+
+  return [...root.querySelectorAll('ul.fields > li.field > .head')].map((head) => ({
+    name: textOf(head.querySelector('.name')),
+    where: textOf(head.querySelector('.badge[data-where]')),
+    type: textOf(head.querySelector('.type')),
+    required: textOf(head.querySelector('.required')),
+  }))
+}
+
+/**
+ * Every field row under `root`, across shadow boundaries, in document order.
+ *
+ * This is what proves the promotion: over an operation's parameters section it returns the path,
+ * query and header rows followed by the body's, as one sequence - which is the claim the design is
+ * actually making, and which no single-root reader can see.
+ */
+export const deepFieldRows = (root: Element | ShadowRoot): FieldRowText[] =>
+  deepQueryAll(root, 'ul.fields > li.field > .head').map((head) => ({
+    name: textOf(head.querySelector('.name')),
+    where: textOf(head.querySelector('.badge[data-where]')),
+    type: textOf(head.querySelector('.type')),
+    required: textOf(head.querySelector('.required')),
+  }))
+
 /**
  * The property rows one `<openish-schema>` renders itself.
  *
  * Rows of a nested schema live in that element's own shadow root, so this returns exactly one
- * level - which is what a test about a recursive renderer wants to assert on.
+ * level - which is what a test about a recursive renderer wants to assert on. The chip is dropped
+ * because only a top-level list wears one; `fieldRows` is the reader that keeps it.
  */
 export const schemaRows = (
   schema: Element | null,
@@ -570,11 +613,7 @@ export const schemaRows = (
     throw new Error('Not an <openish-schema> with a shadow root.')
   }
 
-  return [...schema.shadowRoot.querySelectorAll('ul > li > .head')].map((head) => ({
-    name: textOf(head.querySelector('.name')),
-    type: textOf(head.querySelector('.type')),
-    required: textOf(head.querySelector('.required, .optional')),
-  }))
+  return fieldRows(schema.shadowRoot).map(({ name, type, required }) => ({ name, type, required }))
 }
 
 /**
@@ -604,23 +643,44 @@ export const pickContentType = async (
 }
 
 /**
- * Opens the outermost disclosure of every tree under `root`, and reports how many it opened.
+ * The status rows of a documentation-column `<openish-response-list>`.
  *
- * A body arrives named and closed - see `collapse-root` on `<openish-schema>` - and a closed
- * disclosure renders nothing inside it, so a test that wants to read a property row has to do what
- * the reader does first. Only the roots: the levels below are the renderer's own business, and a
- * test that opened all of them would be asserting against a page no reader has.
+ * `open` is what the accordion is showing, which is a different question from "which status is
+ * selected" - the documentation column has no selection, and that is the point of the arrangement.
+ * A row with nothing under it has no disclosure at all and reports `open: false`.
  */
-export const openBodies = async (harness: Harness, root: Element | ShadowRoot): Promise<number> => {
-  const roots = deepQueryAll(root, 'openish-schema').filter((schema) => schema.hasAttribute('collapse-root'))
+export const statusRows = (
+  responses: Element | ShadowRoot,
+): Array<{ status: string; description: string; open: boolean }> =>
+  [...responses.querySelectorAll('ul.statuses > li')].map((row) => {
+    const disclosure = row.querySelector('openish-disclosure')
+    return disclosure
+      ? {
+          status: disclosure.getAttribute('summary') ?? '',
+          description: disclosure.getAttribute('hint') ?? '',
+          open: disclosure.hasAttribute('open'),
+        }
+      : {
+          status: textOf(row.querySelector('.status')),
+          description: textOf(row.querySelector('.terse-description')),
+          open: false,
+        }
+  })
 
-  for (const schema of roots) {
-    const disclosure = schema.shadowRoot?.querySelector('openish-disclosure')
-    disclosure?.shadowRoot?.querySelector<HTMLButtonElement>('button')?.click()
+/** Presses the row that opens one status, the way a reader does. */
+export const openStatus = async (
+  harness: Harness,
+  responses: Element | ShadowRoot,
+  status: string,
+): Promise<void> => {
+  const disclosure = [...responses.querySelectorAll('ul.statuses > li openish-disclosure')].find(
+    (one) => one.getAttribute('summary') === status,
+  )
+  if (!disclosure) {
+    throw new Error(`No status row for "${status}" with anything to open.`)
   }
-
+  disclosure.shadowRoot?.querySelector<HTMLButtonElement>('button')?.click()
   await harness.settle()
-  return roots.length
 }
 
 /** The nested `<openish-schema>` a named property row renders, or null for a leaf. */

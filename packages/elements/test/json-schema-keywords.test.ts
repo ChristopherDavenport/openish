@@ -44,7 +44,7 @@ describe('prefixItems', () => {
     expect(schemaRows(schema)).toEqual([
       { name: '[0]', type: 'number', required: 'required' },
       /* `minItems: 1` means only the first position is guaranteed to be there. */
-      { name: '[1]', type: 'string', required: 'optional' },
+      { name: '[1]', type: 'string', required: '' },
     ])
   })
 })
@@ -311,9 +311,9 @@ describe('a title on an inline shape', () => {
     const { schema } = await modelSchema(JSON_SCHEMA_SPEC, 'Titled')
 
     expect(schemaRows(schema)).toEqual([
-      { name: 'address', type: 'Postal address', required: 'optional' },
+      { name: 'address', type: 'Postal address', required: '' },
       /* Not "Reference": a schema with a type worth printing already has a better label. */
-      { name: 'reference', type: 'string', required: 'optional' },
+      { name: 'reference', type: 'string', required: '' },
     ])
   })
 })
@@ -327,7 +327,7 @@ describe('a named scalar', () => {
     const { schema } = await modelSchema(JSON_SCHEMA_SPEC, 'Holder')
 
     expect(schemaRows(schema)).toEqual([
-      { name: 'account', type: 'AccountId (uuid)', required: 'optional' },
+      { name: 'account', type: 'AccountId (uuid)', required: '' },
     ])
   })
 })

@@ -4,20 +4,21 @@ import {
   mediaTypeExamples,
   schemaConstraints,
   schemaTypeLabel,
+  type DocumentStore,
   type VariantChoices,
 } from '@openish/core'
 import { LitElement, html, css, nothing, type TemplateResult } from 'lit'
-import { customElement, property } from 'lit/decorators.js'
-import { classMap } from 'lit/directives/class-map.js'
+import { customElement, property, state } from 'lit/decorators.js'
 import { ifDefined } from 'lit/directives/if-defined.js'
 import { repeat } from 'lit/directives/repeat.js'
 
-import { uiContext, type OpenishUiState } from '../context/contexts.js'
+import { documentContext, uiContext, type OpenishUiState } from '../context/contexts.js'
 import { exampleListStyles, renderExampleList } from '../render/example-list.js'
-import { renderMediaTypes } from '../render/media-types.js'
-import { responseEntries } from '../render/responses.js'
-import { baseStyles } from '../styles/shared.js'
-import type { OpenishTableRow } from './openish-table.js'
+import { fieldRowStyles, renderFieldRow } from '../render/field-row.js'
+import { renderTypeLabel } from '../render/model-link.js'
+import { hasRenderableContent, renderMediaTypes } from '../render/media-types.js'
+import { pickMediaType, responseEntries } from '../render/responses.js'
+import { badgeStyles, baseStyles } from '../styles/shared.js'
 import type { OpenishTab } from './openish-tabs.js'
 import './openish-disclosure.js'
 import './openish-markdown.js'
@@ -41,8 +42,6 @@ type Header = {
   examples?: Record<string, unknown>
 }
 
-/** Hoisted so the binding does not hand `openish-table` a new array on every render. */
-const HEADER_COLUMNS = ['Name', 'Type', 'Description']
 
 const LINK_COLUMNS = ['Name', 'Operation', 'Description']
 
@@ -63,32 +62,79 @@ const toneFor = (status: string): OpenishTab['tone'] => {
 /**
  * An operation's responses.
  *
- * Tabs by status code, because a reader is looking for one of them at a time - usually the happy
- * path, occasionally the error they just hit. `default` sorts last however the document ordered it:
- * it is the fallback, and reading it first tells you nothing about what the operation normally does.
+ * **A list in the documentation column, and a tab set in the examples column.** Those are two
+ * different questions wearing the same status codes. An example answers one call, so the column that
+ * holds it has to pick one status and the code sample beside it asks for that one in `Accept`. The
+ * documentation answers "what can this return", and a reader comparing the success case against the
+ * error they just hit should not have to click between two tabs to see both.
  *
- * `config.expandAllResponses` stacks them instead, for readers who want the whole contract at once
- * and for printing, where a tab set shows one panel and hides the rest.
+ * So each status here is a row carrying its own description - which is five descriptions a reader
+ * used to have to click to find - and everything under it is behind that row. `default` sorts last
+ * however the document ordered it: it is the fallback, and reading it first tells you nothing about
+ * what the operation normally does.
+ *
+ * `config.expandAllResponses` opens every row, for readers who want the whole contract at once and
+ * for printing.
  */
 @customElement('openish-response-list')
 export class OpenishResponseList extends LitElement {
   static override styles = [
+    badgeStyles,
     baseStyles,
+    fieldRowStyles,
     css`
       :host {
         display: block;
       }
 
-      h3 {
+      ul.statuses {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      /*
+       * A status with nothing under it is a row, not an expander over an empty region.
+       *
+       * Padded to match the disclosure button beside it so the codes line up down the column,
+       * whichever kind of row each one turned out to be.
+       */
+      .terse {
+        display: flex;
+        align-items: baseline;
+        gap: var(--openish-space-2xs);
+        padding: var(--openish-space-2xs) 0;
+      }
+
+      /*
+       * Indented past the marker of the button that opened it, so the codes stay the leftmost thing
+       * in the column and a region reads as belonging to the row above rather than starting a new one.
+       */
+      openish-disclosure::part(region) {
+        padding-left: var(--openish-space-md);
+      }
+
+      /*
+       * The shape a response answers with, above the rows that describe it - and the link to the
+       * section that documents it. Set like a field row's type rather than like a heading, because
+       * it is a caption on the rows below rather than a title over them.
+       */
+      .payload-identity {
         display: flex;
         align-items: baseline;
         gap: var(--openish-space-xs);
-        font: var(--openish-font-heading-3);
-        margin: var(--openish-space-lg) 0 var(--openish-space-xs);
+        margin: var(--openish-space-sm) 0 0;
       }
 
-      h3:first-of-type {
-        margin-top: 0;
+      .payload-identity .type {
+        font: var(--openish-font-code-small);
+        color: var(--openish-color-text-muted);
+        overflow-wrap: anywhere;
+      }
+
+      .terse-description {
+        font: var(--openish-font-small);
+        color: var(--openish-color-text-muted);
       }
 
       .status[data-tone='success'] {
@@ -114,15 +160,6 @@ export class OpenishResponseList extends LitElement {
         font-family: var(--openish-font-family-mono);
       }
 
-      .stacked {
-        padding-bottom: var(--openish-space-md);
-        border-bottom: 1px solid var(--openish-color-border);
-      }
-
-      .stacked:last-child {
-        border-bottom: 0;
-      }
-
       openish-disclosure {
         margin: var(--openish-space-sm) 0;
       }
@@ -133,14 +170,13 @@ export class OpenishResponseList extends LitElement {
         color: var(--openish-color-text-muted);
       }
 
-      /* The same mark a deprecated parameter carries, for the same reason. */
-      .deprecated {
-        text-decoration: line-through;
-        color: var(--openish-color-text-muted);
-      }
     `,
     exampleListStyles,
   ]
+
+  /** The parsed document. Provided by `<openish-api-reference>` through context. */
+  @consume({ context: documentContext, subscribe: true })
+  store: DocumentStore | undefined
 
   /** Presentation state. Provided by `<openish-api-reference>` through context. */
   @consume({ context: uiContext, subscribe: true })
@@ -171,15 +207,16 @@ export class OpenishResponseList extends LitElement {
   examplesOnly = false
 
   /**
-   * Which status the reader is on, when something above holds that choice.
+   * Which status the examples column is showing. Read in `examples-only` mode and nowhere else.
    *
-   * `<openish-operation>` does, so the tab set here and the one over the examples move together:
-   * they are two views of one question - which answer am I reading about - and a reader who moved
-   * one and found the other still on `200` had been shown a schema and an example of two different
-   * responses, side by side.
+   * The two columns used to move together, and the argument for it was sound while both were tab
+   * sets: a reader who moved one and found the other still on `200` had been shown a schema and an
+   * example of two different responses, side by side. That cannot happen now, because the
+   * documentation column has no selection to fall out of step with - it shows every status at once.
+   * The tab set over the examples is the only place a status is chosen, and this is how it says so.
    *
-   * Empty leaves each tab set to decide for itself, which is what a host mounting this element on
-   * its own gets.
+   * Empty leaves the tab set to decide for itself, which is what a host mounting this element on its
+   * own gets.
    */
   @property({ type: String })
   status = ''
@@ -208,50 +245,67 @@ export class OpenishResponseList extends LitElement {
   @property({ attribute: false })
   variants: VariantChoices | undefined = undefined
 
+  /**
+   * Which statuses the reader has opened or closed, by code. Absent means they have not said.
+   *
+   * A map rather than a bound attribute, and the same shape `<openish-schema>` uses for its own
+   * disclosures: `open` has to be the reader's answer once they have given one, and re-binding it
+   * from config on every render would reopen a status they had just closed.
+   */
+  @state()
+  private opened: ReadonlyMap<string, boolean> = new Map()
+
   /** Status codes in document order, with `default` moved to the end. See `render/responses.ts`. */
   get #entries(): Array<[string, unknown]> {
     return responseEntries(this.responses, { withContentOnly: this.examplesOnly })
   }
 
+  /**
+   * The headers a response promises, as rows of the same list its body's members are in.
+   *
+   * They were an `<openish-table>` behind a `Headers 3` disclosure, which is a second nesting inside
+   * a status that is already behind one. Badged `header`, they sit beside the body's rows and the
+   * chip says which is which - the same device the request side uses to tell a query parameter from
+   * a body field.
+   *
+   * "Always sent" stays a flag and must never move into the required slot, and the reason matters
+   * more now than when these were two separate tables: required on a *response* header is a promise
+   * the server makes, not something a caller supplies, and the rows a few inches above use
+   * "required" for the other meaning. One grammar makes the two adjacent; it must not make them the
+   * same word.
+   */
   #renderHeaders(headers: Record<string, unknown> | undefined): TemplateResult | typeof nothing {
     const entries = Object.entries(headers ?? {})
     if (entries.length === 0) {
       return nothing
     }
 
-    const rows: OpenishTableRow[] = entries.map(([name, raw]) => {
-      const header = getResolvedRef(raw) as Header | undefined
-      const constraints = schemaConstraints(header?.schema)
-      return {
-        key: name,
-        cells: [
-          html`<span class=${classMap({ deprecated: header?.deprecated === true })}>${name}</span>`,
-          schemaTypeLabel(header?.schema),
-          html`
-            ${header?.description
-              ? html`<openish-markdown .markdown=${header.description} .headingOffset=${4}></openish-markdown>`
-              : nothing}
-            <!--
-              Three facts the Header Object carries that this table used to read and then drop:
-              whether it is always there, whether it is on its way out, and what it looks like.
-
-              "Always sent" rather than "required", which is the word the object uses: required on a
-              *response* header is a promise the server makes, not something a caller supplies, and
-              the parameter table two sections up uses "required" for the other meaning.
-            -->
-            ${header?.required ? html`<div class="constraints">Always sent</div>` : nothing}
-            ${header?.deprecated ? html`<div class="constraints">Deprecated</div>` : nothing}
-            ${constraints.length > 0 ? html`<div class="constraints">${constraints.join(' · ')}</div>` : nothing}
-            ${renderExampleList(mediaTypeExamples(header))}
-          `,
-        ],
-      }
-    })
-
     return html`
-      <openish-disclosure summary="Headers" hint=${`${rows.length}`} ?open=${this.ui?.config.expandAllResponses}>
-        <openish-table .columns=${HEADER_COLUMNS} .rows=${rows} caption="Response headers"></openish-table>
-      </openish-disclosure>
+      ${repeat(
+        entries,
+        ([name]) => name,
+        ([name, raw]) => {
+          const header = getResolvedRef(raw) as Header | undefined
+          const constraints = schemaConstraints(header?.schema)
+          return renderFieldRow({
+            name,
+            where: 'header',
+            type: schemaTypeLabel(header?.schema),
+            deprecated: header?.deprecated === true,
+            flags: [
+              ...(header?.required ? ['Always sent'] : []),
+              ...(header?.deprecated ? ['deprecated'] : []),
+            ],
+            detail: html`
+              ${header?.description
+                ? html`<openish-markdown .markdown=${header.description} .headingOffset=${4}></openish-markdown>`
+                : nothing}
+              ${constraints.length > 0 ? html`<div class="constraints">${constraints.join(' · ')}</div>` : nothing}
+              ${renderExampleList(mediaTypeExamples(header))}
+            `,
+          })
+        },
+      )}
     `
   }
 
@@ -316,6 +370,36 @@ export class OpenishResponseList extends LitElement {
   }
 
   /**
+   * What shape this response answers with, named above its rows.
+   *
+   * The request body says this on the section's heading row, where the reader meets it before the
+   * rows. A response has no heading of its own - it is one row in a list of statuses - so it says it
+   * here, in the region the row opens.
+   *
+   * It exists for the link. `renderTypeLabel` is the only route from a body to the section
+   * documenting it, and with the root object rendered as rows rather than as a named tree there is
+   * no other line to hang it on; without this, following a response's shape to its model page stops
+   * working. A bare `object` is suppressed, because it names nothing and standing over a list of
+   * that object's own properties it says less than nothing.
+   */
+  #renderPayloadIdentity(content: unknown): TemplateResult | typeof nothing {
+    const picked = pickMediaType(content, this.mediaType)
+    const media =
+      content !== null && typeof content === 'object'
+        ? ((content as Record<string, unknown>)[picked ?? ''] as { schema?: unknown } | undefined)
+        : undefined
+    const label = schemaTypeLabel(media?.schema)
+    if (label === '' || label === 'object') {
+      return nothing
+    }
+
+    return html`<p class="payload-identity">
+      <span class="badge" data-where="body">body</span>
+      <span class="type">${renderTypeLabel(this.store, this.ui, media?.schema, label)}</span>
+    </p>`
+  }
+
+  /**
    * One response.
    *
    * A response with no `content` is a complete answer - `204 No Content` says everything by saying
@@ -338,11 +422,17 @@ export class OpenishResponseList extends LitElement {
       })}`
     }
 
+    /*
+     * No description here: it is on the row that opens this region, which is what turns a strip of
+     * status codes into six readable sentences. A button's label has to be text, so the summary gets
+     * the plain string and any Markdown in it goes unrendered - a real loss, and a small one against
+     * five descriptions that used to be invisible until clicked.
+     */
     return html`
-      ${response.description
-        ? html`<openish-markdown .markdown=${response.description} .headingOffset=${2}></openish-markdown>`
-        : nothing}
-      ${this.#renderHeaders(response.headers)}
+      <ul class="fields" aria-label=${`Response ${status}`}>
+        ${this.#renderHeaders(response.headers)}
+      </ul>
+      ${this.#renderPayloadIdentity(response.content)}
       ${renderMediaTypes(response.content, 'Response media types', {
         noExample: this.noExample,
         ...(this.noMediaTabs ? { pick: this.mediaType, hideLabel: true } : { selected: this.mediaType }),
@@ -358,45 +448,113 @@ export class OpenishResponseList extends LitElement {
     `
   }
 
+  /**
+   * The status a reader has not touched arrives open, and which one that is.
+   *
+   * The first success, because it is what the operation normally does and what a reader arrived to
+   * see; the first entry otherwise, so an operation that only documents failures still opens with
+   * something. `expandAllResponses` overrides both - it means every level, and this is one.
+   */
+  #openByDefault(status: string): boolean {
+    if (this.ui?.config.expandAllResponses) {
+      return true
+    }
+    const entries = this.#entries
+    const first = entries.find(([code]) => toneFor(code) === 'success') ?? entries[0]
+    return first?.[0] === status
+  }
+
+  /**
+   * One status: its code and what it means on a row, and everything else behind it.
+   *
+   * A response with nothing under it renders as a plain row rather than an expander over an empty
+   * region - a `204 No Content` says everything by saying nothing, and a control that reveals
+   * nothing is worse than no control.
+   *
+   * Nothing is rendered into a closed region, which is what keeps this cheap: the documentation
+   * column now shows every status at once, and if each one built its schema tree on arrival an
+   * operation with eight responses would cost eight trees to show six lines of prose.
+   */
+  #renderStatus(status: string, raw: unknown): TemplateResult {
+    const response = (getResolvedRef(raw) as Response | undefined) ?? {}
+    const tone = toneFor(status)
+    const description = response.description ?? ''
+    const inside =
+      Object.keys(response.headers ?? {}).length > 0 ||
+      hasRenderableContent(raw) ||
+      Object.keys(response.links ?? {}).length > 0
+
+    if (!inside) {
+      return html`
+        <li class="terse">
+          <span class="status" data-tone=${ifDefined(tone)}>${status}</span>
+          ${description ? html`<span class="terse-description">${description}</span>` : nothing}
+        </li>
+      `
+    }
+
+    const open = this.opened.get(status) ?? this.#openByDefault(status)
+
+    return html`
+      <li>
+        <openish-disclosure
+          summary=${status}
+          hint=${description}
+          tone=${ifDefined(tone)}
+          .open=${open}
+          @openish-toggle=${(event: CustomEvent<boolean>) => {
+            this.opened = new Map(this.opened).set(status, event.detail)
+          }}
+        >
+          ${open ? this.#renderResponse(status, raw) : nothing}
+        </openish-disclosure>
+      </li>
+    `
+  }
+
   override render(): TemplateResult | typeof nothing {
     const entries = this.#entries
     if (entries.length === 0) {
       return nothing
     }
 
-    if (this.ui?.config.expandAllResponses) {
+    /*
+     * The examples column keeps its tab set, and it is the only place a status is *chosen*.
+     *
+     * One answer at a time is right for an example - there is one code sample beside it, asking for
+     * one `Accept` - and wrong for the documentation, where a reader comparing the success case with
+     * the error they just hit had to click between two tabs to do it.
+     */
+    if (this.examplesOnly) {
+      const tabs: OpenishTab[] = entries.map(([status, raw]) => ({
+        id: status,
+        label: status,
+        tone: toneFor(status),
+        content: () => this.#renderResponse(status, raw),
+      }))
+
       return html`
-        ${repeat(
-          entries,
-          ([status]) => status,
-          ([status, raw]) => html`
-            <div class="stacked">
-              <h3><span class="status" data-tone=${ifDefined(toneFor(status))}>${status}</span></h3>
-              ${this.#renderResponse(status, raw)}
-            </div>
-          `,
-        )}
+        <openish-tabs
+          label="Response status codes"
+          selected=${ifDefined(this.status || undefined)}
+          .tabs=${tabs}
+          @openish-tab-change=${(event: CustomEvent<string>) => {
+            this.dispatchEvent(
+              new CustomEvent<string>('openish-status-change', { detail: event.detail, bubbles: true }),
+            )
+          }}
+        ></openish-tabs>
       `
     }
 
-    const tabs: OpenishTab[] = entries.map(([status, raw]) => ({
-      id: status,
-      label: status,
-      tone: toneFor(status),
-      content: () => this.#renderResponse(status, raw),
-    }))
-
     return html`
-      <openish-tabs
-        label="Response status codes"
-        selected=${ifDefined(this.status || undefined)}
-        .tabs=${tabs}
-        @openish-tab-change=${(event: CustomEvent<string>) => {
-          this.dispatchEvent(
-            new CustomEvent<string>('openish-status-change', { detail: event.detail, bubbles: true }),
-          )
-        }}
-      ></openish-tabs>
+      <ul class="statuses" aria-label="Responses">
+        ${repeat(
+          entries,
+          ([status]) => status,
+          ([status, raw]) => this.#renderStatus(status, raw),
+        )}
+      </ul>
     `
   }
 }

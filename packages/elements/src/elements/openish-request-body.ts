@@ -21,8 +21,11 @@ type RequestBody = {
 /**
  * An operation's request body: what to send, and in which media type.
  *
- * Whether the body is required is stated in words rather than left to the reader to infer from a
- * missing marker - it is the single most consequential fact on the page after the URL.
+ * Whether the body is required is still stated in words rather than left to the reader to infer
+ * from a missing marker - it is the single most consequential fact on the page after the URL. It is
+ * said on the `Parameters` heading row now rather than here, because the body no longer has a
+ * heading of its own to hang it under: its members are rows in the one list of inputs, and a lone
+ * `Optional` floating above them would attach to the first row rather than to the body.
  */
 @customElement('openish-request-body')
 export class OpenishRequestBody extends LitElement {
@@ -31,23 +34,6 @@ export class OpenishRequestBody extends LitElement {
     css`
       :host {
         display: block;
-      }
-
-      .required {
-        display: inline-block;
-        margin-bottom: var(--openish-space-xs);
-        padding: 0 var(--openish-space-xs);
-        border-radius: var(--openish-radius-pill);
-        background: var(--openish-color-danger-surface);
-        color: var(--openish-color-danger);
-        font: var(--openish-font-micro);
-      }
-
-      .optional {
-        display: inline-block;
-        margin-bottom: var(--openish-space-xs);
-        color: var(--openish-color-text-muted);
-        font: var(--openish-font-micro);
       }
 
       .parts {
@@ -125,6 +111,18 @@ export class OpenishRequestBody extends LitElement {
   @property({ type: Boolean, attribute: 'no-media-tabs' })
   noMediaTabs = false
 
+  /**
+   * This body's rows continue a list that began in another element.
+   *
+   * The parameters beside a body are drawn by `<openish-parameters>` in its own shadow root, and the
+   * body's promoted rows are drawn here - one list to a reader, two to the DOM. A list's first row
+   * draws no rule because whatever is above it already drew one, which is true of the first
+   * parameter and false of the first body row. This is how the row learns the difference; it cannot
+   * see across the boundary to work it out.
+   */
+  @property({ type: Boolean, attribute: 'continues-list' })
+  continuesList = false
+
   /** The `oneOf`/`anyOf` branches picked in this body's tree, for the example to honour. */
   @property({ attribute: false })
   variants: VariantChoices | undefined = undefined
@@ -190,14 +188,12 @@ export class OpenishRequestBody extends LitElement {
     }
 
     return html`
-      ${body.required
-        ? html`<div class="required">Required</div>`
-        : html`<div class="optional">Optional</div>`}
       ${body.description
         ? html`<openish-markdown .markdown=${body.description} .headingOffset=${2}></openish-markdown>`
         : nothing}
       ${renderMediaTypes(body.content, 'Request media types', {
         noExample: this.noExample,
+        continuesList: this.continuesList,
         ...(this.noMediaTabs ? { pick: this.mediaType, hideLabel: true } : { selected: this.mediaType }),
         scope: 'request',
         ...(this.variants ? { variants: this.variants } : {}),

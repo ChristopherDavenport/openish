@@ -7,165 +7,85 @@ import {
   schemaConstraints,
   schemaTypeLabel,
   type ParameterEntry,
-  type ParameterLocation,
 } from '@openish/core'
 import { LitElement, html, css, nothing, type TemplateResult } from 'lit'
 import { customElement, property } from 'lit/decorators.js'
-import { classMap } from 'lit/directives/class-map.js'
+import { repeat } from 'lit/directives/repeat.js'
 
 import { exampleListStyles, renderExampleList } from '../render/example-list.js'
-import { heading } from '../render/heading.js'
-import { baseStyles } from '../styles/shared.js'
-import type { OpenishTableRow } from './openish-table.js'
+import { fieldRowStyles, renderFieldRow, type FieldWhere } from '../render/field-row.js'
+import { badgeStyles, baseStyles } from '../styles/shared.js'
 import './openish-markdown.js'
-import './openish-table.js'
-
-/** Hoisted so the binding does not hand `openish-table` a new array on every render. */
-const COLUMNS = ['Name', 'Type', 'Required', 'Description']
 
 /**
- * The heading over each group, and the name of the table under it. They are not the same string.
- *
- * The section above says `Parameters` once, so a heading repeating the word for every group prints it
- * five times on one screen to say what the reader has already been told. Where each input *travels*
- * is the only thing the group adds, so that is all the heading says.
- *
- * The caption is the table's accessible name and stays whole. It is announced when a screen-reader
- * user enters the table, by which point the heading above it is out of earshot - and `Path` alone,
- * read there, names nothing.
- */
-const HEADINGS: Record<ParameterLocation, string> = {
-  path: 'Path',
-  query: 'Query',
-  header: 'Header',
-  cookie: 'Cookie',
-}
-
-const CAPTIONS: Record<ParameterLocation, string> = {
-  path: 'Path parameters',
-  query: 'Query parameters',
-  header: 'Header parameters',
-  cookie: 'Cookie parameters',
-}
-
-/**
- * An operation's parameters, one table per `in` group.
+ * An operation's parameters, as one list of rows.
  *
  * The list handed in is already merged - the path item's parameters plus the operation's, with the
  * operation winning on `{in}:{name}`. That merge lives in `@openish/core` because the HAR builder
  * needs exactly the same answer, and two implementations of an override rule is one too many.
  *
  * Every parameter is listed, including optional ones the sample request leaves out. The snippet
- * shows a request worth copying; the table documents the interface, and those are different jobs.
+ * shows a request worth copying; the list documents the interface, and those are different jobs.
+ *
+ * **Where each input travels is a chip on its row, not a heading over a group of them.** It was four
+ * headings and four tables - `Path`, `Query`, `Header`, `Cookie` - and a fifth heading beside them
+ * for the body, which meant a reader answering one question ("what do I send?") crossed five
+ * headings and two different grammars to do it. The rows stay in `groupParameters` order, so every
+ * `query` row is still contiguous and the chips read as a run; what the headings were carrying, the
+ * chip column carries in the space of one word per row.
+ *
+ * The body is **not** here. It arrives as a sibling `<openish-schema where="body">` whose rows are
+ * the same shape, drawn by the same stylesheet, continuing this list across a shadow boundary - see
+ * `renderMediaTypes`. Absorbing it would mean owning level one of a schema, which is not a property
+ * list: it is also `oneOf`, `not`, `if`/`then` and `dependentSchemas`, and a second renderer for
+ * those would drift from the one in `<openish-schema>`.
  */
 @customElement('openish-parameters')
 export class OpenishParameters extends LitElement {
   static override styles = [
+    badgeStyles,
     baseStyles,
+    fieldRowStyles,
+    exampleListStyles,
     css`
       :host {
         display: block;
       }
-
-      /*
-       * Weight from the class, not the tag - the same rule the section titles follow.
-       *
-       * These were h3s under an h4 section title, which read to anything following the outline as a
-       * group *outranking* the section holding it. The level is a property now and the look is this
-       * rule, so a group is a group at whatever depth the document put the operation.
-       */
-      .group {
-        font: var(--openish-font-heading-3);
-        margin: var(--openish-space-lg) 0 var(--openish-space-xs);
-      }
-
-      .group:first-of-type {
-        margin-top: 0;
-      }
-
-      .type {
-        font-family: var(--openish-font-family-mono);
-        color: var(--openish-color-text-muted);
-        white-space: nowrap;
-      }
-
-      .required {
-        color: var(--openish-color-danger);
-        font: var(--openish-font-micro);
-      }
-
-      .optional {
-        color: var(--openish-color-text-muted);
-        font: var(--openish-font-micro);
-      }
-
-      .constraints {
-        margin-top: var(--openish-space-3xs);
-        font: var(--openish-font-micro);
-        color: var(--openish-color-text-muted);
-      }
-
-      .deprecated {
-        text-decoration: line-through;
-      }
-
-      .media-type {
-        font-family: var(--openish-font-family-mono);
-        font: var(--openish-font-micro);
-        color: var(--openish-color-text-muted);
-      }
-
     `,
-    exampleListStyles,
   ]
 
   /** Already merged: the path item's parameters plus the operation's. See `collectParameters`. */
   @property({ attribute: false })
   parameters: readonly ParameterEntry[] = []
 
-  /**
-   * The heading level each group takes.
-   *
-   * One below whatever level the `Parameters` section above these was written at, which is a fact
-   * only the operation knows - on the plane it depends on how deep the document puts the operation.
-   * The default is what a caller mounting this element on its own would want: a group under a
-   * level-four section, the arrangement an operation had before the plane.
-   */
-  @property({ type: Number })
-  level = 5
+  #renderParameter(parameter: ParameterEntry): TemplateResult {
+    /*
+     * A parameter carries either a `schema` or a one-entry `content` map. Reading only the first
+     * left the type empty for the second, which reads as "no type" rather than "described another
+     * way".
+     */
+    const mediaType = parameterContentType(parameter)
+    const schema = mediaType === undefined ? parameter.schema : parameterContentSchema(parameter)
+    const constraints = [...schemaConstraints(schema), ...parameterSerialization(parameter)]
+    /* A path parameter is required by definition, whatever the document says. */
+    const required = parameter.required === true || parameter.in === 'path'
 
-  #rows(parameters: readonly ParameterEntry[]): OpenishTableRow[] {
-    return parameters.map((parameter) => {
-      /*
-       * A parameter carries either a `schema` or a one-entry `content` map. Reading only the first
-       * left the type column empty for the second, which reads as "no type" rather than "described
-       * another way".
-       */
-      const mediaType = parameterContentType(parameter)
-      const schema = mediaType === undefined ? parameter.schema : parameterContentSchema(parameter)
-      const constraints = [...schemaConstraints(schema), ...parameterSerialization(parameter)]
-      /* A path parameter is required by definition, whatever the document says. */
-      const required = parameter.required === true || parameter.in === 'path'
-
-      return {
-        key: `${parameter.in}:${parameter.name}`,
-        cells: [
-          html`<span class=${classMap({ deprecated: parameter.deprecated === true })}>${parameter.name}</span>`,
-          html`
-            <span class="type">${schemaTypeLabel(schema)}</span>
-            ${mediaType ? html`<div class="media-type">as ${mediaType}</div>` : nothing}
-          `,
-          required ? html`<span class="required">required</span>` : html`<span class="optional">optional</span>`,
-          html`
-            ${parameter.description
-              ? html`<openish-markdown .markdown=${parameter.description} .headingOffset=${4}></openish-markdown>`
-              : nothing}
-            ${parameter.deprecated ? html`<div class="constraints">Deprecated</div>` : nothing}
-            ${constraints.length > 0 ? html`<div class="constraints">${constraints.join(' · ')}</div>` : nothing}
-            ${renderExampleList(mediaTypeExamples(parameter))}
-          `,
-        ],
-      }
+    return renderFieldRow({
+      name: parameter.name,
+      where: parameter.in as FieldWhere,
+      type: html`${schemaTypeLabel(schema)}${mediaType
+        ? html` <span class="media-type">as ${mediaType}</span>`
+        : nothing}`,
+      required,
+      deprecated: parameter.deprecated === true,
+      detail: html`
+        ${parameter.description
+          ? html`<openish-markdown .markdown=${parameter.description} .headingOffset=${4}></openish-markdown>`
+          : nothing}
+        ${parameter.deprecated ? html`<div class="constraints">Deprecated</div>` : nothing}
+        ${constraints.length > 0 ? html`<div class="constraints">${constraints.join(' · ')}</div>` : nothing}
+        ${renderExampleList(mediaTypeExamples(parameter))}
+      `,
     })
   }
 
@@ -175,17 +95,21 @@ export class OpenishParameters extends LitElement {
       return nothing
     }
 
+    /*
+     * Flattened, but still in group order - which is the whole basis of the chip doing a heading's
+     * work. `groupParameters` walks `PARAMETER_LOCATIONS`, so path comes before query comes before
+     * header, and a reader scanning the chip column sees three runs rather than an interleaving.
+     */
+    const parameters = groups.flatMap(([, entries]) => entries)
+
     return html`
-      ${groups.map(
-        ([location, parameters]) => html`
-          ${heading(this.level, HEADINGS[location], { group: true })}
-          <openish-table
-            .columns=${COLUMNS}
-            .rows=${this.#rows(parameters)}
-            caption=${CAPTIONS[location]}
-          ></openish-table>
-        `,
-      )}
+      <ul class="fields" aria-label="Parameters">
+        ${repeat(
+          parameters,
+          (parameter) => `${parameter.in}:${parameter.name}`,
+          (parameter) => this.#renderParameter(parameter),
+        )}
+      </ul>
     `
   }
 }

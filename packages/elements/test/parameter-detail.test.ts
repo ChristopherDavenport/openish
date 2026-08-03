@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import '../src/index.js'
 import { PARAMETER_DETAIL_SPEC } from './fixtures.js'
-import { deepQueryAll, deepTextOf, disposeAll, mountReference, shadowOf, textOf, sectionOf } from './helpers.js'
+import { deepTextOf, disposeAll, mountReference, shadowOf, textOf, sectionOf } from './helpers.js'
 
 afterEach(() => {
   disposeAll()
@@ -10,25 +10,24 @@ afterEach(() => {
 
 type Row = { name: string; type: string; constraints: string; examples: string[] }
 
+/*
+ * The query rows, read off the one list of inputs.
+ *
+ * There is no table to find by caption any more and no `Query parameters` group to find it by, so
+ * the rows are chosen the way the page distinguishes them: by the chip each one wears.
+ */
 const queryRows = async (): Promise<Row[]> => {
   const harness = await mountReference({ path: '/tags/things/listThings', spec: PARAMETER_DETAIL_SPEC })
-  const operation = shadowOf(sectionOf(harness), 'openish-operation')
-  const table = deepQueryAll(operation, 'openish-table').find(
-    (element) => element.getAttribute('caption') === 'Query parameters',
-  )
-  if (!table?.shadowRoot) {
-    throw new Error('No query parameter table.')
-  }
+  const parameters = shadowOf(shadowOf(sectionOf(harness), 'openish-operation'), 'openish-parameters')
 
-  return [...table.shadowRoot.querySelectorAll('tbody tr')].map((row) => {
-    const cells = [...row.querySelectorAll('th, td')]
-    return {
-      name: deepTextOf(cells[0]!),
-      type: deepTextOf(cells[1]!),
-      constraints: [...cells[3]!.querySelectorAll('.constraints')].map((one) => textOf(one)).join(' | '),
-      examples: [...cells[3]!.querySelectorAll('ul.examples li')].map((one) => textOf(one)),
-    }
-  })
+  return [...parameters.querySelectorAll('ul.fields > li.field')]
+    .filter((row) => textOf(row.querySelector('.badge[data-where]')) === 'query')
+    .map((row) => ({
+      name: textOf(row.querySelector('.name')),
+      type: deepTextOf(row.querySelector('.type')),
+      constraints: [...row.querySelectorAll('.constraints')].map((one) => textOf(one)).join(' | '),
+      examples: [...row.querySelectorAll('ul.examples li')].map((one) => textOf(one)),
+    }))
 }
 
 const rowNamed = (rows: Row[], name: string): Row => {

@@ -1171,6 +1171,70 @@ reproduced in isolation or across four subsequent full runs. It predates this mi
 back, the thing to suspect is the first test in a file racing the plane's first paint - see the note
 in M19 about what a wait that outlives its own timeout reports as.
 
+## M21 — one row grammar (done)
+
+An operation described the same kind of thing - a named value with a type, a requiredness and a
+description - in two incompatible grammars, and a reader crossed the seam mid-section. `Parameters`
+was four `<openish-table>`s under four group headings plus a fifth heading for the body, holding a
+collapsed tree; `Returns` was a status tablist, each panel holding a `Headers` table and another
+collapsed tree. M20 had already merged the *section* on the grounds that "what do I send?" is one
+question; this merges the grammar inside it.
+
+**The row.** `render/field-row.ts` - a chip saying where the value travels, a mono name, a type that
+is a link where it names a model, and `required` printed only when required. Three near-copies
+collapse into it: `openish-schema`'s property row (which was already the right shape),
+`openish-parameters`' table, and `openish-response-list`'s header table. `<openish-table>` stays for
+what is genuinely tabular - a multipart body's parts, a response's links, the live try-it headers.
+
+**The chip comes before the name, and that is load-bearing.** The group headings are gone and what
+replaces them is that the rows stay in `groupParameters` order and the chips read as a run. A run
+needs the chips to share an x, which chip-first gives for nothing in a flex row and name-first cannot
+give at all. The arrangement that gets both - a subgrid with an `auto` name track - has no safe answer
+at 380px, where `overflow-wrap: anywhere` drags a generated property name's min-content to one
+character and `layout.test.ts` asserts zero overflow.
+
+### Two decisions this reverses
+
+- **`collapse-root` is gone.** M20 closed every body on page weight, and the weight was real - but it
+  was *recursive*: a level of `<openish-schema>` costs a context provider and an update cycle per
+  property. One flat level is bounded per object, and it is the level a reader arrived asking about.
+  Everything below it is still a disclosure, so the recursion still stops where nobody looked.
+- **The two columns no longer share a status.** M19 wired them together, correctly, while both were
+  tab sets: a reader who moved one and found the other on `200` had been shown a schema and an
+  example of two different responses. The documentation column is a list of every status now, so it
+  has no selection to fall out of step with. The examples column keeps its tabs and is the only place
+  a status is chosen; `#accept()` still derives from it.
+
+### Two things it cost, and one bug it would have caused
+
+- **The parameter tables' `<caption>`** was announced on entry and named the group; the replacement is
+  a labelled list whose rows are self-describing, because the chip is real text in the row's
+  accessible name. That argument holds for a tree of fields and not for a table, which is why the
+  three real tables kept theirs.
+- **The `Headers 3` count** is gone with the disclosure that carried it. A second nesting inside a
+  status that is already behind one was the thing this set out to remove.
+- **A variant chosen inside a closed status would have been lost.** `#renderVariants` rendered its
+  tab set with no `selected`, so the tabs kept their own state and nothing read the reader's choice
+  back - invisible while every response tree stayed mounted, and not once a closed region renders
+  nothing. The tree would have said `Cat` while the example beside it said `Dog`. `variants` is
+  threaded down the tree and bound now; `variants.test.ts` has the regression, and it fails without
+  the binding.
+
+### Jack Henry
+
+`badgeStyles` is shaped after `jh-tag` rather than after the method chip beside it: pill radius, the
+neutral container, `--openish-font-small-bold` (JH sets a tag label in the bold weight of the
+*helper* step, which is the one it reserves for field labels), and no `text-transform` - JH's content
+guidance is sentence case, with all capitals kept for initialisms. That is why the method chip stays
+uppercase and this does not: `GET` is spelled that way by the protocol, `query` is not.
+
+jh-ui ships no tabs, no accordion and no table, so `<openish-tabs>`, `<openish-disclosure>` and
+`<openish-table>` stay hand-rolled - checked against the installed `custom-elements.json`, not
+assumed. `jh-badge` is a *count* badge and is not what a where-chip is.
+
+`--openish-color-text-muted` on `--openish-color-surface-muted` was never in `contrast.test.ts` and
+was already load-bearing for two chips; every row on the page wears one now, so it is measured.
+
 ## The loop
 
 At the end of every milestone:

@@ -9,6 +9,7 @@ import {
   deepTextOf,
   disposeAll,
   mountReference,
+  openStatus,
   openTryIt,
   pickContentType,
   shadowOf,
@@ -136,34 +137,68 @@ describe('a variant picked on the left is the example on the right', () => {
   })
 })
 
-describe('the status is one answer, shown in both columns', () => {
+describe('the two columns choose their status independently', () => {
   const statusTabs = (root: Element): HTMLButtonElement[] => tabsLabelled(root, 'Response status codes')
 
   const selected = (root: Element): string =>
     textOf(statusTabs(root).find((tab) => tab.getAttribute('aria-selected') === 'true') ?? null)
 
-  it('moves the examples column when the reader moves the documentation one', async () => {
-    const { harness, docs, examples } = await columnsOf()
+  /*
+   * They used to move together, and the argument was sound while both were tab sets: a reader who
+   * moved one and found the other still on `201` had been shown a schema and an example of two
+   * different responses side by side. That cannot happen now - the documentation column has no
+   * selection to fall out of step with, because it shows every status at once.
+   */
+  it('has no status tab set in the documentation column at all', async () => {
+    const { docs, examples } = await columnsOf()
     const responses = docs.querySelector('[part~="response-section"]')!
 
-    expect(selected(responses)).toBe('201')
+    expect(statusTabs(responses)).toEqual([])
     expect(selected(examples)).toBe('201')
 
-    await pick(harness, statusTabs(responses)[1])
-
-    expect(selected(responses)).toBe('404')
-    expect(selected(examples)).toBe('404')
-    expect(deepTextOf(examples)).toContain('Not found')
+    /* Every status is readable in the documentation column without choosing one. */
+    expect(deepTextOf(responses)).toContain('Created.')
+    expect(deepTextOf(responses)).toContain('No such owner.')
   })
 
-  it('moves the documentation column when the reader moves the examples one', async () => {
+  /*
+   * The bug the accordion would otherwise have introduced.
+   *
+   * `#renderVariants` used to render its tab set with no `selected`, so the tabs kept their own
+   * state and nothing ever read the reader's choice back. That was invisible while every response
+   * tree stayed mounted. A closed region renders nothing, so closing a status destroys the tab set
+   * and reopening it rebuilds one at branch zero - while the operation still holds the choice and
+   * the example beside it still honours it. The tree would have said one branch and the example the
+   * other.
+   */
+  it('keeps a variant chosen inside a response when the reader closes and reopens it', async () => {
+    const { harness, docs } = await columnsOf()
+    const responses = docs.querySelector('[part~="response-section"]')!
+    const list = shadowOf(sectionOf(harness), 'openish-response-list')
+
+    const branchTabs = () => tabsLabelled(responses, 'oneOf variants')
+    const chosen = () => textOf(branchTabs().find((tab) => tab.getAttribute('aria-selected') === 'true') ?? null)
+
+    const first = chosen()
+    await pick(harness, branchTabs()[1])
+    const second = chosen()
+    expect(second).not.toBe(first)
+
+    await openStatus(harness, list, '201')
+    await openStatus(harness, list, '201')
+
+    expect(chosen()).toBe(second)
+  })
+
+  it('leaves the documentation column alone when the examples column changes status', async () => {
     const { harness, docs, examples } = await columnsOf()
     const responses = docs.querySelector('[part~="response-section"]')!
+    const before = deepTextOf(responses)
 
     await pick(harness, statusTabs(examples)[1])
 
-    expect(selected(responses)).toBe('404')
     expect(selected(examples)).toBe('404')
+    expect(deepTextOf(responses)).toBe(before)
   })
 
   /*
@@ -182,15 +217,19 @@ describe('the status is one answer, shown in both columns', () => {
     expect(sampleText(examples)).not.toContain('Accept: application/json')
   })
 
+  /*
+   * The proof that decoupling the columns did not break `#accept()`: the sample still asks for the
+   * type of the response the examples column is showing, and it is the examples column that now
+   * drives it.
+   */
   it('follows the status too, since a 404 answers in its own type', async () => {
-    const { harness, docs, examples } = await columnsOf()
-    const responses = docs.querySelector('[part~="response-section"]')!
+    const { harness, examples } = await columnsOf()
 
     await pickContentType(harness, 'response', 'application/xml')
     expect(sampleText(examples)).toContain('Accept: application/xml')
 
     /* The 404 is JSON only, so asking for XML would be asking for something it never sends. */
-    await pick(harness, tabsLabelled(responses, 'Response status codes')[1])
+    await pick(harness, statusTabs(examples)[1])
 
     expect(sampleText(examples)).toContain('Accept: application/json')
   })

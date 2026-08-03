@@ -466,16 +466,16 @@ a throwaway directory — installing it here would put Vue in the graph and fail
 
 | Bundle | Raw | gzip |
 |---|---|---|
-| **Entry chunk — what arrives before first paint** | 355.2 kB | **99.0 kB** |
+| **Entry chunk — what arrives before first paint** | 358.0 kB | **100.4 kB** |
 | Deferred chunks, fetched when first needed | 803.3 kB | 242.3 kB |
-| `@openish/elements`, everything | 1166.6 kB | 339.7 kB |
+| `@openish/elements`, everything | 1169.4 kB | 341.1 kB |
 | `@openish/core` alone | 275.4 kB | 87.8 kB |
 | `@openish/client` alone | 10.7 kB | 4.0 kB |
 | `@scalar/api-reference` 1.64.0, for reference | 1226.8 kB | 334.4 kB |
 
 The entry chunk was 65.6 kB gzipped before the M9 document-fidelity pass that added named examples,
 callbacks, per-operation security, `externalDocs`, the rest of the `info` object, the OAuth flow
-detail, the parameter serialization keywords and `links`; 73.4 kB after it. It is 99.0 kB now, and
+detail, the parameter serialization keywords and `links`; 73.4 kB after it. It is 100.4 kB now, and
 almost all of that is the same trade made again — the plane, the section index, the descriptive
 column, and the document fidelity of M20. The last of those cost 3.8 kB for `encoding`, the rest of
 the Header Object, the `not` subschema, the server-override rules and a width controller.

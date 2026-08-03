@@ -9,6 +9,7 @@ import {
   mountReference,
   sectionOf,
   shadowOf,
+  statusRows,
   type Harness,
 } from './helpers.js'
 
@@ -95,17 +96,24 @@ describe('hideTryIt', () => {
 })
 
 describe('expandAllResponses', () => {
-  it('stacks the responses instead of tabbing them', async () => {
-    const tabbed = await at('/tags/accounts/listAccounts', { hideTryIt: true })
-    const stacked = await at('/tags/accounts/listAccounts', { hideTryIt: true, expandAllResponses: true })
+  /*
+   * The documentation column is a list of statuses either way - the flag decides how many of them
+   * arrive open, not whether they are tabs. What it used to switch off was a tab set that column no
+   * longer has.
+   */
+  it('opens every status instead of only the first success', async () => {
+    /* An operation whose responses have bodies - a status with nothing under it has nothing to open. */
+    const closed = await at('/tags/accounts/getAccount', { hideTryIt: true })
+    const opened = await at('/tags/accounts/getAccount', { hideTryIt: true, expandAllResponses: true })
 
-    const tabsIn = (harness: Harness) =>
-      deepQueryAll(sectionOf(harness), 'openish-response-list openish-tabs').length +
-      (deepQuery(sectionOf(harness), 'openish-response-list')?.shadowRoot?.querySelectorAll('openish-tabs')
-        .length ?? 0)
+    const openCount = (harness: Harness) =>
+      statusRows(shadowOf(sectionOf(harness), 'openish-response-list')).filter((row) => row.open).length
+    const total = (harness: Harness) =>
+      statusRows(shadowOf(sectionOf(harness), 'openish-response-list')).length
 
-    expect(tabsIn(tabbed)).toBeGreaterThan(0)
-    expect(tabsIn(stacked)).toBe(0)
+    expect(openCount(closed)).toBe(1)
+    expect(openCount(opened)).toBeGreaterThan(openCount(closed))
+    expect(openCount(opened)).toBe(total(opened) - 1)
   })
 })
 

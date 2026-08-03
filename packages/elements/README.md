@@ -143,7 +143,8 @@ A show/hide section.
 | Property | Attribute | Type | Default | |
 |---|---|---|---|---|
 | `summary` | `summary` | `string` | `''` | The button's label. |
-| `hint` | `hint` | `string` | `''` | A short qualifier after the label, e.g. how many rows are inside. |
+| `hint` | `hint` | `string` | `''` | A short qualifier after the label: how many rows are inside, or what a status code means. |
+| `tone` | `tone` | `string` | `''` | Colours the label: `success`, `info`, `danger`. |
 | `open` | `open` | `boolean` | `false` | Whether the region is showing. Reflected, so CSS can follow it. |
 
 | Event | |
@@ -203,12 +204,11 @@ The landing page: what the API is, where it lives, and how to authenticate.
 
 ### `<openish-parameters>`
 
-An operation's parameters, one table per `in` group.
+An operation's parameters, as one list of rows.
 
 | Property | Attribute | Type | Default | |
 |---|---|---|---|---|
 | `parameters` | — | `readonly ParameterEntry[]` | `[]` | Already merged: the path item's parameters plus the operation's. See `collectParameters`. |
-| `level` | `level` | `number` | `5` | The heading level each group takes. |
 
 ### `<openish-request-body>`
 
@@ -221,6 +221,7 @@ An operation's request body: what to send, and in which media type.
 | `examplesOnly` | `examples-only` | `boolean` | `false` | Render only the example body, media type by media type. |
 | `mediaType` | `media-type` | `string` | `''` | Which media type the operation is talking about. |
 | `noMediaTabs` | `no-media-tabs` | `boolean` | `false` | The caller is asking the media-type question somewhere else, so do not ask it here. |
+| `continuesList` | `continues-list` | `boolean` | `false` | This body's rows continue a list that began in another element. |
 | `variants` | — | `VariantChoices \| undefined` | `undefined` | The `oneOf`/`anyOf` branches picked in this body's tree, for the example to honour. |
 
 | Event | |
@@ -254,7 +255,7 @@ An operation's responses.
 | `responses` | — | `unknown` | `undefined` | A Responses Object: status codes to Response Objects. |
 | `noExample` | `no-example` | `boolean` | `false` | Document the response schemas without their examples. |
 | `examplesOnly` | `examples-only` | `boolean` | `false` | Render only the example bodies, status by status. |
-| `status` | `status` | `string` | `''` | Which status the reader is on, when something above holds that choice. |
+| `status` | `status` | `string` | `''` | Which status the examples column is showing. Read in `examples-only` mode and nowhere else. |
 | `mediaType` | `media-type` | `string` | `''` | The media type to show, when something above holds that choice too. |
 | `noMediaTabs` | `no-media-tabs` | `boolean` | `false` | The caller is asking the media-type question somewhere else, so do not ask it here. |
 | `variants` | — | `VariantChoices \| undefined` | `undefined` | Which shape the variant choices below belong to, and what they are. |
@@ -286,7 +287,9 @@ A schema, rendered as a property tree that expands a level at a time.
 | `pointer` | `pointer` | `string` | `''` | The JSON pointer this schema was reached by, when it is not itself a `$ref`. |
 | `hideHeader` | `hide-header` | `boolean` | `false` | Skip the type line, for a caller that has already printed it - a property row does. |
 | `inlineProperties` | `inline-properties` | `boolean` | `false` | Show the property list without a disclosure, whatever the depth. |
-| `collapseRoot` | `collapse-root` | `boolean` | `false` | Collapse the outermost level too, instead of drawing it open. |
+| `where` | `where` | `string` | `''` | Where the values in *this* list travel, worn as a chip on every row at this level. |
+| `variants` | — | `VariantChoices \| undefined` | `undefined` | The `oneOf`/`anyOf` branches the reader has picked, so a rebuilt tab set can restore one. |
+| `continuesList` | `continues-list` | `boolean` | `false` | This tree's rows continue a list begun in another element - the parameters beside a body. |
 | `scope` | `scope` | `string` | `''` | Which shape on the page this tree describes - `request`, or `response:404`. |
 | `path` | `path` | `unknown` | `VARIANT_PATH_ROOT` | Where this tree sits inside the shape named by `scope`, in `variant-path.ts`'s spelling. |
 
@@ -309,7 +312,9 @@ A schema and an example of it, side by side.
 | `variants` | — | `VariantChoices \| undefined` | `undefined` |  |
 | `noExample` | `no-example` | `boolean` | `false` | Hide the example block, for callers that show one of their own. |
 | `noSchema` | `no-schema` | `boolean` | `false` | Hide the property tree, keeping only the example. |
-| `collapseRoot` | `collapse-root` | `boolean` | `false` | Let the tree arrive closed. Passed straight through to `<openish-schema>`; see the note there. |
+| `hideHeader` | `hide-header` | `boolean` | `false` | Skip the tree's own type line. Passed straight through to `<openish-schema>`. |
+| `where` | `where` | `string` | `''` | The chip every row of this tree wears. Passed straight through; see the note on `<openish-schema>`. |
+| `continuesList` | `continues-list` | `boolean` | `false` | These rows continue a list begun in another element. Passed straight through. |
 
 ### `<openish-search>`
 

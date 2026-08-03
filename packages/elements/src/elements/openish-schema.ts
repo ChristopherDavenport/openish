@@ -4,6 +4,7 @@ import {
   VARIANT_PATH_ROOT,
   variantAdditional,
   variantAside,
+  variantIndex,
   variantBranch,
   variantProperty,
   type DocumentStore,
@@ -49,8 +50,10 @@ import {
   variantPointer,
   type SchemaProperty,
   type SchemaVariants,
+  type VariantChoices,
 } from '@openish/core'
-import { baseStyles, controlStyles, visuallyHidden } from '../styles/shared.js'
+import { fieldRowStyles, renderFieldRow, type FieldWhere } from '../render/field-row.js'
+import { badgeStyles, baseStyles, controlStyles, visuallyHidden } from '../styles/shared.js'
 import type { OpenishTab } from './openish-tabs.js'
 import './openish-disclosure.js'
 import './openish-markdown.js'
@@ -120,18 +123,15 @@ const sameState = (left: OpenishSchemaState, right: OpenishSchemaState | undefin
 @customElement('openish-schema')
 export class OpenishSchema extends LitElement {
   static override styles = [
+    badgeStyles,
     baseStyles,
     controlStyles,
     externalDocsStyles,
     visuallyHidden,
+    fieldRowStyles,
     css`
       :host {
         display: block;
-      }
-
-      .type {
-        font: var(--openish-font-code-small);
-        color: var(--openish-color-text-muted);
       }
 
       dl.enum {
@@ -150,12 +150,6 @@ export class OpenishSchema extends LitElement {
 
       dl.enum dd {
         margin: 0;
-      }
-
-      .constraints {
-        margin-top: var(--openish-space-3xs);
-        font: var(--openish-font-micro);
-        color: var(--openish-color-text-muted);
       }
 
       /*
@@ -231,49 +225,6 @@ export class OpenishSchema extends LitElement {
         color: var(--openish-color-text-muted);
       }
 
-      ul {
-        margin: 0;
-        padding: 0;
-        list-style: none;
-      }
-
-      li {
-        padding: var(--openish-space-xs) 0;
-        border-top: 1px solid var(--openish-color-border);
-      }
-
-      li:first-child {
-        border-top: 0;
-      }
-
-      .head {
-        display: flex;
-        align-items: baseline;
-        flex-wrap: wrap;
-        gap: var(--openish-space-xs);
-      }
-
-      .name {
-        font: var(--openish-font-body-bold);
-        font-family: var(--openish-font-family-mono);
-      }
-
-      .name.deprecated {
-        text-decoration: line-through;
-        color: var(--openish-color-text-muted);
-      }
-
-      .required {
-        color: var(--openish-color-danger);
-        font: var(--openish-font-micro);
-      }
-
-      .optional,
-      .flag {
-        color: var(--openish-color-text-muted);
-        font: var(--openish-font-micro);
-      }
-
       .rule {
         margin-top: var(--openish-space-sm);
         padding-left: var(--openish-space-sm);
@@ -306,13 +257,6 @@ export class OpenishSchema extends LitElement {
         font: var(--openish-font-small);
       }
 
-      /* The nested schema of a property sits under its name, indented by the border. */
-      li > openish-schema {
-        margin-left: var(--openish-space-sm);
-        padding-left: var(--openish-space-sm);
-        border-left: 1px solid var(--openish-color-border);
-      }
-
       /*
        * Past the fourth level the step narrows to the border and its padding.
        *
@@ -324,19 +268,8 @@ export class OpenishSchema extends LitElement {
        * The border stays at every level, because the border is what says this is nested; the margin
        * is what says how deeply, and after four levels the answer is "deeply" either way.
        */
-      ul.deep > li > openish-schema {
+      ul.deep > .field > openish-schema {
         margin-left: 0;
-      }
-
-      /*
-       * A name, a type or a constraint can be one long unbreakable token - a pattern, a URI-shaped
-       * enum member, a generated property name. Breaking anywhere is what keeps it inside the column
-       * it belongs to; a path or a regex has no spaces to break at.
-       */
-      .name,
-      .type,
-      .constraints {
-        overflow-wrap: anywhere;
       }
     `,
   ]
@@ -396,22 +329,48 @@ export class OpenishSchema extends LitElement {
   inlineProperties = false
 
   /**
-   * Collapse the outermost level too, instead of drawing it open.
+   * Where the values in *this* list travel, worn as a chip on every row at this level.
    *
-   * The root is the only level that never had a disclosure - every nesting below it has collapsed to
-   * `Properties · 5` since the tree was written - and the root of a tree inside an operation is
-   * exactly the body. Two whole schemas drawn open is most of what an operation weighs, and the
-   * shape is not what a reader arrives asking: they arrive asking what to send.
+   * `body` on a promoted request body or response body, and empty everywhere else. Set by
+   * `renderMediaTypes`, because everything it renders is a body - a request body, a response, a
+   * callback's request - so this is a fact about that function rather than an option it takes.
    *
-   * Off by default and set per call site rather than globally, because a model's own section is the
-   * one place where the tree *is* the content. `renderMediaTypes` sets it, which covers every body,
-   * every response and every callback in one place; `<openish-model>` does not.
+   * Deliberately **not** passed down a nesting. A nested object's properties are inside the thing
+   * the chip already named, and `body` printed nine levels deep is the group heading this replaced,
+   * wearing a pill.
    *
-   * `expandAllSchemaProperties` still wins - it means every level, and this is one - so a host that
-   * wants the old page back has the switch it already had.
+   * It also decides the fallback. A body whose root has no members and no variants - a `string`, a
+   * `binary`, an array of scalars - has nothing to promote, so it renders as a single row wearing
+   * the chip and carrying the type. The chip is that row's name; printing `body` twice would be the
+   * same word in two typefaces.
    */
-  @property({ type: Boolean, attribute: 'collapse-root' })
-  collapseRoot = false
+  @property({ type: String })
+  where = ''
+
+  /**
+   * The `oneOf`/`anyOf` branches the reader has picked, so a rebuilt tab set can restore one.
+   *
+   * The tabs used to keep their own state and nothing read it back, which was invisible while every
+   * tree stayed mounted. It stopped being invisible when a closed status accordion began rendering
+   * nothing: the tab set is destroyed and rebuilt at branch zero, while the operation still holds
+   * the reader's choice and the example beside it still honours it - so the tree said `Cat` and the
+   * example said `Dog`.
+   *
+   * Passed down every nesting beside `scope` and `path`, because a choice can be made at any depth
+   * and the key is the pair.
+   */
+  @property({ attribute: false })
+  variants: VariantChoices | undefined = undefined
+
+  /**
+   * This tree's rows continue a list begun in another element - the parameters beside a body.
+   *
+   * A first row draws no rule because whatever is above it already drew one, which is true of the
+   * first parameter and false of the first promoted body row. The two lists are in two shadow roots
+   * and CSS cannot see across the boundary, so the answer is passed in.
+   */
+  @property({ type: Boolean, attribute: 'continues-list', reflect: true })
+  continuesList = false
 
   /**
    * Which shape on the page this tree describes - `request`, or `response:404`.
@@ -618,15 +577,14 @@ export class OpenishSchema extends LitElement {
     `
   }
 
-  #renderFlags(value: unknown): TemplateResult | typeof nothing {
+  /** The words that qualify a property without constraining it. `renderFieldRow` joins them. */
+  #flags(value: unknown): string[] {
     const schema = asSchema(value)
-    const flags = [
+    return [
       schema?.['readOnly'] === true ? 'read-only' : undefined,
       schema?.['writeOnly'] === true ? 'write-only' : undefined,
       schema?.['deprecated'] === true ? 'deprecated' : undefined,
     ].filter((flag): flag is string => flag !== undefined)
-
-    return flags.length > 0 ? html`<span class="flag">${flags.join(' · ')}</span>` : nothing
   }
 
   /**
@@ -639,30 +597,29 @@ export class OpenishSchema extends LitElement {
    * collapsed, the tree is where a reader meets a named type, and a name they cannot follow is the
    * abstraction turning into a dead end.
    */
+  /** The chip this level's rows wear, if any. Never inherited - see the `where` property. */
+  get #chip(): FieldWhere | undefined {
+    return this.where === '' ? undefined : (this.where as FieldWhere)
+  }
+
   #renderProperty(property: SchemaProperty): TemplateResult {
-    return html`
-      <li>
-        <div class="head">
-          <code class=${classMap({ name: true, deprecated: property.deprecated })}>${property.name}</code>
-          <span class="type"
-            >${renderTypeLabel(this.store, this.ui, property.schema, schemaTypeLabel(property.schema))}</span
-          >
-          ${property.required
-            ? html`<span class="required">required</span>`
-            : html`<span class="optional">optional</span>`}
-          ${this.#renderFlags(property.schema)}
-          ${this.#renderExampleMarker(property.name, property.schema)}
-        </div>
-        ${hasBody(property.schema)
-          ? html`<openish-schema
-              .schema=${property.schema}
-              scope=${this.scope}
-              path=${variantProperty(this.path, property.name)}
-              hide-header
-            ></openish-schema>`
-          : nothing}
-      </li>
-    `
+    return renderFieldRow({
+      name: property.name,
+      where: this.#chip,
+      type: renderTypeLabel(this.store, this.ui, property.schema, schemaTypeLabel(property.schema)),
+      required: property.required,
+      deprecated: property.deprecated,
+      flags: this.#flags(property.schema),
+      aside: this.#renderExampleMarker(property.name, property.schema),
+      nested: hasBody(property.schema)
+        ? html`<openish-schema
+            .schema=${property.schema}
+            scope=${this.scope}
+            path=${variantProperty(this.path, property.name)}
+            hide-header
+          ></openish-schema>`
+        : nothing,
+    })
   }
 
   /**
@@ -718,44 +675,38 @@ export class OpenishSchema extends LitElement {
 
   /** A map-shaped schema: no named properties, one rule for every key. */
   #renderAdditional(additional: unknown, parent: unknown): TemplateResult {
-    return html`
-      <li>
-        <div class="head">
-          <code class="name">[${additionalPropertiesName(parent)}: string]</code>
-          <span class="type">${schemaTypeLabel(additional)}</span>
-          <span class="flag">any other property</span>
-        </div>
-        ${hasBody(additional)
-          ? html`<openish-schema
-              .schema=${additional}
-              scope=${this.scope}
-              path=${variantAdditional(this.path)}
-              hide-header
-            ></openish-schema>`
-          : nothing}
-      </li>
-    `
+    return renderFieldRow({
+      name: `[${additionalPropertiesName(parent)}: string]`,
+      where: this.#chip,
+      type: schemaTypeLabel(additional),
+      flags: ['any other property'],
+      nested: hasBody(additional)
+        ? html`<openish-schema
+            .schema=${additional}
+            scope=${this.scope}
+            path=${variantAdditional(this.path)}
+            hide-header
+          ></openish-schema>`
+        : nothing,
+    })
   }
 
   /** A rule for every key matching one regular expression, which is `additionalProperties` with an if. */
   #renderPatternProperty(pattern: string, schema: unknown): TemplateResult {
-    return html`
-      <li>
-        <div class="head">
-          <code class="name">[key matching /${pattern}/]</code>
-          <span class="type">${schemaTypeLabel(schema)}</span>
-          <span class="flag">any matching property</span>
-        </div>
-        ${hasBody(schema)
-          ? html`<openish-schema
-              .schema=${schema}
-              scope=${this.scope}
-              path=${variantAside(this.path, 'patternProperties', pattern)}
-              hide-header
-            ></openish-schema>`
-          : nothing}
-      </li>
-    `
+    return renderFieldRow({
+      name: `[key matching /${pattern}/]`,
+      where: this.#chip,
+      type: schemaTypeLabel(schema),
+      flags: ['any matching property'],
+      nested: hasBody(schema)
+        ? html`<openish-schema
+            .schema=${schema}
+            scope=${this.scope}
+            path=${variantAside(this.path, 'patternProperties', pattern)}
+            hide-header
+          ></openish-schema>`
+        : nothing,
+    })
   }
 
   /**
@@ -788,6 +739,7 @@ export class OpenishSchema extends LitElement {
       content: () => html`
         <openish-schema
           .schema=${branch}
+          .variants=${this.variants}
           pointer=${variantPointer(variants, index)}
           scope=${this.scope}
           path=${variantBranch(this.path, variants.keyword, index)}
@@ -803,6 +755,7 @@ export class OpenishSchema extends LitElement {
       </div>
       <openish-tabs
         label=${`${variants.keyword} variants`}
+        selected=${String(variantIndex(this.variants, this.scope, this.path, variants.branches.length))}
         .tabs=${tabs}
         @openish-tab-change=${(event: CustomEvent<string>) => this.#announceVariant(Number(event.detail))}
       ></openish-tabs>
@@ -815,9 +768,10 @@ export class OpenishSchema extends LitElement {
    * Nothing is rendered into a closed disclosure, so the recursion stops at every branch the reader
    * has not opened. That is the whole reason `<openish-disclosure>` reports its state upward.
    *
-   * The root used to be exempt unconditionally. It is exempt unless `collapse-root` says otherwise
-   * now, which is what lets a body arrive as its name while a model's own section still opens with
-   * its shape on the page.
+   * The root is exempt, and every level below it is a disclosure. For a while the root was exempt
+   * only when the caller did not ask otherwise, which let a body arrive as its name alone - the
+   * weight argument for that was real but it was a *recursive* weight, and one level is bounded per
+   * object. It is also the level a reader arrived asking about, which the collapsed body was not.
    */
   #renderProperties(target: unknown, isArray: boolean): TemplateResult | typeof nothing {
     /*
@@ -839,7 +793,7 @@ export class OpenishSchema extends LitElement {
     }
 
     const list = html`
-      <ul class=${classMap({ deep: this.#state.depth >= INDENT_LIMIT })}>
+      <ul class=${classMap({ fields: true, deep: this.#state.depth >= INDENT_LIMIT })}>
         ${repeat(
           positions,
           (position) => position.name,
@@ -859,7 +813,7 @@ export class OpenishSchema extends LitElement {
       </ul>
     `
 
-    if ((this.#state.depth === 0 && !this.collapseRoot) || this.inlineProperties) {
+    if (this.#state.depth === 0 || this.inlineProperties) {
       return list
     }
 
@@ -899,6 +853,7 @@ export class OpenishSchema extends LitElement {
             <div class="rule-label">When <code>${entry.property}</code> is present</div>
             <openish-schema
               .schema=${entry.schema}
+              .variants=${this.variants}
               scope=${this.scope}
               path=${variantAside(this.path, 'dependentSchemas', entry.property)}
               hide-header
@@ -931,6 +886,7 @@ export class OpenishSchema extends LitElement {
               <div class="rule-label">If it matches</div>
               <openish-schema
                 .schema=${conditional.condition}
+                .variants=${this.variants}
                 scope=${this.scope}
                 path=${variantAside(this.path, 'if', '')}
                 hide-header
@@ -942,6 +898,7 @@ export class OpenishSchema extends LitElement {
               <div class="rule-label">then</div>
               <openish-schema
                 .schema=${conditional.then}
+                .variants=${this.variants}
                 scope=${this.scope}
                 path=${variantAside(this.path, 'then', '')}
                 hide-header
@@ -954,6 +911,7 @@ export class OpenishSchema extends LitElement {
               <div class="rule-label">otherwise</div>
               <openish-schema
                 .schema=${conditional.otherwise}
+                .variants=${this.variants}
                 scope=${this.scope}
                 path=${variantAside(this.path, 'else', '')}
                 hide-header
@@ -994,6 +952,7 @@ export class OpenishSchema extends LitElement {
           <div class="rule-label">Must not match</div>
           <openish-schema
             .schema=${not}
+            .variants=${this.variants}
             scope=${this.scope}
             path=${variantAside(this.path, 'not', '')}
             hide-header
@@ -1038,7 +997,12 @@ export class OpenishSchema extends LitElement {
       `
     }
 
-    return html`<openish-schema .schema=${bound} scope=${this.scope} path=${this.path}></openish-schema>`
+    return html`<openish-schema
+      .schema=${bound}
+      .variants=${this.variants}
+      scope=${this.scope}
+      path=${this.path}
+    ></openish-schema>`
   }
 
   override render(): TemplateResult | typeof nothing {
