@@ -1,7 +1,13 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
 import '../src/index.js'
-import { VARIANTS_SPEC, COMPOSITION_SPEC, CYCLIC_SPEC, SCALAR_REGRESSIONS_SPEC } from './fixtures.js'
+import {
+  VARIANTS_SPEC,
+  COMPOSITION_SPEC,
+  CYCLIC_SPEC,
+  INLINE_RESPONSE_SPEC,
+  SCALAR_REGRESSIONS_SPEC,
+} from './fixtures.js'
 import {
   deepQuery,
   deepTextOf,
@@ -223,18 +229,24 @@ describe('a body naming its model', () => {
 })
 
 /*
- * A response names its shape too, and for the same reason.
+ * A response names its shape too, in the same three marks and the same order.
  *
- * The request body says it on the section's heading row; a response is one row in a list of
- * statuses and has no heading, so it says it inside the region its row opens. Both exist for the
- * link: with the root object rendered as rows rather than as a named tree, this is the only route
- * from a payload to the section documenting it.
+ * The request body says it on the `Parameters` heading row, before anything else in the section. A
+ * status is a response's heading, and the model name cannot go there - a disclosure's summary is the
+ * label of a `<button>`, and a link inside a button is a link nobody can click - so it is the first
+ * thing in the region the status opens, which is the next place down. Both exist for the link: with
+ * the root object rendered as rows rather than as a named tree, this is the only route from a
+ * payload to the section documenting it.
  */
 describe('a response naming its model', () => {
-  it('names the shape it answers with, and links it', async () => {
-    const harness = await mountReference({ path: '/tags/pets/createPet', spec: VARIANTS_SPEC })
+  const responsesFor = async (path: string, spec: unknown): Promise<ShadowRoot> => {
+    const harness = await mountReference({ path, spec })
     await harness.settle()
-    const responses = shadowOf(sectionOf(harness), 'openish-response-list')
+    return shadowOf(sectionOf(harness), 'openish-response-list')
+  }
+
+  it('names the shape it answers with, and links it', async () => {
+    const responses = await responsesFor('/tags/pets/createPet', VARIANTS_SPEC)
 
     const identity = responses.querySelector('.payload-identity')
     expect(identity, 'the open status has no payload identity').not.toBeNull()
@@ -243,6 +255,42 @@ describe('a response naming its model', () => {
     const link = identity!.querySelector('.type a')
     expect(textOf(link)).toBe('Pet')
     expect(link?.getAttribute('href')).toContain('models/Pet')
+  })
+
+  it('says it before the headers, not after them', async () => {
+    const responses = await responsesFor('/tags/pets/createPet', VARIANTS_SPEC)
+    const region = responses.querySelector('openish-disclosure')!
+
+    /*
+     * The first question about a response is what comes back, and it used to be answered under
+     * however many headers the response happened to promise.
+     */
+    const order = [...region.children].map((child) => child.className || child.tagName.toLowerCase())
+    const identity = order.indexOf('payload-identity')
+    const fields = order.indexOf('fields')
+
+    expect(identity, 'no payload identity in the region').toBeGreaterThanOrEqual(0)
+    expect(fields, 'no field list in the region').toBeGreaterThanOrEqual(0)
+    expect(identity).toBeLessThan(fields)
+  })
+
+  it('keeps the chip for a shape that names nothing, because the chip is not the name', async () => {
+    /*
+     * `object` is suppressed as a *type* - standing over a list of that object's own properties it
+     * says less than nothing - and the chip stays, because what it says is which of the rows below
+     * are the body's rather than the headers'. The request half has always drawn it this way.
+     */
+    const responses = await responsesFor('/tags/things/inlineThing', INLINE_RESPONSE_SPEC)
+    const identity = responses.querySelector('.payload-identity')
+
+    expect(textOf(identity?.querySelector('.badge[data-where]') ?? null)).toBe('body')
+    expect(identity?.querySelector('.type')).toBeNull()
+  })
+
+  it('says nothing at all for a status that returns no body', async () => {
+    const responses = await responsesFor('/tags/things/emptyThing', INLINE_RESPONSE_SPEC)
+
+    expect(responses.querySelector('.payload-identity')).toBeNull()
   })
 })
 

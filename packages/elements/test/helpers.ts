@@ -561,15 +561,25 @@ export const shadowOf = (root: Element | ShadowRoot, selector: string): ShadowRo
 export type FieldRowText = { name: string; where: string; type: string; required: string }
 
 /**
+ * The requirement slot, whichever of the two words is in it.
+ *
+ * One reader for both, because they are one slot: a parameter row prints `required` or `optional`
+ * and a body property prints `required` or nothing, and a test that asked only about `.required`
+ * would read a row saying `optional` as a row saying nothing.
+ */
+const requirementOf = (head: Element): string => textOf(head.querySelector('.required, .optional'))
+
+/**
  * The field rows in one root.
  *
  * One root, not the whole page: `<openish-parameters>` and the promoted request body beside it are
  * two elements, and a nested schema is a third - so a caller asking about a level asks the element
  * that draws it. `deepFieldRows` is the one that reads across the seam.
  *
- * `required` is empty rather than "optional" because the row prints nothing when a field is not
- * required. With the word gone, blank is unambiguous and a twenty-field object stops carrying
- * eighteen lines of muted noise.
+ * `required` is whichever word is in the requirement slot. A parameter row says `required` or
+ * `optional`, because a short checklist should not answer one of its questions with a blank; a body
+ * property says `required` or nothing, because a twenty-field object would otherwise carry eighteen
+ * lines of muted noise.
  */
 export const fieldRows = (root: Element | ShadowRoot | null): FieldRowText[] => {
   if (!root) {
@@ -580,7 +590,7 @@ export const fieldRows = (root: Element | ShadowRoot | null): FieldRowText[] => 
     name: textOf(head.querySelector('.name')),
     where: textOf(head.querySelector('.badge[data-where]')),
     type: textOf(head.querySelector('.type')),
-    required: textOf(head.querySelector('.required')),
+    required: requirementOf(head),
   }))
 }
 
@@ -596,7 +606,7 @@ export const deepFieldRows = (root: Element | ShadowRoot): FieldRowText[] =>
     name: textOf(head.querySelector('.name')),
     where: textOf(head.querySelector('.badge[data-where]')),
     type: textOf(head.querySelector('.type')),
-    required: textOf(head.querySelector('.required')),
+    required: requirementOf(head),
   }))
 
 /**

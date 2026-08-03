@@ -17,7 +17,7 @@ import { asideStyles, renderAside } from '../render/aside.js'
 import { externalDocsStyles, renderExternalDocs } from '../render/external-docs.js'
 import { heading } from '../render/heading.js'
 import { stripFirstSegment } from '../router/urls.js'
-import { baseStyles, planeColumnStyles, titleRowStyles } from '../styles/shared.js'
+import { baseStyles, planeColumnStyles, titleRowStyles, visuallyHidden } from '../styles/shared.js'
 import './openish-copy-markdown.js'
 import './openish-markdown.js'
 import './openish-download.js'
@@ -34,9 +34,12 @@ type SecurityScheme = {
 /**
  * The landing page: what the API is, where it lives, and how to authenticate.
  *
- * Headings from `info.description` are navigation targets, so each one gets an `id` matching the
- * `NavTextNode` id that `@openish/core` minted for it. That is what makes a sidebar link to
- * `#overview/getting-started` land somewhere.
+ * Every heading here is a navigation target, so each one gets an `id` matching the `NavTextNode` id
+ * that `@openish/core` minted for it. That is what makes a sidebar link to
+ * `#overview/getting-started` land somewhere. Two of them - `Servers` and `Authentication` - are
+ * headings this element writes rather than ones the description contains, which is the whole
+ * difference `NavTextNode.infoSection` records: they are found by that field, and the prose ones by
+ * their position among the headings the markdown pipeline is about to render.
  */
 @customElement('openish-overview')
 export class OpenishOverview extends LitElement {
@@ -46,11 +49,29 @@ export class OpenishOverview extends LitElement {
     externalDocsStyles,
     titleRowStyles,
     planeColumnStyles,
+    visuallyHidden,
     css`
       /* Weight from the class, not the tag - see the note in render/heading.ts. */
       .title {
         font: var(--openish-font-heading-1);
         margin: 0 0 var(--openish-space-2xs);
+      }
+
+      /*
+       * Three controls where every other section has one, so this row is allowed to wrap - a long
+       * title should push them onto their own line rather than be squeezed by them. The override is
+       * here rather than in titleRowStyles, which the operation, tag and model pages share and
+       * where nothing has ever needed to wrap.
+       */
+      .title-row {
+        flex-wrap: wrap;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: var(--openish-space-xs);
       }
 
       /*
@@ -76,9 +97,30 @@ export class OpenishOverview extends LitElement {
         margin-top: 0;
       }
 
+      /*
+       * What the document is, on one line under its name: version, licence, who to ask, the terms.
+       *
+       * These used to be an About definition list at the foot of the right-hand column, which on a
+       * document with OAuth put the licence below a screenful of scopes - a reader looking for "can
+       * I use this" had to scroll past everything they were not looking for to find out. They are
+       * identity, not a topic, so they belong with the title, and at that size they are a strip
+       * rather than a list.
+       *
+       * The row gap is smaller than the column gap on purpose: wrapped, these should read as one
+       * block of small print, not as rows of a table.
+       */
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: var(--openish-space-2xs) var(--openish-space-md);
+        margin-bottom: var(--openish-space-lg);
+        color: var(--openish-color-text-muted);
+        font: var(--openish-font-small);
+      }
+
       .version {
         display: inline-block;
-        margin-bottom: var(--openish-space-lg);
         padding: 0 var(--openish-space-xs);
         border-radius: var(--openish-radius-pill);
         background: var(--openish-color-surface-muted);
@@ -221,12 +263,19 @@ export class OpenishOverview extends LitElement {
    * when the browser - or whatever is doing the scrolling - goes looking for the target.
    */
   #headingIds(): string[] {
-    const prefix = this.ui?.slugPrefix ?? ''
     const ids: string[] = []
     const visit = (nodes: readonly NavNode[]) => {
       for (const node of nodes) {
         if (node.type === 'text') {
-          ids.push(prefix ? stripFirstSegment(node.id) : node.id)
+          /*
+           * The prose headings only. `<openish-markdown>` matches these to headings by position, so
+           * a node for `Servers` - which this element writes itself and the description never
+           * mentions - would take the id belonging to whatever heading came next and push every id
+           * after it along by one.
+           */
+          if (!node.infoSection) {
+            ids.push(this.#urlId(node.id))
+          }
           if (node.children) {
             visit(node.children)
           }
@@ -235,6 +284,19 @@ export class OpenishOverview extends LitElement {
     }
     visit(this.store?.navigation ?? [])
     return ids
+  }
+
+  /** The id of a heading this element writes itself, or `undefined` if the traversal minted none. */
+  #infoHeadingId(section: 'servers' | 'authentication'): string | undefined {
+    const node = this.store?.navigation.find(
+      (candidate) => candidate.type === 'text' && candidate.infoSection === section,
+    )
+    return node ? this.#urlId(node.id) : undefined
+  }
+
+  /** An id in the form the URL carries it, which is the form a fragment gets matched against. */
+  #urlId(id: string): string {
+    return this.ui?.slugPrefix ? stripFirstSegment(id) : id
   }
 
   #renderServers(): TemplateResult | typeof nothing {
@@ -251,7 +313,7 @@ export class OpenishOverview extends LitElement {
 
     return html`
       <section>
-        ${heading(this.level + 1, 'Servers', { 'section-title': true })}
+        ${heading(this.level + 1, 'Servers', { 'section-title': true }, this.#infoHeadingId('servers'))}
         <ul class="servers">
           ${repeat(
             servers,
@@ -281,63 +343,69 @@ export class OpenishOverview extends LitElement {
   }
 
   /**
-   * Who to talk to, under what licence, on what terms.
+   * The version, and who to talk to, under what licence, on what terms.
    *
-   * Every one of these is optional and most documents set none, so the section disappears rather
-   * than rendering an empty definition list. `license.identifier` is the 3.1 spelling of an SPDX id
-   * and is shown when there is no URL to link, because the identifier is the answer either way.
+   * Every one of these is optional and most documents set none, so the strip disappears rather than
+   * rendering an empty row. `license.identifier` is the 3.1 spelling of an SPDX id and is shown when
+   * there is no URL to link, because the identifier is the answer either way. Terms is a link
+   * labelled `Terms of service` rather than the URL it points at - the URL was readable in a
+   * definition list and is not on a line of small print.
+   *
+   * Each item carries a hidden label, because these are values whose meaning came from the `<dt>`
+   * beside them and there is no `<dt>` any more. A reader can see that `MIT` is a licence from
+   * where it sits and what it says; a reader hearing `MIT` between a version number and an email
+   * address cannot.
    */
-  #renderAbout(info: Record<string, unknown>): TemplateResult | typeof nothing {
+  #renderMeta(info: Record<string, unknown>): TemplateResult | typeof nothing {
+    const version = typeof info['version'] === 'string' ? info['version'] : undefined
     const contact = (info['contact'] ?? {}) as { name?: string; url?: string; email?: string }
     const license = (info['license'] ?? {}) as { name?: string; url?: string; identifier?: string }
     const terms = typeof info['termsOfService'] === 'string' ? info['termsOfService'] : undefined
 
-    const rows: Array<TemplateResult> = []
+    const items: Array<TemplateResult> = []
 
-    if (contact.name || contact.url || contact.email) {
-      rows.push(html`
-        <dt>Contact</dt>
-        <dd>
-          ${contact.url
-            ? html`<a href=${contact.url} rel="noreferrer noopener">${contact.name ?? contact.url}</a>`
-            : (contact.name ?? nothing)}
-          ${contact.email
-            ? html`<div><a href=${`mailto:${contact.email}`}>${contact.email}</a></div>`
-            : nothing}
-        </dd>
+    if (version) {
+      /* The hidden label outside the pill, so the pill's own text is still just the version. */
+      items.push(html`
+        <span><span class="visually-hidden">Version </span><span class="version">${version}</span></span>
       `)
     }
 
     if (license.name || license.url || license.identifier) {
       const label = license.name ?? license.identifier ?? license.url ?? ''
-      rows.push(html`
-        <dt>Licence</dt>
-        <dd>
+      items.push(html`
+        <span>
+          <span class="visually-hidden">Licence </span>
           ${license.url ? html`<a href=${license.url} rel="noreferrer noopener">${label}</a>` : label}
-          ${license.identifier && license.identifier !== label
-            ? html`<span class="scheme-detail"> (${license.identifier})</span>`
-            : nothing}
-        </dd>
+          ${license.identifier && license.identifier !== label ? html` (${license.identifier})` : nothing}
+        </span>
+      `)
+    }
+
+    if (contact.name || contact.url) {
+      const label = contact.name ?? contact.url ?? ''
+      items.push(html`
+        <span>
+          <span class="visually-hidden">Contact </span>
+          ${contact.url ? html`<a href=${contact.url} rel="noreferrer noopener">${label}</a>` : label}
+        </span>
+      `)
+    }
+
+    if (contact.email) {
+      items.push(html`
+        <span>
+          <span class="visually-hidden">Contact </span>
+          <a href=${`mailto:${contact.email}`}>${contact.email}</a>
+        </span>
       `)
     }
 
     if (terms) {
-      rows.push(html`
-        <dt>Terms of service</dt>
-        <dd><a href=${terms} rel="noreferrer noopener">${terms}</a></dd>
-      `)
+      items.push(html`<a href=${terms} rel="noreferrer noopener">Terms of service</a>`)
     }
 
-    if (rows.length === 0) {
-      return nothing
-    }
-
-    return html`
-      <section>
-        ${heading(this.level + 1, 'About', { 'section-title': true })}
-        <dl>${rows}</dl>
-      </section>
-    `
+    return items.length > 0 ? html`<div class="meta">${items}</div>` : nothing
   }
 
   /**
@@ -395,7 +463,12 @@ export class OpenishOverview extends LitElement {
 
     return html`
       <section>
-        ${heading(this.level + 1, 'Authentication', { 'section-title': true })}
+        ${heading(
+          this.level + 1,
+          'Authentication',
+          { 'section-title': true },
+          this.#infoHeadingId('authentication'),
+        )}
         <dl>
           ${Object.entries(schemes).map(([name, raw]) => {
             const scheme = getResolvedRef(raw) as SecurityScheme
@@ -428,22 +501,28 @@ export class OpenishOverview extends LitElement {
      * The introduction reads like every other section: what this is on the left, and on the right
      * the concrete things a reader acts on.
      *
-     * Servers, authentication and the document itself were always the second kind and were stacked
-     * under the prose because there was nowhere else to put them - so the band that runs down the
-     * right of the whole document started one section late. What an author adds through
-     * `x-openish-aside` and what a host slots in join them there, in that order: the host's context
-     * is the most specific thing on the page, the author's is next, and the facts the document
-     * states are last because they are the ones a reader can always find again.
+     * Servers and authentication were always the second kind and were stacked under the prose
+     * because there was nowhere else to put them - so the band that runs down the right of the whole
+     * document started one section late. What an author adds through `x-openish-aside` and what a
+     * host slots in join them there, in that order: the host's context is the most specific thing on
+     * the page, the author's is next, and the facts the document states are last because they are
+     * the ones a reader can always find again.
+     *
+     * Copying the document for a model and downloading it are the same request - hand me the thing
+     * this page is a view of - so they stand together beside the title rather than one being a
+     * control on the heading and the other a footnote in the other column.
      */
     return html`
       <div class="columns">
         <div class="docs" part="overview-docs">
           <div class="title-row" part="overview-header">
             ${heading(this.level, info.title, { title: true })}
-            <openish-copy-markdown exportparts="copy"></openish-copy-markdown>
+            <div class="actions">
+              <openish-copy-markdown exportparts="copy"></openish-copy-markdown>
+              <openish-download></openish-download>
+            </div>
           </div>
-          ${info.version ? html`<div class="version">${info.version}</div>` : nothing}
-          ${summary ? html`<p class="summary">${summary}</p>` : nothing}
+          ${this.#renderMeta(fields)} ${summary ? html`<p class="summary">${summary}</p>` : nothing}
           ${info.description
             ? html`
                 <openish-markdown
@@ -459,8 +538,6 @@ export class OpenishOverview extends LitElement {
         <div class="facts" part="overview-aside">
           <slot name="aside"></slot>
           ${renderAside(info, this.level)} ${this.#renderServers()} ${this.#renderSecurity()}
-          ${this.#renderAbout(fields)}
-          <section><openish-download></openish-download></section>
         </div>
       </div>
     `

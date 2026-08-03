@@ -3,6 +3,7 @@ import type { Document as OpenApiDocument } from '@scalar/openapi-types/3.1'
 import type { NavNode, ResolvedOpenishConfig } from '../types.js'
 import { SlugRegistry } from './ids.js'
 import { traverseDescription } from './traverse-description.js'
+import { traverseInfo } from './traverse-info.js'
 import { traverseSchemas } from './traverse-schemas.js'
 import { traverseTags } from './traverse-tags.js'
 import { traverseWebhooks } from './traverse-webhooks.js'
@@ -15,8 +16,8 @@ import { traverseWebhooks } from './traverse-webhooks.js'
  * handling evolves. What is dropped is the Vue layer: upstream unwraps reactive proxies with
  * `toRaw` before reading, which is exactly the dependency openish exists to avoid.
  *
- * Section order is the reading order of the rendered page: prose, then the API surface, then
- * webhooks, then the type dictionary.
+ * Section order is the reading order of the rendered page: prose, then the facts the front page
+ * states about itself, then the API surface, then webhooks, then the type dictionary.
  *
  * `prefix` is the slug of the source this document is, and every id begins with it. It is a
  * parameter rather than a condition on how many documents a reference has, because a traversal that
@@ -32,6 +33,7 @@ export const traverseDocument = (
   const nodes: NavNode[] = []
 
   nodes.push(...traverseDescription(document.info?.description, registry, config.slugs, prefix))
+  nodes.push(...traverseInfo(document, config, registry, prefix))
   nodes.push(...traverseTags(document, config, registry, prefix))
 
   const webhooks = traverseWebhooks(document, registry, config.slugs, prefix)

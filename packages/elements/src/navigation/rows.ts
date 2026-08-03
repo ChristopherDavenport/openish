@@ -28,6 +28,17 @@ const childrenOf = (node: NavNode): readonly NavNode[] =>
   'children' in node && node.children ? node.children : []
 
 /**
+ * Rows whose expansion the caller has worked out, because ancestry cannot.
+ *
+ * One row needs this: the sidebar's Introduction, whose id is the document's own slug. Every id in
+ * the document begins with that slug, so the prefix rule says the reader is inside the introduction
+ * wherever they are; and its children are the overview's headings, whose ids begin with `overview/`
+ * rather than with it, so the same rule says they are not. Both backwards, and only the caller knows
+ * why - so the caller says.
+ */
+export type StatedExpansion = ReadonlyMap<string, boolean>
+
+/**
  * Whether a node is open.
  *
  * A reader's decision wins. Otherwise the section follows the active route, so navigating to an
@@ -38,7 +49,12 @@ export const isExpanded = (
   node: NavNode,
   expansion: Expansion,
   activeId: string,
-  defaults: { openAll?: boolean; openFirst?: string; atOverview?: boolean } = {},
+  defaults: {
+    openAll?: boolean
+    openFirst?: string
+    stated?: StatedExpansion
+    atOverview?: boolean
+  } = {},
 ): boolean => {
   const decided = expansion.get(node.id)
   if (decided !== undefined) {
@@ -46,6 +62,10 @@ export const isExpanded = (
   }
   if (defaults.openAll) {
     return true
+  }
+  const stated = defaults.stated?.get(node.id)
+  if (stated !== undefined) {
+    return stated
   }
   if (isAncestorId(node.id, activeId)) {
     return true
@@ -69,12 +89,23 @@ export const navRows = (
   nodes: readonly NavNode[],
   expansion: Expansion,
   activeId: string,
-  defaults: { openAll?: boolean; openFirstTag?: boolean; atOverview?: boolean } = {},
+  defaults: {
+    openAll?: boolean
+    openFirstTag?: boolean
+    stated?: StatedExpansion
+    atOverview?: boolean
+  } = {},
 ): NavRow[] => {
   const rows: NavRow[] = []
 
-  /* The first tag, not the first node - the overview headings come before it and are not branches. */
-  const firstTag = nodes.find((node) => node.type === 'tag' || node.type === 'group')?.id
+  /*
+   * The first tag, not the first node: the Introduction comes before it and is a branch, but it is
+   * not part of the API surface this default is about - and its own expansion is stated, so a row
+   * the caller has already decided is by definition not the one to fall back to.
+   */
+  const firstTag = nodes.find(
+    (node) => (node.type === 'tag' || node.type === 'group') && !defaults.stated?.has(node.id),
+  )?.id
 
   const walk = (list: readonly NavNode[], level: number): void => {
     list.forEach((node, index) => {
@@ -84,6 +115,7 @@ export const navRows = (
         isExpanded(node, expansion, activeId, {
           ...(defaults.openAll ? { openAll: true } : {}),
           ...(defaults.openFirstTag && firstTag ? { openFirst: firstTag } : {}),
+          ...(defaults.stated ? { stated: defaults.stated } : {}),
           ...(defaults.atOverview !== undefined ? { atOverview: defaults.atOverview } : {}),
         })
 

@@ -45,6 +45,10 @@ type Header = {
 
 const LINK_COLUMNS = ['Name', 'Operation', 'Description']
 
+/** Whether a `content` map has a media type in it at all. `204 No Content` has none. */
+const hasContent = (content: unknown): content is Record<string, unknown> =>
+  typeof content === 'object' && content !== null && !Array.isArray(content) && Object.keys(content).length > 0
+
 /** 2xx reads as success, 3xx as information, everything else as a failure the caller must handle. */
 const toneFor = (status: string): OpenishTab['tone'] => {
   if (status.startsWith('2')) {
@@ -115,15 +119,19 @@ export class OpenishResponseList extends LitElement {
       }
 
       /*
-       * The shape a response answers with, above the rows that describe it - and the link to the
-       * section that documents it. Set like a field row's type rather than like a heading, because
-       * it is a caption on the rows below rather than a title over them.
+       * The shape a response answers with, and the link to the section that documents it.
+       *
+       * Set like a field row's type rather than like a heading: it is the same pair the request body
+       * wears on the Parameters row - the chip, then the name - and giving it a heading's weight
+       * would make a status region look like it started a new section.
+       *
+       * First in the region, so no space above it; the rows it introduces follow immediately.
        */
       .payload-identity {
         display: flex;
         align-items: baseline;
         gap: var(--openish-space-xs);
-        margin: var(--openish-space-sm) 0 0;
+        margin: 0 0 var(--openish-space-xs);
       }
 
       .payload-identity .type {
@@ -370,32 +378,36 @@ export class OpenishResponseList extends LitElement {
   }
 
   /**
-   * What shape this response answers with, named above its rows.
+   * What shape this response answers with, named before its rows.
    *
-   * The request body says this on the section's heading row, where the reader meets it before the
-   * rows. A response has no heading of its own - it is one row in a list of statuses - so it says it
-   * here, in the region the row opens.
+   * The request body says this on the `Parameters` heading row, where the reader meets it before
+   * anything else in the section. A status is a response's heading - but the summary of a
+   * disclosure is the label of a `<button>`, and a link inside a button is a link nobody can click,
+   * so the model name cannot go there. The region the status opens is the next thing down, and this
+   * is the first thing in it.
    *
    * It exists for the link. `renderTypeLabel` is the only route from a body to the section
    * documenting it, and with the root object rendered as rows rather than as a named tree there is
    * no other line to hang it on; without this, following a response's shape to its model page stops
-   * working. A bare `object` is suppressed, because it names nothing and standing over a list of
-   * that object's own properties it says less than nothing.
+   * working. A bare `object` suppresses the *type* and not the chip, which is the same rule
+   * `#renderBodyIdentity` applies on the request side and for the same reason: `object` names
+   * nothing standing over a list of that object's own properties, while the chip is what ties those
+   * rows to the body rather than to the headers above them.
    */
   #renderPayloadIdentity(content: unknown): TemplateResult | typeof nothing {
-    const picked = pickMediaType(content, this.mediaType)
-    const media =
-      content !== null && typeof content === 'object'
-        ? ((content as Record<string, unknown>)[picked ?? ''] as { schema?: unknown } | undefined)
-        : undefined
-    const label = schemaTypeLabel(media?.schema)
-    if (label === '' || label === 'object') {
+    if (!hasContent(content)) {
       return nothing
     }
 
+    const picked = pickMediaType(content, this.mediaType)
+    const media = (content as Record<string, unknown>)[picked ?? ''] as { schema?: unknown } | undefined
+    const label = schemaTypeLabel(media?.schema)
+
     return html`<p class="payload-identity">
       <span class="badge" data-where="body">body</span>
-      <span class="type">${renderTypeLabel(this.store, this.ui, media?.schema, label)}</span>
+      ${label !== '' && label !== 'object'
+        ? html`<span class="type">${renderTypeLabel(this.store, this.ui, media?.schema, label)}</span>`
+        : nothing}
     </p>`
   }
 
@@ -428,13 +440,27 @@ export class OpenishResponseList extends LitElement {
      * the plain string and any Markdown in it goes unrendered - a real loss, and a small one against
      * five descriptions that used to be invisible until clicked.
      */
+    const headers = Object.keys(response.headers ?? {}).length > 0
+
+    /*
+     * What it returns, then what it returns it with, then the shape itself - the reading order the
+     * request half already has. The identity used to sit between the headers and the body rows,
+     * captioning the rows it stood directly above, and a reader asking the first question about a
+     * response ("what do I get back?") read four response headers before reaching the answer. It is
+     * separated from the rows it names now, exactly as `body Planet` on the `Parameters` heading is
+     * separated from the body's rows by every path and query parameter - and it works here for the
+     * same reason, which is that the chip column ties them together across the gap.
+     */
     return html`
+      ${this.#renderPayloadIdentity(response.content)}
       <ul class="fields" aria-label=${`Response ${status}`}>
         ${this.#renderHeaders(response.headers)}
       </ul>
-      ${this.#renderPayloadIdentity(response.content)}
       ${renderMediaTypes(response.content, 'Response media types', {
         noExample: this.noExample,
+        /* One list, so the join draws a rule: the body's rows continue the headers' rather than
+           starting again under them. The request half has said this since the body was promoted. */
+        continuesList: headers,
         ...(this.noMediaTabs ? { pick: this.mediaType, hideLabel: true } : { selected: this.mediaType }),
         scope,
         ...(this.variants ? { variants: this.variants } : {}),

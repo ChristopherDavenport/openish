@@ -24,15 +24,15 @@ export class OpenishDownload extends LitElement {
     baseStyles,
     controlStyles,
     css`
+      /*
+       * The buttons are items of the row that holds them, not of a box this element brings.
+       *
+       * They sit beside "Copy for LLM" in the section's title row, which wraps - so two formats have
+       * to be able to wrap independently rather than travelling as a pair inside a wrapper of their
+       * own. display: contents is how openish-copy-markdown sits in that row already.
+       */
       :host {
-        display: block;
-      }
-
-      .row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: var(--openish-space-xs);
-        align-items: center;
+        display: contents;
       }
 
       a,
@@ -48,12 +48,6 @@ export class OpenishDownload extends LitElement {
         font: var(--openish-font-small);
         font-family: inherit;
         text-decoration: none;
-      }
-
-
-      .label {
-        font: var(--openish-font-micro);
-        color: var(--openish-color-text-muted);
       }
     `,
   ]
@@ -125,34 +119,37 @@ export class OpenishDownload extends LitElement {
       const url = this.#directUrl
       return url
         ? html`
-            <div class="row">
-              <span class="label">OpenAPI document</span>
-              <!-- A link, because it is a URL - but it wears the button's look, so it takes the
-                   button's states too; "pressable" is how an anchor asks for them. -->
-              <a class="pressable" href=${url} download>Download</a>
-            </div>
+            <!-- A link, because it is a URL - but it wears the button's look, so it takes the
+                 button's states too; "pressable" is how an anchor asks for them. -->
+            <a class="pressable" href=${url} download aria-label="Download the OpenAPI document">
+              Download
+            </a>
           `
         : nothing
     }
 
+    /*
+     * `JSON` is the whole of the label, because these sit in the title row where what they act on is
+     * the heading beside them - a second "OpenAPI document" written out in front of them would be
+     * the third time the page says it. A reader hearing the button read out has no heading beside
+     * it, though, so each one says in full what it downloads.
+     */
     return html`
-      <div class="row">
-        <span class="label">OpenAPI document</span>
-        ${repeat(
-          this.#formats,
-          (format) => format,
-          (format) => html`
-            <button
-              type="button"
-              aria-busy=${this.working === format ? 'true' : 'false'}
-              ?disabled=${this.working !== undefined}
-              @click=${() => void this.#download(format)}
-            >
-              ${this.working === format ? 'Preparing…' : format.toUpperCase()}
-            </button>
-          `,
-        )}
-      </div>
+      ${repeat(
+        this.#formats,
+        (format) => format,
+        (format) => html`
+          <button
+            type="button"
+            aria-label=${`Download the OpenAPI document as ${format.toUpperCase()}`}
+            aria-busy=${this.working === format ? 'true' : 'false'}
+            ?disabled=${this.working !== undefined}
+            @click=${() => void this.#download(format)}
+          >
+            ${this.working === format ? 'Preparing…' : format.toUpperCase()}
+          </button>
+        `,
+      )}
     `
   }
 

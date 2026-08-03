@@ -49,7 +49,7 @@ describe('the virtualised sidebar', () => {
 
   it('reports the full size to assistive technology, not the rendered window', async () => {
     const harness = await wide(600)
-    /* A model row, not a root row: the roots are two, and the 600 are its siblings. */
+    /* A model row, not a root row: the roots are three, and the 600 are its siblings. */
     const model = deepQueryAll<HTMLElement>(harness.element.shadowRoot!, '[role="treeitem"][aria-level="2"]')[0]!
 
     /* A reader hearing "1 of 12" for a list of 600 would be told something false. */
@@ -105,9 +105,12 @@ describe('the virtualised sidebar', () => {
     const before = rows(harness).length
 
     /*
-     * Row 0 is the `things` tag. The route is inside Models, so `things` is closed - which makes it
-     * the row worth pressing ArrowRight on.
+     * Row 0 is the Introduction, which this document gives nothing to put under. Row 1 is the
+     * `things` tag: the route is inside Models, so `things` is closed - which makes it the row worth
+     * pressing ArrowRight on.
      */
+    tree.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, composed: true }))
+    await harness.settle()
     tree.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, composed: true }))
     await harness.settle()
 
@@ -123,8 +126,8 @@ describe('the virtualised sidebar', () => {
       await harness.settle()
     }
 
-    /* Step down past the tag and its operation to Models, which is open because the route is in it. */
-    while (tree.getAttribute('aria-activedescendant') !== 'row-1') {
+    /* Step down past the Introduction and the tag to Models, which is open because the route is in it. */
+    while (tree.getAttribute('aria-activedescendant') !== 'row-2') {
       await press('ArrowDown')
     }
     const before = rows(harness).length
@@ -180,6 +183,67 @@ describe('row width', () => {
     expect(Math.round(linkOf(item!).getBoundingClientRect().right)).toBeLessThanOrEqual(
       Math.round(list.getBoundingClientRect().right),
     )
+  })
+})
+
+/**
+ * The document's front page, as a row.
+ *
+ * The overview is not a node - it is `info`, which the traversal has nothing to mint an entry from -
+ * so this row is synthesised in the sidebar. Its headings used to be roots of the tree with nothing
+ * saying what they were headings of, which read worst on a document whose introduction documents
+ * authentication and which also has a tag called Authentication.
+ */
+describe('the Introduction row', () => {
+  const introSpec = {
+    openapi: '3.1.0',
+    info: {
+      title: 'Chronicle',
+      version: '1.0.0',
+      description: '## Resources\n\nProse.',
+    },
+    servers: [{ url: 'https://api.example.com' }],
+    tags: [{ name: 'Authentication' }],
+    paths: {
+      '/tokens': {
+        get: {
+          summary: 'List tokens',
+          operationId: 'listTokens',
+          tags: ['Authentication'],
+          responses: { '200': { description: 'OK' } },
+        },
+      },
+    },
+    components: { securitySchemes: { bearer: { type: 'http', scheme: 'bearer' } } },
+  }
+
+  const labelsAt = (harness: Harness, level: string): string[] =>
+    deepQueryAll<HTMLElement>(harness.element.shadowRoot!, `[role="treeitem"][aria-level="${level}"]`).map((row) =>
+      textOf(row.querySelector('openish-sidebar-item')?.shadowRoot?.querySelector('.label') ?? null),
+    )
+
+  it('is the first row, named after the document, with the overview headings under it', async () => {
+    const harness = await mountReference({ path: '/', spec: introSpec })
+    await harness.settle()
+
+    /* The tag is shut, so the second level is the introduction's - the same name, a different row. */
+    expect(labelsAt(harness, '1')).toEqual(['Chronicle', 'Authentication'])
+    expect(labelsAt(harness, '2')).toEqual(['Resources', 'Servers', 'Authentication'])
+  })
+
+  it('links to the front of the document, not to a page of its own', async () => {
+    const harness = await mountReference({ path: '/', spec: introSpec })
+    await harness.settle()
+
+    const first = deepQueryAll<HTMLAnchorElement>(harness.element.shadowRoot!, 'openish-sidebar-item')[0]!
+    expect(first.shadowRoot!.querySelector('a')?.getAttribute('href')).toBe('#/')
+  })
+
+  it('stays open when the reader navigates away, since its headings were roots before it existed', async () => {
+    const harness = await mountReference({ path: '/tags/authentication/listTokens', spec: introSpec })
+    await harness.settle()
+
+    expect(labelsAt(harness, '2')).toContain('Servers')
   })
 })
 

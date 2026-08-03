@@ -145,10 +145,11 @@ describe('operationSort and tagSort', () => {
    * `.label` is inside `<openish-sidebar-item>`'s shadow root and `[aria-level]` is on the wrapper
    * outside it, so no single selector spans them - the row has to be found first, then reached into.
    */
+  /* Dropping the first root row, which is the Introduction and not a tag. */
   const tagNames = (harness: Harness) =>
-    deepQueryAll<HTMLElement>(harness.element.shadowRoot!, '[role="treeitem"][aria-level="1"]').map(
-      (row) => row.querySelector('openish-sidebar-item')?.shadowRoot?.querySelector('.label')?.textContent,
-    )
+    deepQueryAll<HTMLElement>(harness.element.shadowRoot!, '[role="treeitem"][aria-level="1"]')
+      .slice(1)
+      .map((row) => row.querySelector('openish-sidebar-item')?.shadowRoot?.querySelector('.label')?.textContent)
 
   /* The shell fixture's tags are already in alphabetical order, so sorting them proves nothing. */
   const unsorted = {

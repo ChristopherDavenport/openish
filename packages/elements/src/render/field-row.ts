@@ -26,8 +26,27 @@ export type FieldRow = {
   where?: FieldWhere | undefined
   /** Already rendered, so a model name can arrive as a link. */
   type?: unknown
-  /** `required` is printed; not-required prints nothing at all. There is no `optional`. */
-  required?: boolean | undefined
+  /**
+   * Whether the reader has to supply this, in the three states that are actually distinct.
+   *
+   * `undefined` says nothing, and is not the same as `'optional'`. A row only prints the word where
+   * something is genuinely asking the reader for a value and the answer is a fact about the request:
+   * a parameter is, and a response header is not - `required` on one of those is a promise the
+   * server makes, which is why those rows carry `Always sent` as a flag and leave this unset.
+   *
+   * A string rather than a boolean because `false` and "not stated" are one value in a boolean and
+   * two answers on the page, and the call site is where the difference is known.
+   */
+  requirement?: 'required' | 'optional' | undefined
+  /**
+   * What the caller gets for leaving it out, where the document says.
+   *
+   * Beside the requirement rather than down among the constraints, because it is not one: it is what
+   * finishes the sentence `optional` starts. A reader deciding whether to send a value has to know
+   * what happens if they do not, and that answer was two lines below, past the description, among
+   * the bounds. It goes here or there and never both - see `schemaDefault`.
+   */
+  defaultValue?: string | undefined
   deprecated?: boolean | undefined
   /** `read-only`, `write-only`, `any other property` - words that qualify without constraining. */
   flags?: readonly string[] | undefined
@@ -69,7 +88,8 @@ export const renderFieldRow = (field: FieldRow): TemplateResult => html`
         ? nothing
         : html`<code class=${classMap({ name: true, deprecated: field.deprecated === true })}>${field.name}</code>`}
       ${field.type ? html`<span class="type">${field.type}</span>` : nothing}
-      ${field.required === true ? html`<span class="required">required</span>` : nothing}
+      ${field.requirement ? html`<span class=${field.requirement}>${field.requirement}</span>` : nothing}
+      ${field.defaultValue ? html`<span class="default">${field.defaultValue}</span>` : nothing}
       ${field.flags && field.flags.length > 0 ? html`<span class="flag">${field.flags.join(' · ')}</span>` : nothing}
       ${field.aside ?? nothing}
     </div>
@@ -151,10 +171,28 @@ export const fieldRowStyles = css`
     font: var(--openish-font-micro);
   }
 
+  /*
+   * The same size and position as the required mark, in the muted colour rather than the danger one.
+   *
+   * It has to be legible without being loud. A list where most rows are optional would read as a
+   * column of warnings if this shared the other's weight, and the fact worth noticing on that list
+   * is still the handful of rows that ask for something.
+   */
+  .optional {
+    color: var(--openish-color-text-muted);
+    font: var(--openish-font-micro);
+  }
+
   .flag,
+  .default,
   .media-type {
     color: var(--openish-color-text-muted);
     font: var(--openish-font-micro);
+  }
+
+  /* Mono for the value, because it is one: the literal a caller would have written. */
+  .default {
+    font-family: var(--openish-font-family-mono);
   }
 
   .constraints {

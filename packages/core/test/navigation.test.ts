@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
+import { createDocumentStore } from '../src/store/create-document-store.js'
 import { extractHeadings } from '../src/navigation/traverse-description.js'
-import type { NavGroupNode, NavTagNode } from '../src/types.js'
+import type { DocumentStore, NavGroupNode, NavTagNode, NavTextNode } from '../src/types.js'
 import { findNode, flatten, idsOf, relativeId, relativeIdsOf, storeFromFixture } from './helpers.js'
 
 const tagsOf = (store: Awaited<ReturnType<typeof storeFromFixture>>): NavTagNode[] =>
@@ -156,5 +157,84 @@ describe('description headings', () => {
       gettingStarted?.type === 'text' && relativeIdsOf(store, gettingStarted.children ?? []),
     ).toEqual(['overview/getting-started/authentication', 'overview/getting-started/rate-limits'])
     expect(relativeId(store, concepts?.id)).toBe('overview/concepts')
+  })
+})
+
+describe('the headings the overview writes for itself', () => {
+  const withInfo = (document: Record<string, unknown>) =>
+    createDocumentStore({
+      openapi: '3.1.0',
+      info: { title: 'Facts', version: '1.0.0' },
+      paths: {},
+      ...document,
+    })
+
+  /** The `infoSection` nodes, in order, with the ids they claimed. */
+  const factsOf = (store: DocumentStore): Array<[string, string]> =>
+    store.navigation
+      .filter((node): node is NavTextNode => node.type === 'text' && node.infoSection !== undefined)
+      .map((node) => [node.infoSection!, relativeId(store, node.id) ?? node.id])
+
+  it('mints one for the servers and one for the security schemes', async () => {
+    const store = await withInfo({
+      servers: [{ url: 'https://api.example.com' }],
+      components: { securitySchemes: { bearer: { type: 'http', scheme: 'bearer' } } },
+    })
+
+    expect(factsOf(store)).toEqual([
+      ['servers', 'overview/servers'],
+      ['authentication', 'overview/authentication'],
+    ])
+  })
+
+  it('mints neither for a document that declares neither', async () => {
+    expect(factsOf(await withInfo({}))).toEqual([])
+  })
+
+  it('mints Servers for a host that named servers the document does not have', async () => {
+    /*
+     * The overview shows the host's list in place of the document's, so a navigation entry that
+     * appeared only when the *document* had servers would point at a heading that is on the page and
+     * say it is not, or the other way round.
+     */
+    const store = await withInfo({})
+    const overridden = await createDocumentStore(
+      { openapi: '3.1.0', info: { title: 'Facts', version: '1.0.0' }, paths: {} },
+      { config: { servers: [{ url: 'https://host.example.com' }] } },
+    )
+
+    expect(factsOf(store)).toEqual([])
+    expect(factsOf(overridden)).toEqual([['servers', 'overview/servers']])
+  })
+
+  it('gives way to a description heading that already claimed the slug', async () => {
+    const store = await withInfo({
+      info: { title: 'Facts', version: '1.0.0', description: '## Servers\n\nOurs are elsewhere.' },
+      servers: [{ url: 'https://api.example.com' }],
+    })
+
+    /* The prose asked first, so the heading this file writes takes the suffix rather than the name. */
+    expect(factsOf(store)).toEqual([['servers', 'overview/servers-2']])
+    expect(relativeId(store, store.navigation[0]?.id)).toBe('overview/servers')
+  })
+
+  it('comes after the prose and before the tags, which is the order down the page', async () => {
+    const store = await withInfo({
+      info: { title: 'Facts', version: '1.0.0', description: '## Intro' },
+      servers: [{ url: 'https://api.example.com' }],
+      tags: [{ name: 'things' }],
+      paths: {
+        '/things': {
+          get: { summary: 'List', operationId: 'list', tags: ['things'], responses: { '200': { description: 'OK' } } },
+        },
+      },
+    })
+
+    expect(store.navigation.map((node) => node.type)).toEqual(['text', 'text', 'tag'])
+    expect(relativeIdsOf(store, store.navigation)).toEqual([
+      'overview/intro',
+      'overview/servers',
+      'tags/things',
+    ])
   })
 })

@@ -18,6 +18,7 @@ export {
   type OperationEntry,
 } from './navigation/operations.js'
 export { extractHeadings, traverseDescription } from './navigation/traverse-description.js'
+export { traverseInfo } from './navigation/traverse-info.js'
 export { resolveOperationNode, type ResolvedOperation } from './navigation/resolve.js'
 export { indexNavigation, indexPointers, traverseDocument } from './navigation/traverse-document.js'
 export {
@@ -85,6 +86,7 @@ export {
   refPointer,
   schemaConditional,
   schemaConstraints,
+  schemaDefault,
   schemaDependentSchemas,
   schemaExamples,
   schemaPatternProperties,

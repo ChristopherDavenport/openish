@@ -5,6 +5,7 @@ import {
   parameterContentType,
   parameterSerialization,
   schemaConstraints,
+  schemaDefault,
   schemaTypeLabel,
   type ParameterEntry,
 } from '@openish/core'
@@ -66,7 +67,12 @@ export class OpenishParameters extends LitElement {
      */
     const mediaType = parameterContentType(parameter)
     const schema = mediaType === undefined ? parameter.schema : parameterContentSchema(parameter)
-    const constraints = [...schemaConstraints(schema), ...parameterSerialization(parameter)]
+    /* Promoted to the row's head, so the constraint line below must not repeat it. */
+    const declaredDefault = schemaDefault(schema)
+    const constraints = [
+      ...schemaConstraints(schema, { omitDefault: true }),
+      ...parameterSerialization(parameter),
+    ]
     /* A path parameter is required by definition, whatever the document says. */
     const required = parameter.required === true || parameter.in === 'path'
 
@@ -76,7 +82,22 @@ export class OpenishParameters extends LitElement {
       type: html`${schemaTypeLabel(schema)}${mediaType
         ? html` <span class="media-type">as ${mediaType}</span>`
         : nothing}`,
-      required,
+      /*
+       * Both words, on every row, which the body's rows deliberately do not do.
+       *
+       * A parameter list is short and it is a checklist: a reader works down it deciding what to
+       * send, and "this row says nothing" and "this row is optional" are the same absence to them
+       * even though they are different facts to the document. The body's properties are the other
+       * case - there can be sixty of them, and sixty rows ending in `optional` is a column of one
+       * word rather than a list of fields, which is what printing only `required` was for.
+       */
+      requirement: required ? 'required' : 'optional',
+      /*
+       * Printed even beside `required`, where it can never apply because the caller always sends a
+       * value. It is the document talking, and a reader who sees `required default 10` has learnt
+       * something true about the document that suppressing it would have hidden.
+       */
+      defaultValue: declaredDefault,
       deprecated: parameter.deprecated === true,
       detail: html`
         ${parameter.description

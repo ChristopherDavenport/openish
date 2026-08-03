@@ -607,7 +607,8 @@ export class OpenishSchema extends LitElement {
       name: property.name,
       where: this.#chip,
       type: renderTypeLabel(this.store, this.ui, property.schema, schemaTypeLabel(property.schema)),
-      required: property.required,
+      /* `required` or nothing: a body can be sixty properties, and see the note in the parameters. */
+      requirement: property.required ? 'required' : undefined,
       deprecated: property.deprecated,
       flags: this.#flags(property.schema),
       aside: this.#renderExampleMarker(property.name, property.schema),

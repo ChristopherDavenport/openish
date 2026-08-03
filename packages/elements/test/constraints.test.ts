@@ -125,3 +125,65 @@ describe('property ordering', () => {
     expect(text.indexOf('alpha')).toBeLessThan(text.indexOf('bag'))
   })
 })
+
+/**
+ * The default belongs beside `optional`, not among the bounds.
+ *
+ * `optional` is only half an answer: a reader deciding whether to send a value has to know what
+ * happens if they do not, and that was two lines below on the constraint line, past the description,
+ * between `min` and `one of`. It is one fact and it is said in one place - promoted to the head of a
+ * parameter row, and left where it was on a body property, where a list can run to sixty rows.
+ */
+describe('a declared default', () => {
+  const parameterRows = async (): Promise<Element[]> => {
+    const { CONSTRAINTS_SPEC } = await import('./fixtures.js')
+    const harness = await mountReference({ path: '/tags/things/listThings', spec: CONSTRAINTS_SPEC })
+    await harness.settle()
+    const parameters = shadowOf(sectionOf(harness), 'openish-parameters')
+    return [...parameters.querySelectorAll('li.field')]
+  }
+
+  const rowFor = async (name: string): Promise<Element> => {
+    const rows = await parameterRows()
+    const row = rows.find((one) => one.querySelector('.name')?.textContent === name)
+    if (!row) {
+      throw new Error(`No parameter row named "${name}".`)
+    }
+    return row
+  }
+
+  it('says it on the head line, beside the word it completes', async () => {
+    const row = await rowFor('limit')
+    const head = row.querySelector('.head')!
+
+    expect(head.querySelector('.optional')?.textContent).toBe('optional')
+    expect(head.querySelector('.default')?.textContent).toBe('default 10')
+  })
+
+  it('does not also say it among the constraints, where it used to live', async () => {
+    const row = await rowFor('limit')
+
+    /* The rest of the constraint line survives - this is a promotion, not a deletion. */
+    expect(deepTextOf(row.querySelector('.constraints'))).toContain('max 100')
+    expect(deepTextOf(row.querySelector('.constraints'))).not.toContain('default')
+  })
+
+  it('says nothing where the document declared none', async () => {
+    const head = (await rowFor('cursor')).querySelector('.head')!
+
+    expect(head.querySelector('.optional')?.textContent).toBe('optional')
+    expect(head.querySelector('.default')).toBeNull()
+  })
+
+  it('says it even where the caller can never reach it, because the document said it', async () => {
+    const head = (await rowFor('thingId')).querySelector('.head')!
+
+    expect(head.querySelector('.required')?.textContent).toBe('required')
+    expect(head.querySelector('.default')?.textContent).toBe('default first')
+  })
+
+  it('leaves a body property saying it among the constraints', async () => {
+    /* The other half of the parameters-only decision: sixty rows should not gain a fourth column. */
+    expect(textOfModel(await model('Bounded'))).toContain('default z')
+  })
+})
