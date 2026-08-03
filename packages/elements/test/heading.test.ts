@@ -3,9 +3,9 @@ import { describe, expect, it } from 'vitest'
 
 import { heading } from '../src/render/heading.js'
 
-const rendered = (level: number, classes: Record<string, boolean> = {}): Element => {
+const rendered = (level: number, classes: Record<string, boolean> = {}, id?: string): Element => {
   const host = document.createElement('div')
-  render(heading(level, 'Accounts', classes), host)
+  render(heading(level, 'Accounts', classes, id), host)
   return host.firstElementChild!
 }
 
@@ -35,5 +35,11 @@ describe('a heading', () => {
     expect(element.textContent).toBe('Accounts')
     expect(element.classList.contains('title')).toBe(true)
     expect(element.classList.contains('deprecated')).toBe(false)
+  })
+
+  it('takes an id when something links to it, and no attribute at all when nothing does', () => {
+    expect(rendered(2, {}, 'overview/servers').id).toBe('overview/servers')
+    /* Not `id=""`, which is an id a `[id=""]` lookup would have to be careful about. */
+    expect(rendered(2).hasAttribute('id')).toBe(false)
   })
 })

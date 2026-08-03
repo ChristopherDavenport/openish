@@ -1235,6 +1235,149 @@ assumed. `jh-badge` is a *count* badge and is not what a where-chip is.
 `--openish-color-text-muted` on `--openish-color-surface-muted` was never in `contrast.test.ts` and
 was already load-bearing for two chips; every row on the page wears one now, so it is measured.
 
+## M22 — the introduction's facts, where a reader can reach them (done)
+
+The front page was the last section still arranged by what was easy to append rather than by what a
+reader arrives asking. Three things followed from that, and they are the whole milestone.
+
+**`About` was at the bottom of the page.** Contact, licence and terms were the last block of the
+right-hand column, which on a document with OAuth put them below every scope — on Galaxy, about
+1900px down, past a screenful of `read:planets`. They are the document's identity, not a topic within
+it, so they are a strip under the title now, absorbing the version pill: `0.6.12 · MIT · Scalar
+Support · support@scalar.com`. Terms is a link labelled `Terms of service` rather than the URL it
+points at; a URL is readable in a definition list and is not on a line of small print.
+
+Each item carries a visually-hidden label. The `<dt>` beside a value was what said what it was, and
+there is no `<dt>` any more: a reader can see that `MIT` is a licence from where it sits, and a
+reader hearing `MIT` between a version number and an email address cannot. The label sits *outside*
+the `.version` pill so the pill's own text is still just the version, which is what `shell.test.ts`
+had always asserted and what any assertion about a version should get.
+
+**Copying the document and downloading it were in different places.** Copy for LLM was a control on
+the heading; the JSON and YAML buttons were a labelled row at the foot of the other column. They are
+the same request - hand me the thing this page is a view of - so they are one `.actions` cluster
+beside the title. `<openish-download>` went to `display: contents` so its buttons wrap as individual
+items of that row rather than travelling as a pair, and the visible `OpenAPI document` label is gone:
+in the title row the heading beside them says what they act on, and the third time a page says
+"OpenAPI document" it has stopped being information. A reader hearing the button read out has no
+heading beside it, so each one carries the full sentence in `aria-label`.
+
+`titleRowStyles` is untouched. The overview declares `flex-wrap: wrap` locally, because it is the one
+section with three controls and the operation, tag and model pages have never needed to wrap.
+
+### `Servers` and `Authentication` were the only headings nobody could link to
+
+Literal strings passed to `heading()`, so no `id`, no `NavTextNode`, no sidebar row, no deep link -
+while `nodeToMarkdown` had been emitting `## Servers` and `## Authentication` in the Markdown handed
+to a model the whole time. The page was behind its own copy of itself.
+
+- **`navigation/traverse-info.ts`** mints the two nodes, through the same `SlugRegistry` and under the
+  same `overview` parent as the description headings. That is what makes the collision case free: an
+  introduction that already has a `## Servers` claims `overview/servers` first and this one takes
+  `overview/servers-2`, with no rule written anywhere about it. `Servers` is minted when the *host's*
+  list or the document's is non-empty, matching what `#renderServers()` shows - a navigation entry
+  that disagrees with what renders is worse than no entry.
+- **`NavTextNode.infoSection`** is a discriminator before it is a key. `<openish-overview>` hands the
+  heading ids to `<openish-markdown>` *positionally*, so a node with no heading in the prose would
+  take the id belonging to whatever heading came next and push every id after it along by one - the
+  one real trap in this change, and `document-info.test.ts` has the regression. A field rather than a
+  node type of its own, because a new type would have to be answered in `renderNode`, in the plane's
+  walk, in the sidebar row and in search, and in every one of them it would behave like a text node.
+- **`heading()` takes an `id`.** Fourth parameter, `ifDefined`, no change to the six `literal`
+  statics, so it is still six templates for the life of the page.
+
+Everything downstream was already right: `render/sections.ts` routes a text node into `anchors`
+rather than making a section, `atOverviewAnchor` reads that set, `hrefFor` puts a text node's id in
+the fragment, and `renderNode` already knew a text node means "the overview, scrolled here".
+
+### The Introduction row is synthesised in elements, and that is the interesting decision
+
+Galaxy has a tag called `Authentication`. Adding a bare `Authentication` root row directly above it
+would have been worse than the problem. So the overview's headings are grouped under a row for the
+front page - which the traversal cannot mint, because the overview is `info` and has no node.
+
+Making it one in `@openish/core` fights that design in four places at once. Its id would have to be
+`store.source.slug`, which is `''` for a single document: `isAncestorId('', 'overview/resources')` is
+false, so the branch would never open, and `hrefFor`, `renderNodeById`, `urlResolves` and
+`documentSections` would each need a new spelling of "the front of the document". Giving it
+`overview` instead fixes the ancestry and breaks the href and the highlight, which is the same
+trade the other way round.
+
+`navigation/intro.ts` takes the slug and states the expansion. The id is what makes it cheap - it
+already *is* the overview to `hrefForOverview`, to `resolvedId` and to the scroll-spy, so the row
+links, resolves and highlights with nothing written. `StatedExpansion` in `rows.ts` is a map the
+caller fills in for rows ancestry gets wrong, checked after the reader's decision and before the
+prefix rule; `firstTag` skips anything in it, or `defaultOpenFirstTag` would have silently started
+opening the introduction instead of the first tag. Memoised on the store, like the plane, for the
+same reason: a store is frozen at construction, so there is nothing that can go stale.
+
+Open by default rather than "open while the reader is inside it", which is how a tag behaves. These
+headings were roots and therefore always on screen; grouping them is meant to say what they are
+headings of, not to take them away from a reader who has navigated into an operation.
+
+### What it does not do
+
+No permalink affordance beside headings. The repo has none - the description headings have carried
+ids without one since M17 - and adding it is a change that should cover every heading with an id at
+once rather than these two. Scroll-spy still highlights the section, so the `Servers` row lights up
+when clicked and not while the reader scrolls past it; that is the existing behaviour for
+`Resources`, and fixing it means teaching `SectionsController` about intra-section anchors.
+
+### The response half was left a step behind the request half
+
+M21 gave both sides one row grammar and M20 put the request body's identity - the `body` chip, the
+model name as a link, `required`/`optional` - on the `Parameters` heading row. The response side got
+the same three marks and a worse place to put them, and two differences fell out of that which were
+never decided on purpose.
+
+**Why the placements differ at all, and why one of them cannot be fixed.** An operation has exactly
+one request body, so there is one shape to name and a heading to name it on. `Returns` has one
+payload *per status* - `200` is a `User` and `401` is not - so the heading has nothing it could
+truthfully say. A status is the response's heading, and the model name still cannot go there: the
+summary of `<openish-disclosure>` is the label of a `<button>`, and a link inside a button is a link
+nobody can click. The first line of the region the status opens is the next place down, and that is
+where it goes now.
+
+- **It was under the headers.** `#renderPayloadIdentity` sat between the header rows and the body
+  rows, captioning the rows it stood directly above - defensible, and it meant `getMe` answered "what
+  do I get back?" beneath four `X-`headers. It is first in the region now. That separates it from the
+  rows it names, exactly as `body Planet` on the `Parameters` row is separated from the body's rows
+  by every path and query parameter, and it reads for the same reason: the chip column ties them
+  across the gap.
+- **The chip vanished for an inline object.** The request half suppresses `object` as a *type* and
+  keeps the chip; the response half returned `nothing` for the whole line, so a response whose shape
+  had no name had no `body` chip while its sibling `header` rows had theirs - the one row grammar
+  saying two different things about the same page. Same rule on both sides now, and the line is
+  suppressed only where there is no `content` at all, which is the response analogue of an operation
+  with no `requestBody`.
+- **The body's rows started a new list.** `continuesList` reached `renderMediaTypes` from
+  `<openish-request-body>` and never from `<openish-response-list>`, so the first body row under a
+  response's headers drew no rule and the join read as a seam. It is one list on both sides now.
+
+### `optional` comes back, on the parameters and nowhere else
+
+M21 removed the word on the grounds that one fixed slot per row makes a blank unambiguous, and that
+is true of a body: sixty properties ending in `optional` is a column of one word rather than a list
+of fields. It is not true of a parameter list, which is four rows a reader works *down*, deciding
+what to send - and there "this row says nothing" and "this row is optional" are the same absence to
+them even though they are two different facts to the document.
+
+So the slot is a tri-state now. `FieldRow.required?: boolean` became
+`requirement?: 'required' | 'optional'`, because `false` and "not stated" are one value in a boolean
+and two answers on the page, and the call site is the only place that knows which it holds.
+`<openish-parameters>` passes both words; `<openish-schema>` passes `required` or nothing; response
+headers pass neither and keep `Always sent` as a flag, since `required` on one of those is a promise
+the server makes and not something a caller supplies.
+
+**And the default moved up to finish the sentence.** `optional` is half an answer - what happens if
+I leave it out is the other half - and that half was on the constraint line, two rows down, past the
+description, between `min 1` and `one of`. It is on the head line now, in mono because it is a
+literal a caller would have written. `schemaDefault` in `@openish/core` is the one spelling of it and
+`schemaConstraints` grew an `omitDefault` so the promotion is a move rather than a copy; a row that
+said `default 10` twice would have been worse than the row that said it in the wrong place. Printed
+beside `required` too, where it can never apply: it is the document talking, and a reader who sees
+`required default first` has learnt something true that suppressing it would have hidden.
+
 ## The loop
 
 At the end of every milestone:

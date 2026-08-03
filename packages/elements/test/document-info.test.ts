@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
 import '../src/index.js'
-import { DOCUMENT_INFO_SPEC } from './fixtures.js'
+import { DOCUMENT_INFO_SPEC, SHELL_SPEC } from './fixtures.js'
 import {
   deepQuery,
   deepQueryAll,
@@ -39,32 +39,103 @@ describe('the info object', () => {
     expect(deepTextOf(page)).toContain('The long version.')
   })
 
-  it('renders contact, licence and terms', async () => {
+  it('puts the version, licence, contact and terms in a strip under the title', async () => {
     const { page } = await pageAt('/', 'openish-overview')
-    const about = [...page.querySelectorAll('section')].find((section) =>
-      textOf(section.querySelector('h2')) === 'About',
-    )
+    const meta = page.querySelector('.meta')
 
-    expect(about).toBeDefined()
-    const terms = [...about!.querySelectorAll('dt')].map((term) => textOf(term))
-    expect(terms).toEqual(['Contact', 'Licence', 'Terms of service'])
+    expect(meta).not.toBeNull()
+    expect(textOf(meta!.querySelector('.version'))).toBe('2.1.0')
 
-    const hrefs = [...about!.querySelectorAll('a')].map((link) => link.getAttribute('href'))
+    /* Licence before contact before terms - identity first, then who to ask, then the small print. */
+    const hrefs = [...meta!.querySelectorAll('a')].map((link) => link.getAttribute('href'))
     expect(hrefs).toEqual([
+      'https://example.com/licence',
       'https://example.com/support',
       'mailto:api@example.com',
-      'https://example.com/licence',
       'https://example.com/terms',
     ])
+
+    /* The URL was readable in a definition list. On a line of small print it is a label. */
+    expect(deepTextOf(meta!)).toContain('Terms of service')
+    expect(textOf(meta!.querySelector('a[href="https://example.com/terms"]'))).toBe('Terms of service')
   })
 
-  it('renders no About section for a document that declares none of it', async () => {
+  it('names every value in the strip for a reader who cannot see where it sits', async () => {
+    const { page } = await pageAt('/', 'openish-overview')
+    const labels = [...page.querySelectorAll('.meta .visually-hidden')].map((label) => textOf(label))
+
+    expect(labels).toEqual(['Version', 'Licence', 'Contact', 'Contact'])
+  })
+
+  it('keeps the SPDX identifier beside a licence name that is not it', async () => {
+    const { page } = await pageAt('/', 'openish-overview')
+
+    /* `Apache 2.0` is the name, `Apache-2.0` the identifier: both, because they are not the same. */
+    expect(deepTextOf(page.querySelector('.meta')!)).toContain('Apache 2.0')
+    expect(deepTextOf(page.querySelector('.meta')!)).toContain('Apache-2.0')
+  })
+
+  it('renders no About section anywhere, since there is no longer one to render', async () => {
+    const { page } = await pageAt('/', 'openish-overview')
+
+    expect([...page.querySelectorAll('h2')].map((heading) => textOf(heading))).not.toContain('About')
+  })
+
+  it('collapses the strip for a document that declares nothing but a version', async () => {
     const harness = await mountReference({ path: '/' })
     const overview = shadowOf(sectionOf(harness), 'openish-overview')
+    const meta = overview.querySelector('.meta')
 
-    expect(
-      [...overview.querySelectorAll('h2')].map((heading) => textOf(heading)),
-    ).not.toContain('About')
+    /* The shell fixture has a version and none of the rest, so the strip is the pill alone. */
+    expect(meta).not.toBeNull()
+    expect(meta!.querySelectorAll('a').length).toBe(0)
+  })
+})
+
+describe('taking the document away', () => {
+  it('puts copying it and downloading it in the same row as the title', async () => {
+    const { page } = await pageAt('/', 'openish-overview')
+    const actions = page.querySelector('.title-row .actions')
+
+    expect(actions).not.toBeNull()
+    expect(deepTextOf(actions!)).toContain('Copy for LLM')
+    expect(deepTextOf(actions!)).toContain('JSON')
+    expect(deepTextOf(actions!)).toContain('YAML')
+  })
+
+  it('says in full what a download button downloads, since the heading beside it is not read out', async () => {
+    const { page } = await pageAt('/', 'openish-overview')
+    const labels = [...shadowOf(page, 'openish-download').querySelectorAll('button')].map((button) =>
+      button.getAttribute('aria-label'),
+    )
+
+    expect(labels).toEqual([
+      'Download the OpenAPI document as JSON',
+      'Download the OpenAPI document as YAML',
+    ])
+  })
+})
+
+describe('the headings the overview writes for itself', () => {
+  it('gives Servers and Authentication the ids their navigation entries carry', async () => {
+    const { page } = await pageAt('/', 'openish-overview')
+    const ids = [...page.querySelectorAll('h2')].map((heading) => [textOf(heading), heading.id])
+
+    expect(ids).toContainEqual(['Authentication', 'overview/authentication'])
+  })
+
+  it('does not spend a prose heading id on a heading the prose never had', async () => {
+    /*
+     * The regression this guards: `<openish-markdown>` takes the heading ids positionally, so a node
+     * for `Servers` left in that list would hand `overview/servers` to the first heading of the
+     * description and push every id after it along by one.
+     */
+    const harness = await mountReference({ path: '/', spec: SHELL_SPEC })
+    const overview = shadowOf(sectionOf(harness), 'openish-overview')
+
+    expect(deepQuery(overview, '[id="overview/getting-started"]')).not.toBeNull()
+    expect(deepQuery(overview, '[id="overview/getting-started/authentication"]')).not.toBeNull()
+    expect(deepQuery(overview, '[id="overview/servers"]')?.textContent).toBe('Servers')
   })
 })
 

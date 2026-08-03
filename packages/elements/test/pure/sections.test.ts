@@ -87,10 +87,17 @@ describe('the section list', () => {
   it('makes a description heading an anchor rather than a section of its own', async () => {
     const store = await storeFor(SHELL_SPEC)
 
-    /* Both levels: the nested one is only reachable by walking into the heading above it. */
+    /*
+     * Both levels of the prose - the nested one is only reachable by walking into the heading above
+     * it - and then the two headings the overview writes for itself. The document's own
+     * `## Authentication` sits under `getting-started`, so the one the overview writes takes the
+     * unqualified slug without either of them being renamed.
+     */
     expect([...overviewAnchors(store)]).toEqual([
       'api-1/overview/getting-started',
       'api-1/overview/getting-started/authentication',
+      'api-1/overview/servers',
+      'api-1/overview/authentication',
     ])
     expect(documentSections(store).some((section) => section.id.startsWith('api-1/overview'))).toBe(false)
   })

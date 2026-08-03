@@ -44,6 +44,20 @@ export type NavTextNode = {
   title: string
   /** Heading depth in the source markdown (1-6). */
   level: number
+  /**
+   * Set when the overview writes this heading itself rather than lifting it out of prose.
+   *
+   * Both a discriminator and a key. A discriminator because `<openish-overview>` hands the
+   * description headings to the markdown pipeline *positionally* - the nth id onto the nth heading -
+   * so a node that has no heading in the prose has to be filtered out or every id after it lands on
+   * the wrong paragraph. A key because the same element then has to find its way back to this node
+   * to stamp the id on the heading it does write, and a title is not something to match on.
+   *
+   * A field rather than a node type of its own: a new type would have to be answered in
+   * `renderNode`, in the plane's walk, in the sidebar row and in search, and in every one of them it
+   * would behave exactly like a text node - which is what it is.
+   */
+  infoSection?: 'servers' | 'authentication'
   children?: NavNode[]
 }
 

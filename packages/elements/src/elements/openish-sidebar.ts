@@ -14,6 +14,7 @@ import {
   type OpenishUiState,
 } from '../context/contexts.js'
 import { deepQuery } from '../dom/deep-query.js'
+import { introExpansion, sidebarNodes } from '../navigation/intro.js'
 import { navRows, type Expansion, type NavRow } from '../navigation/rows.js'
 import { baseStyles } from '../styles/shared.js'
 import './openish-search.js'
@@ -158,12 +159,14 @@ export class OpenishSidebar extends LitElement {
 
   get #rows(): NavRow[] {
     const activeId = this.ui?.activeId ?? ''
+    /* The overview is the document's own slug, or nothing at all before a store has arrived. */
+    const atOverview = activeId === '' || activeId === this.store?.source.slug
 
-    return navRows(this.store?.navigation ?? [], this.expansion, activeId, {
+    return navRows(sidebarNodes(this.store), this.expansion, activeId, {
       ...(this.ui?.config.defaultOpenAllTags ? { openAll: true } : {}),
       ...(this.ui?.config.defaultOpenFirstTag ? { openFirstTag: true } : {}),
-      /* The overview is the document's own slug, or nothing at all before a store has arrived. */
-      atOverview: activeId === '' || activeId === this.store?.source.slug,
+      ...(this.store ? { stated: introExpansion(this.store) } : {}),
+      atOverview,
     })
   }
 

@@ -1061,6 +1061,14 @@ export const CONSTRAINTS_SPEC = {
         summary: 'List things',
         operationId: 'listThings',
         tags: ['things'],
+        parameters: [
+          /* Optional with a default, which is the pair the row's head line has to say together. */
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 10, maximum: 100 } },
+          /* Optional with nothing to fall back to: the word alone, and no default beside it. */
+          { name: 'cursor', in: 'query', schema: { type: 'string' } },
+          /* A default the caller can never reach. The document said it, so the page says it. */
+          { name: 'thingId', in: 'path', required: true, schema: { type: 'string', default: 'first' } },
+        ],
         responses: { '200': { description: 'OK' } },
       },
     },
@@ -1071,7 +1079,8 @@ export const CONSTRAINTS_SPEC = {
         type: 'object',
         required: ['count'],
         properties: {
-          zulu: { type: 'string' },
+          /* A body property keeps its default among the constraints - only parameters promote it. */
+          zulu: { type: 'string', default: 'z' },
           count: { type: 'integer', exclusiveMinimum: 0, exclusiveMaximum: 100, multipleOf: 5 },
           alpha: { type: 'string' },
           tags: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 8, uniqueItems: true },
@@ -1264,6 +1273,51 @@ export const GRANTS_SPEC = {
       legacy: {
         type: 'oauth2',
         flows: { implicit: { authorizationUrl: 'https://issuer.example.com/authorize', scopes: {} } },
+      },
+    },
+  },
+} as const
+
+/**
+ * Responses whose shape has no name, and a response with no shape at all.
+ *
+ * The two cases the payload identity has to answer differently: an inline object names nothing, so
+ * the type is dropped and the chip stays - it is what says which of the rows below are the body's -
+ * and a status that promises only headers has no body to introduce, so nothing is said.
+ */
+export const INLINE_RESPONSE_SPEC = {
+  openapi: '3.1.0',
+  info: { title: 'Inline', version: '1.0.0' },
+  paths: {
+    '/inline': {
+      get: {
+        summary: 'Inline thing',
+        operationId: 'inlineThing',
+        tags: ['things'],
+        responses: {
+          '200': {
+            description: 'OK',
+            headers: { 'X-Request-ID': { schema: { type: 'string' }, description: 'The request.' } },
+            content: {
+              'application/json': {
+                schema: { type: 'object', properties: { id: { type: 'string' }, size: { type: 'integer' } } },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/empty': {
+      get: {
+        summary: 'Empty thing',
+        operationId: 'emptyThing',
+        tags: ['things'],
+        responses: {
+          '200': {
+            description: 'OK',
+            headers: { 'X-Request-ID': { schema: { type: 'string' }, description: 'The request.' } },
+          },
+        },
       },
     },
   },

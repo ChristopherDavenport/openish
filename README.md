@@ -80,6 +80,19 @@ consequences a host should know about:
 - **A URL that names nothing is left exactly as the reader typed it.** The banner says which id
   failed and the document is on screen behind it. Nothing rewrites it to the front page, because a
   bookmark that has outlived its operation should still be able to say so after a reload.
+- **Every heading on the front page is an id**, including `Servers` and `Authentication`, which the
+  overview writes rather than lifting out of `info.description`. They are `overview/servers` and
+  `overview/authentication`, minted by the same registry as the prose headings, so a document whose
+  introduction already has a `## Servers` of its own gets `overview/servers-2` for the second. All of
+  them are anchors on the overview rather than sections of their own, so the URL puts them in the
+  fragment.
+
+The sidebar's first row is the document's front page, with those headings under it. It is
+synthesised in `@openish/elements`, not minted by the traversal: the overview is `info`, which has no
+node, and its row carries the document's own slug — the string that already means "the front of this
+document" to `hrefForOverview`, to `resolvedId` and to the scroll-spy. It is open unless the reader
+shuts it, because those headings were roots of the tree before the row existed and grouping them is
+meant to say what they are headings *of*, not to hide them.
 
 ### What a continuous page costs
 
@@ -91,7 +104,8 @@ in under half a second — and the two things that follow from it are worth stat
   titles, descriptions, parameter names, body fields, response descriptions and model fields, so it
   finds *more* than the browser would, including sections that have never been rendered. **Copy for
   LLM** is the other half — it hands over a whole section, or a whole tag, as Markdown built from the
-  document rather than from the page.
+  document rather than from the page. On the front page it stands beside the JSON and YAML download
+  buttons, because those are the same request: hand me the thing this page is a view of.
 - **A try-it panel does not survive scrolling out of range.** Typed values and a displayed response
   go when the section is recycled. Credentials do not: the auth session lives on the root.
 

@@ -1,5 +1,6 @@
 import { html as staticHtml, literal, type StaticValue } from 'lit/static-html.js'
 import { classMap, type ClassInfo } from 'lit/directives/class-map.js'
+import { ifDefined } from 'lit/directives/if-defined.js'
 import type { TemplateResult } from 'lit'
 
 /**
@@ -31,7 +32,18 @@ const TAGS: readonly StaticValue[] = [
 export const headingTag = (level: number): StaticValue =>
   TAGS[Math.min(Math.max(Math.trunc(level), 1), TAGS.length) - 1]!
 
-export const heading = (level: number, content: unknown, classes: ClassInfo = {}): TemplateResult => {
+/**
+ * @param id Set for a heading something can link to. It is the navigation id in the form the URL
+ * carries it, because that is what a fragment and `SectionsController` match against - not a slug
+ * this function could have derived from the text, which would be a second way of naming the same
+ * heading and so a second way for a link and its target to drift apart.
+ */
+export const heading = (
+  level: number,
+  content: unknown,
+  classes: ClassInfo = {},
+  id?: string,
+): TemplateResult => {
   const tag = headingTag(level)
-  return staticHtml`<${tag} class=${classMap(classes)}>${content}</${tag}>`
+  return staticHtml`<${tag} class=${classMap(classes)} id=${ifDefined(id)}>${content}</${tag}>`
 }

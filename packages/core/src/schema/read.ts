@@ -56,13 +56,27 @@ const asText = (value: unknown): string => {
 }
 
 /**
+ * What a caller gets for not sending this, spelled the way the constraint line spells it.
+ *
+ * Its own function because two places want the same words for two different jobs: the constraint
+ * line prints it among the bounds, and a parameter row prints it beside `optional` - where it is
+ * not a constraint at all but the completion of that word, since "you may leave this out" and "and
+ * this is what happens if you do" are one thought. Whoever promotes it passes `omitDefault` below
+ * so the row does not say it twice.
+ */
+export const schemaDefault = (value: unknown): string | undefined => {
+  const schema = asSchema(value)
+  return schema?.['default'] === undefined ? undefined : `default ${asText(schema['default'])}`
+}
+
+/**
  * The constraints worth printing next to a description.
  *
  * Only what changes what a caller may send: `title` and `xml` do not, `pattern` does. `readOnly`
  * and `writeOnly` belong here by that rule but are deliberately absent - they are rendered as flags
  * beside the property name, and a value that appeared in both places read as two separate facts.
  */
-export const schemaConstraints = (value: unknown): string[] => {
+export const schemaConstraints = (value: unknown, options: { omitDefault?: boolean } = {}): string[] => {
   const schema = asSchema(value)
   if (!schema) {
     return []
@@ -118,8 +132,9 @@ export const schemaConstraints = (value: unknown): string[] => {
   if (schema['const'] !== undefined) {
     constraints.push(`always ${asText(schema['const'])}`)
   }
-  if (schema['default'] !== undefined) {
-    constraints.push(`default ${asText(schema['default'])}`)
+  const declaredDefault = options.omitDefault ? undefined : schemaDefault(schema)
+  if (declaredDefault) {
+    constraints.push(declaredDefault)
   }
 
   /*

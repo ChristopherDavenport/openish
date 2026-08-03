@@ -90,18 +90,35 @@ describe('parameters', () => {
     expect(row).toEqual({ name: 'accountId', where: 'path', type: 'string (uuid)', required: 'required' })
   })
 
-  it('leaves the required column blank for an optional parameter, rather than saying so', async () => {
+  it('says optional on a parameter that is not required, rather than leaving a blank', async () => {
     const { element } = await operationOf('getAccount')
     const operation = shadowOf(sectionOf(element), 'openish-operation')
 
     /*
-     * `optional` used to be printed on every row that was not required, which on a twenty-field
-     * object is eighteen lines saying the default. With one fixed slot per row, blank is unambiguous.
+     * A parameter list is a checklist a reader works down deciding what to send, and on one of those
+     * "this row says nothing" and "this row is optional" are the same absence - different facts to
+     * the document, one blank to the reader. Both words, on every row.
      */
     const row = rowNamed(operation, 'X-Trace-Id')
 
     expect(textOf(row.querySelector('.badge[data-where]'))).toBe('header')
+    expect(textOf(row.querySelector('.optional'))).toBe('optional')
     expect(row.querySelector('.required')).toBeNull()
+  })
+
+  it('leaves a body property blank instead, where the list can run to sixty rows', async () => {
+    const { element } = await operationOf('replaceAccount')
+    const operation = shadowOf(sectionOf(element), 'openish-operation')
+
+    /*
+     * The other half of the same decision, and the reason this is not one rule: `optional` on every
+     * non-required property of a twenty-field object is eighteen lines saying the default.
+     */
+    const section = operation.querySelector('[part~="parameters-section"]')!
+    const rows = deepFieldRows(section).filter((row) => row.where === 'body')
+
+    expect(rows.length).toBeGreaterThan(0)
+    expect(rows.map((row) => row.required)).not.toContain('optional')
   })
 
   it('renders no parameter section for an operation that takes none', async () => {
