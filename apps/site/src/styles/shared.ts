@@ -95,33 +95,6 @@ export const siteControlStyles = css`
 `
 
 /**
- * What a `color-scheme` attribute needs in order to work inside a shadow root.
- *
- * `@openish/theme` implements that attribute with a document-level rule -
- * `openish-api-reference[color-scheme='dark'] { color-scheme: dark }` in `tokens.css` - and a
- * document stylesheet cannot reach into a shadow tree. The `--openish-*` tokens are fine, because
- * custom properties inherit across the boundary; this one is a *selector* that has to match the
- * element itself, and it never does when a host has wrapped the reference in a component of its
- * own. The attribute silently does nothing and the reference follows the reader instead.
- *
- * So every site component that renders a reference into its own shadow root restates it. Two rules,
- * copied from the theme, next to a comment saying where they came from.
- *
- * The better fix is in the library: `openish-api-reference` could set this on its own `:host`,
- * which would work in either DOM and make the theme's copy redundant. That is a change to
- * `packages/elements` rather than to this site, so it is written down here rather than done here.
- */
-export const embeddedReferenceStyles = css`
-  openish-api-reference[color-scheme='light'] {
-    color-scheme: light;
-  }
-
-  openish-api-reference[color-scheme='dark'] {
-    color-scheme: dark;
-  }
-`
-
-/**
  * Running prose.
  *
  * The site writes its own paragraphs rather than rendering markdown for them, so the typography is

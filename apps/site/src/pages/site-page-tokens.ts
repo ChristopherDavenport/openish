@@ -10,7 +10,7 @@ import { GALAXY } from '../data/documents.js'
 import { isColour, type Token } from '../data/parse-tokens.js'
 import { TOKENS, TOKENS_SOURCE, TOKEN_GROUPS } from '../data/tokens.js'
 import { repoFile } from '../data/repo.js'
-import { embeddedReferenceStyles, siteControlStyles, siteProseStyles, siteStyles } from '../styles/shared.js'
+import { siteControlStyles, siteProseStyles, siteStyles } from '../styles/shared.js'
 
 /**
  * The token editor.
@@ -37,7 +37,6 @@ export class SitePageTokens extends LitElement {
     siteStyles,
     siteControlStyles,
     siteProseStyles,
-    embeddedReferenceStyles,
     css`
       :host {
         display: block;

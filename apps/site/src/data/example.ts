@@ -23,18 +23,6 @@ export type SiteExampleSpec = {
   readonly props?: Readonly<Record<string, unknown>>
   /** How tall the result should be. A CSS length. */
   readonly height?: string
-  /**
-   * A token that forces a fresh element when it changes.
-   *
-   * `<site-example>` assigns changed properties to the live element rather than rebuilding it, which
-   * is what keeps a reader's scroll position and open disclosures while they work a control panel.
-   * That is right for most properties and wrong for `config`: `<openish-api-reference>` resolves its
-   * configuration when it builds a document store, and a reference whose config changes after a
-   * document has loaded keeps rendering the old one - see the note in `site-page-config.ts`. Naming
-   * the change here is how a page says "this one needs a new element", without `<site-example>`
-   * having to know anything about which properties behave how.
-   */
-  readonly remountOn?: string
 }
 
 /** The tag of the example's root element, which is what the manifest is checked against. */

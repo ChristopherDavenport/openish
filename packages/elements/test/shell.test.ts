@@ -1,7 +1,18 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
 import '../src/index.js'
-import { deepQuery, deepQueryAll, deepTextOf, disposeAll, mountReference, shadowOf, textOf, sectionOf, titleOf } from './helpers.js'
+import {
+  deepQuery,
+  deepQueryAll,
+  deepTextOf,
+  disposeAll,
+  mountReference,
+  shadowOf,
+  textOf,
+  sectionOf,
+  titleOf,
+  type Harness,
+} from './helpers.js'
 
 afterEach(() => {
   disposeAll()
@@ -304,5 +315,64 @@ describe('failure states', () => {
     await harness.settle()
 
     expect(deepTextOf(harness.element.shadowRoot!)).toContain('No document loaded')
+  })
+})
+
+/**
+ * The `color-scheme` attribute, honoured wherever the reference is mounted.
+ *
+ * It used to be a rule in `@openish/theme`, matching `openish-api-reference[color-scheme='dark']` at
+ * the document level - which cannot reach an element inside somebody else's shadow root. A host who
+ * had wrapped the reference in a component of their own set the attribute, saw the reference keep
+ * following the reader's system preference, and got no error to explain it. The rule now lives on
+ * the element's own `:host`, which matches in either place.
+ *
+ * Measured through the used value of `color-scheme` rather than through a colour, because that is
+ * the mechanism: one palette, declared once as `light-dark()` pairs, and this property is what picks
+ * a half of every one of them.
+ */
+describe('the colour-scheme attribute', () => {
+  const schemeOf = (harness: Harness, element: Element): string =>
+    harness.frame.contentWindow!.getComputedStyle(element).colorScheme
+
+  it('is honoured in the light DOM', async () => {
+    const harness = await mountReference({ path: '/' })
+    harness.element.colorScheme = 'dark'
+    await harness.settle()
+
+    expect(schemeOf(harness, harness.element)).toBe('dark')
+  })
+
+  /*
+   * The case that was broken. Wrapping a component in a component is an ordinary thing for a host to
+   * do - this site does it on every page - and nothing about it should change what an attribute means.
+   */
+  it('is honoured inside another component’s shadow root', async () => {
+    const harness = await mountReference({ path: '/' })
+    const frameDocument = harness.frame.contentDocument!
+
+    const wrapper = frameDocument.createElement('div')
+    const shadow = wrapper.attachShadow({ mode: 'open' })
+    frameDocument.body.append(wrapper)
+
+    const inner = frameDocument.createElement('openish-api-reference')
+    inner.setAttribute('color-scheme', 'dark')
+    shadow.append(inner)
+    await (inner as Element & { updateComplete: Promise<unknown> }).updateComplete
+
+    expect(schemeOf(harness, inner)).toBe('dark')
+
+    inner.setAttribute('color-scheme', 'light')
+    await (inner as Element & { updateComplete: Promise<unknown> }).updateComplete
+    expect(schemeOf(harness, inner)).toBe('light')
+
+    wrapper.remove()
+  })
+
+  /* With no attribute the reader decides, which is the default the README argues for. */
+  it('leaves the scheme to the reader when nothing is set', async () => {
+    const harness = await mountReference({ path: '/' })
+
+    expect(schemeOf(harness, harness.element)).toBe('light dark')
   })
 })

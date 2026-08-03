@@ -3,7 +3,7 @@ import { customElement, property } from 'lit/decorators.js'
 
 import './site-demo-scope.js'
 import { ElementsLoader } from '../controllers/elements-loader.js'
-import { embeddedReferenceStyles, siteStyles } from '../styles/shared.js'
+import { siteStyles } from '../styles/shared.js'
 
 /**
  * A real `<openish-api-reference>`, fetched only when a page actually shows one.
@@ -29,7 +29,6 @@ import { embeddedReferenceStyles, siteStyles } from '../styles/shared.js'
 export class SiteLiveReference extends LitElement {
   static override styles = [
     siteStyles,
-    embeddedReferenceStyles,
     css`
       :host {
         display: block;

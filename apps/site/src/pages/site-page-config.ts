@@ -145,18 +145,6 @@ export class SitePageConfig extends LitElement {
       markup: `<openish-api-reference url="${GALAXY.url}" routing="none"></openish-api-reference>`,
       props: { config: this.chosen },
       height: 'min(70vh, 34rem)',
-      /*
-       * A fresh element for every configuration, rather than assigning to the live one.
-       *
-       * `<openish-api-reference>` resolves its configuration while building a document store, and
-       * the resolved copy is what the rendered page reads from then on - so a `config` assigned
-       * after a document has loaded does not reach the page. Mounting a new element means the
-       * config is in place before the store is built, which is the path that works.
-       *
-       * The cost is a reader's scroll position on every toggle, and it is worth naming: this is the
-       * one page on the site that pays it.
-       */
-      remountOn: JSON.stringify(this.chosen),
     }
   }
 
