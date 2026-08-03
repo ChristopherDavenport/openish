@@ -68,6 +68,43 @@ describe('search', () => {
     expect(textOf(optionsOf(two)[0]!)).toContain('Replace an account')
   })
 
+  /*
+   * A document with more matches than the dialog will show, which the shell fixture is too small to
+   * be. The tag is named so that it does not match the query itself, so the expected total is
+   * exactly the number of operations.
+   */
+  const CROWDED_SPEC = {
+    openapi: '3.1.0',
+    info: { title: 'Crowded', version: '1' },
+    tags: [{ name: 'Things' }],
+    paths: Object.fromEntries(
+      Array.from({ length: 30 }, (_, index) => [
+        `/widget/${index}`,
+        { get: { tags: ['Things'], summary: `Widget ${index}`, responses: { '200': { description: 'OK' } } } },
+      ]),
+    ),
+  }
+
+  it('says how many matched, not how many it is showing', async () => {
+    const harness = await mountReference({ path: '/', spec: CROWDED_SPEC })
+    const search = await searchFor(harness, 'widget')
+
+    expect(optionsOf(search)).toHaveLength(20)
+    /* The live region is what a screen reader hears, and it used to hear the cap as the total. */
+    expect(textOf(search.shadowRoot!.querySelector('[role="status"]'))).toContain(
+      'Showing 20 of 30 results',
+    )
+    expect(textOf(search.shadowRoot!.querySelector('.more'))).toContain('10 more')
+  })
+
+  it('qualifies nothing when the whole list is on screen', async () => {
+    const harness = await mountReference({ path: '/' })
+    const search = await searchFor(harness, 'listAccounts')
+
+    expect(search.shadowRoot!.querySelector('.more')).toBeNull()
+    expect(textOf(search.shadowRoot!.querySelector('[role="status"]'))).toContain('1 result')
+  })
+
   it('says so when nothing matches', async () => {
     const harness = await mountReference({ path: '/' })
     const search = await searchFor(harness, 'zzzz')

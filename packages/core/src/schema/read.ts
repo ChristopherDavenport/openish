@@ -96,6 +96,24 @@ export const schemaConstraints = (value: unknown): string[] => {
       constraints.push(`keys match ${pattern}`)
     }
   }
+  /*
+   * Whether anything else may be sent at all.
+   *
+   * The object form is a row in the property list - `[key: string]` with a type beside it - and this
+   * is the other two, which had nowhere to be said and so were not said anywhere. `false` is the
+   * commoner and the one that matters: an object that accepts exactly the properties it lists is a
+   * different contract from one that tolerates more, and a reader could not tell them apart.
+   *
+   * `true` is the default, so an author who wrote it was making a point of it. Printed for the same
+   * reason: it is the document talking.
+   */
+  const additionalProperties = schema['additionalProperties']
+  if (additionalProperties === false) {
+    constraints.push('no other properties')
+  } else if (additionalProperties === true) {
+    constraints.push('any other properties')
+  }
+
   /* `const` is `enum` with one member, and a document that uses it means the value is fixed. */
   if (schema['const'] !== undefined) {
     constraints.push(`always ${asText(schema['const'])}`)

@@ -1,5 +1,5 @@
 export { DEFAULT_CONFIG, resolveConfig } from './config.js'
-export { operationToHar, resolveServerUrl } from './har/operation-to-har.js'
+export { operationServer, operationToHar, resolveServerUrl } from './har/operation-to-har.js'
 export type { OperationToHarInput, OperationToHarOptions } from './har/operation-to-har.js'
 export {
   findSnippetClient,
@@ -48,10 +48,11 @@ export { authorAside } from './aside.js'
 export { declarationFor } from './navigation/declaration.js'
 export { asExternalDocs } from './external-docs.js'
 export { mediaTypeExamples, type MediaTypeExample } from './operation/examples.js'
+export { mediaTypeEncoding, type EncodingEntry } from './operation/encoding.js'
 export { operationBadges, type OperationBadge } from './operation/badges.js'
 export { isHidden } from './navigation/hidden.js'
 export { getResolvedRef, isRefObject, resolveLocalPointer, resolveProperty, type RefObject } from './ref.js'
-export { schemaExample, type SchemaExampleOptions } from './schema/schema-example.js'
+export { ELIDED, schemaExample, type SchemaExampleOptions } from './schema/schema-example.js'
 export { serializeExample } from './schema/serialize-example.js'
 export {
   VARIANT_PATH_ROOT,

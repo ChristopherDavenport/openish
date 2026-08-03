@@ -76,25 +76,37 @@ describe('schemaExample', () => {
   describe('against the cyclic fixture', () => {
     /*
      * A recursive schema renders one level of nesting and then stops. That is deliberate: showing
-     * `{ id, parent: { id, parent: null } }` communicates the shape, where truncating at the first
-     * reference would only show `{ id, parent: null }` and hide the recursion entirely.
+     * `{ id, parent: { id, parent: … } }` communicates the shape, where truncating at the first
+     * reference would only show `{ id, parent: … }` and hide the recursion entirely.
+     *
+     * Where it stops it says so. It used to write `null`, which a reader copying the sample cannot
+     * tell from a field the document really does send as null - and `parent` is never null here, it
+     * is another Node. The ellipsis carries the name of what was cut, because at a `$ref` the walker
+     * knows it.
      */
     it('renders one level of a self-referential schema, then stops', async () => {
       const store = await storeFromFixture('cyclic.yaml')
 
       const value = schemaExample(store.document.components?.schemas?.['Node'])
 
+      /*
+       * Two spellings of the same stop, and both are honest: `children` is cut as an array whose
+       * item is a Node, and one level further down the array's own schema has already been walked,
+       * so the walk ends at the property rather than inside it.
+       */
       expect(value).toEqual({
         id: 'string',
-        parent: { id: 'string', parent: null, children: [] },
-        children: [{ id: 'string', parent: null, children: null }],
+        parent: { id: 'string', parent: '… (Node)', children: ['… (Node)'] },
+        children: [{ id: 'string', parent: '… (Node)', children: '…' }],
       })
     })
 
     it('terminates on mutual recursion', async () => {
       const store = await storeFromFixture('cyclic.yaml')
 
-      expect(schemaExample(store.document.components?.schemas?.['Pair'])).toEqual({ left: { back: { left: null } } })
+      expect(schemaExample(store.document.components?.schemas?.['Pair'])).toEqual({
+        left: { back: { left: '… (Other)' } },
+      })
     })
 
     it('terminates when entered at a reference rather than the resolved schema', async () => {
@@ -104,7 +116,7 @@ describe('schemaExample', () => {
       /* `Node.properties.parent` is still a `$ref` in the proxied document - the guard's real input. */
       const value = schemaExample(node['properties']?.['parent'])
 
-      expect(value).toEqual({ id: 'string', parent: null, children: [] })
+      expect(value).toEqual({ id: 'string', parent: '… (Node)', children: ['… (Node)'] })
     })
 
     it('stops at the depth cap even without a cycle', () => {
@@ -116,7 +128,8 @@ describe('schemaExample', () => {
 
       const value = schemaExample(schema, { maxDepth: 3 }) as Record<string, unknown>
 
-      expect(value).toEqual({ next: { next: { next: null } } })
+      /* No name to carry here: the cap is a count, not a reference to anything. */
+      expect(value).toEqual({ next: { next: { next: '…' } } })
     })
   })
 })

@@ -526,7 +526,11 @@ export class OpenishAuthForm extends LitElement {
       ${scopes.length > 0
         ? html`
             <div class="row">
-              <span class="key">scopes</span>
+              <!--
+                Counted, because the box below is a window rather than the whole list: it stops at
+                7rem and scrolls, and a provider with forty scopes showed six with nothing saying so.
+              -->
+              <span class="key">scopes (${scopes.length})</span>
               <div class="value scopes" role="group" aria-label="Scopes for ${entry.name}">
               ${repeat(
                 scopes,

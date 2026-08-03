@@ -11,7 +11,7 @@ const store = await createDocumentStore(JSON.stringify(SEARCHABLE_SPEC))
  * what the index *finds*, not about which document it is in. `sources.test.ts` covers the prefix.
  */
 const ids = (query: string) =>
-  searchNodes(store, query).map((result) => result.node.id.slice(store.source.slug.length + 1))
+  searchNodes(store, query).results.map((result) => result.node.id.slice(store.source.slug.length + 1))
 
 describe('the search index', () => {
   it('still finds an operation by its title', () => {
@@ -41,10 +41,22 @@ describe('the search index', () => {
 
   it('ranks a title match above a description match', () => {
     /* `transfers` is a tag title and appears in no description, so ordering is the thing under test. */
-    const results = searchNodes(store, 'transfer')
+    const { results } = searchNodes(store, 'transfer')
 
     expect(results[0]!.node.type).not.toBe('model')
     expect(results[0]!.score).toBeGreaterThan(results[results.length - 1]!.score)
+  })
+
+  /*
+   * The count is what the dialog announces, and it used to be the length of the capped list - so a
+   * query matching the whole document was announced as however many rows happened to fit.
+   */
+  it('reports how many matched, not how many fitted', () => {
+    const { results, total } = searchNodes(store, 'transfer', 2)
+
+    expect(results).toHaveLength(2)
+    expect(total).toBeGreaterThan(2)
+    expect(total).toBe(searchNodes(store, 'transfer', Infinity).results.length)
   })
 
   it('still requires every term to match, so two words narrow', () => {

@@ -278,6 +278,60 @@ describe('if/then/else', () => {
   })
 })
 
+describe('not', () => {
+  /*
+   * The line used to read "not the schema below" for anything without a one-word type, and there was
+   * no schema below - nothing rendered the excluded shape anywhere on the page.
+   */
+  it('renders the excluded schema rather than naming one it never draws', async () => {
+    const { schema } = await modelSchema(JSON_SCHEMA_SPEC, 'Excluded')
+    const rule = schema.shadowRoot!.querySelector('.rule')
+
+    expect(textOf(schema.shadowRoot!.querySelector('.rule-label'))).toBe('Must not match')
+    expect(deepTextOf(rule!)).toContain('legacyField')
+    expect(deepTextOf(schema.shadowRoot!)).not.toContain('the schema below')
+  })
+
+  it('says it in one line where the type is the whole of it', async () => {
+    const { schema } = await modelSchema(JSON_SCHEMA_SPEC, 'NotText')
+
+    expect(deepTextOf(schema.shadowRoot!)).toContain('not string')
+    expect(schema.shadowRoot!.querySelector('.rule')).toBeNull()
+  })
+
+  it('names the properties that may not appear together', async () => {
+    const { schema } = await modelSchema(JSON_SCHEMA_SPEC, 'NotBoth')
+
+    expect(deepTextOf(schema.shadowRoot!)).toContain('must not have all of card, iban')
+  })
+})
+
+describe('a title on an inline shape', () => {
+  it('names the shape instead of calling it an object', async () => {
+    const { schema } = await modelSchema(JSON_SCHEMA_SPEC, 'Titled')
+
+    expect(schemaRows(schema)).toEqual([
+      { name: 'address', type: 'Postal address', required: 'optional' },
+      /* Not "Reference": a schema with a type worth printing already has a better label. */
+      { name: 'reference', type: 'string', required: 'optional' },
+    ])
+  })
+})
+
+describe('a named scalar', () => {
+  /*
+   * The format used to be dropped whenever the type came from a `$ref`, which is exactly where a
+   * document puts it: the reader was told the field is an `AccountId` and not what one looks like.
+   */
+  it('keeps the format the name does not say', async () => {
+    const { schema } = await modelSchema(JSON_SCHEMA_SPEC, 'Holder')
+
+    expect(schemaRows(schema)).toEqual([
+      { name: 'account', type: 'AccountId (uuid)', required: 'optional' },
+    ])
+  })
+})
+
 describe('$dynamicRef', () => {
   /*
    * The generic on its own: `itemType` is declared but unbound, and the honest answer is that a

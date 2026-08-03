@@ -1,11 +1,19 @@
 import { consume } from '@lit/context'
-import { getResolvedRef, schemaConstraints, schemaTypeLabel, type VariantChoices } from '@openish/core'
+import {
+  getResolvedRef,
+  mediaTypeExamples,
+  schemaConstraints,
+  schemaTypeLabel,
+  type VariantChoices,
+} from '@openish/core'
 import { LitElement, html, css, nothing, type TemplateResult } from 'lit'
 import { customElement, property } from 'lit/decorators.js'
+import { classMap } from 'lit/directives/class-map.js'
 import { ifDefined } from 'lit/directives/if-defined.js'
 import { repeat } from 'lit/directives/repeat.js'
 
 import { uiContext, type OpenishUiState } from '../context/contexts.js'
+import { exampleListStyles, renderExampleList } from '../render/example-list.js'
 import { renderMediaTypes } from '../render/media-types.js'
 import { responseEntries } from '../render/responses.js'
 import { baseStyles } from '../styles/shared.js'
@@ -28,6 +36,9 @@ type Header = {
   required?: boolean
   deprecated?: boolean
   schema?: unknown
+  /* The two example spellings, in the shape `mediaTypeExamples` reads off a media type. */
+  example?: unknown
+  examples?: Record<string, unknown>
 }
 
 /** Hoisted so the binding does not hand `openish-table` a new array on every render. */
@@ -121,7 +132,14 @@ export class OpenishResponseList extends LitElement {
         font: var(--openish-font-micro);
         color: var(--openish-color-text-muted);
       }
+
+      /* The same mark a deprecated parameter carries, for the same reason. */
+      .deprecated {
+        text-decoration: line-through;
+        color: var(--openish-color-text-muted);
+      }
     `,
+    exampleListStyles,
   ]
 
   /** Presentation state. Provided by `<openish-api-reference>` through context. */
@@ -207,13 +225,24 @@ export class OpenishResponseList extends LitElement {
       return {
         key: name,
         cells: [
-          name,
+          html`<span class=${classMap({ deprecated: header?.deprecated === true })}>${name}</span>`,
           schemaTypeLabel(header?.schema),
           html`
             ${header?.description
               ? html`<openish-markdown .markdown=${header.description} .headingOffset=${4}></openish-markdown>`
               : nothing}
+            <!--
+              Three facts the Header Object carries that this table used to read and then drop:
+              whether it is always there, whether it is on its way out, and what it looks like.
+
+              "Always sent" rather than "required", which is the word the object uses: required on a
+              *response* header is a promise the server makes, not something a caller supplies, and
+              the parameter table two sections up uses "required" for the other meaning.
+            -->
+            ${header?.required ? html`<div class="constraints">Always sent</div>` : nothing}
+            ${header?.deprecated ? html`<div class="constraints">Deprecated</div>` : nothing}
             ${constraints.length > 0 ? html`<div class="constraints">${constraints.join(' · ')}</div>` : nothing}
+            ${renderExampleList(mediaTypeExamples(header))}
           `,
         ],
       }

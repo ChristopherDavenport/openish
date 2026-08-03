@@ -76,17 +76,6 @@ export class OpenishOverview extends LitElement {
         margin-top: 0;
       }
 
-      @container section (min-width: 56rem) {
-        .facts {
-          grid-column: 2;
-          margin-top: 0;
-        }
-
-        .docs > :first-child {
-          margin-top: 0;
-        }
-      }
-
       .version {
         display: inline-block;
         margin-bottom: var(--openish-space-lg);

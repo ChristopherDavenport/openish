@@ -1,10 +1,20 @@
 import { snippetz } from '@scalar/snippetz'
 import { describe, expect, it } from 'vitest'
 
-import { operationToHar, resolveServerUrl } from '../src/har/operation-to-har.js'
+import { operationServer, operationToHar, resolveServerUrl } from '../src/har/operation-to-har.js'
 import { collectOperations } from '../src/navigation/operations.js'
 import type { DocumentStore } from '../src/types.js'
 import { storeFromFixture } from './helpers.js'
+
+const entryFor = (store: DocumentStore, operationId: string) => {
+  const entry = collectOperations(store.document.paths as Record<string, unknown>, 'paths').find(
+    (candidate) => candidate.operation.operationId === operationId,
+  )
+  if (!entry) {
+    throw new Error(`No operation with id "${operationId}"`)
+  }
+  return entry
+}
 
 const harFor = (store: DocumentStore, operationId: string) => {
   const entry = collectOperations(store.document.paths as Record<string, unknown>, 'paths').find(
@@ -25,6 +35,59 @@ const harFor = (store: DocumentStore, operationId: string) => {
 
 const valueOf = (list: { name: string; value: string }[], name: string) =>
   list.find((entry) => entry.name === name)?.value
+
+/*
+ * OpenAPI declares `servers` at three levels and the innermost wins. openish read none of it: the
+ * sample named the document's host and the try-it panel sent there, for an operation the document
+ * says is somewhere else.
+ */
+describe('a server declared below the document', () => {
+  it('takes an operation to its own host, variables and all', async () => {
+    const store = await storeFromFixture('request.yaml')
+    const entry = entryFor(store, 'uploadFile')
+
+    expect(operationServer(entry.pathItem, entry.operation)).toBe('https://uploads.example.com/live')
+    expect(harFor(store, 'uploadFile').url).toBe('https://uploads.example.com/live/uploads')
+  })
+
+  it('falls back to the path item when the operation declares nothing', async () => {
+    const store = await storeFromFixture('request.yaml')
+    const entry = entryFor(store, 'uploadStatus')
+
+    expect(operationServer(entry.pathItem, entry.operation)).toBe('https://path-level.example.com')
+    expect(harFor(store, 'uploadStatus').url).toBe('https://path-level.example.com/uploads/status')
+  })
+
+  it('is nothing at all for an operation the document already covers', async () => {
+    const store = await storeFromFixture('request.yaml')
+    const entry = entryFor(store, 'createNote')
+
+    expect(operationServer(entry.pathItem, entry.operation)).toBeUndefined()
+  })
+
+  /*
+   * The picker offers the document's servers, so an operation that declares its own is saying it is
+   * not on any of them. The element layer sets `server` on every call, which is how the override
+   * came to be read and then discarded.
+   */
+  it('beats the server the reader picked', async () => {
+    const store = await storeFromFixture('request.yaml')
+    const entry = entryFor(store, 'uploadFile')
+
+    const har = operationToHar(
+      {
+        document: store.document,
+        operation: entry.operation,
+        pathItem: entry.pathItem,
+        path: entry.path,
+        method: entry.method,
+      },
+      { server: 'https://eu.example.com/v1' },
+    )
+
+    expect(har.url).toBe('https://uploads.example.com/live/uploads')
+  })
+})
 
 describe('resolveServerUrl', () => {
   it('substitutes variables from their declared defaults', () => {

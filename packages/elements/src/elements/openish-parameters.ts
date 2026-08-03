@@ -6,15 +6,14 @@ import {
   parameterSerialization,
   schemaConstraints,
   schemaTypeLabel,
-  type MediaTypeExample,
   type ParameterEntry,
   type ParameterLocation,
 } from '@openish/core'
 import { LitElement, html, css, nothing, type TemplateResult } from 'lit'
 import { customElement, property } from 'lit/decorators.js'
 import { classMap } from 'lit/directives/class-map.js'
-import { repeat } from 'lit/directives/repeat.js'
 
+import { exampleListStyles, renderExampleList } from '../render/example-list.js'
 import { heading } from '../render/heading.js'
 import { baseStyles } from '../styles/shared.js'
 import type { OpenishTableRow } from './openish-table.js'
@@ -116,21 +115,8 @@ export class OpenishParameters extends LitElement {
         color: var(--openish-color-text-muted);
       }
 
-      ul.examples {
-        margin: var(--openish-space-3xs) 0 0;
-        padding: 0;
-        list-style: none;
-        font: var(--openish-font-micro);
-      }
-
-      ul.examples code {
-        font-family: var(--openish-font-family-mono);
-      }
-
-      ul.examples .example-name {
-        color: var(--openish-color-text-muted);
-      }
     `,
+    exampleListStyles,
   ]
 
   /** Already merged: the path item's parameters plus the operation's. See `collectParameters`. */
@@ -147,41 +133,6 @@ export class OpenishParameters extends LitElement {
    */
   @property({ type: Number })
   level = 5
-
-  /**
-   * The examples an author wrote for one parameter, inline.
-   *
-   * A parameter's value is short by nature, so these are a list rather than the picker a request body
-   * gets - three query values one under the other are easier to compare than three behind a control.
-   * A parameter carries `example`/`examples` in exactly the shape a media type does, so the same
-   * reader serves both.
-   */
-  #renderExamples(examples: readonly MediaTypeExample[]): TemplateResult | typeof nothing {
-    if (examples.length === 0) {
-      return nothing
-    }
-
-    return html`
-      <ul class="examples">
-        ${repeat(
-          examples,
-          (example) => example.name,
-          (example) => html`
-            <li>
-              ${example.value === undefined
-                ? html`<a href=${example.externalValue ?? ''} rel="noreferrer noopener">${example.externalValue}</a>`
-                : html`<code
-                    >${typeof example.value === 'string' ? example.value : JSON.stringify(example.value)}</code
-                  >`}
-              ${example.summary ?? example.name
-                ? html`<span class="example-name"> — ${example.summary ?? example.name}</span>`
-                : nothing}
-            </li>
-          `,
-        )}
-      </ul>
-    `
-  }
 
   #rows(parameters: readonly ParameterEntry[]): OpenishTableRow[] {
     return parameters.map((parameter) => {
@@ -211,7 +162,7 @@ export class OpenishParameters extends LitElement {
               : nothing}
             ${parameter.deprecated ? html`<div class="constraints">Deprecated</div>` : nothing}
             ${constraints.length > 0 ? html`<div class="constraints">${constraints.join(' · ')}</div>` : nothing}
-            ${this.#renderExamples(mediaTypeExamples(parameter))}
+            ${renderExampleList(mediaTypeExamples(parameter))}
           `,
         ],
       }

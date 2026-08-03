@@ -11,7 +11,7 @@ afterEach(() => {
 const menuOf = (harness: Harness): HTMLButtonElement | null =>
   harness.element.shadowRoot!.querySelector('.menu')
 
-/** Narrows the frame and lets the media query fire, the way a phone-sized viewport would. */
+/** Narrows the frame and lets the element re-measure, the way a phone-sized viewport would. */
 const narrow = async (harness: Harness): Promise<void> => {
   harness.frame.style.width = '380px'
   await new Promise((resolve) => setTimeout(resolve, 50))
@@ -124,6 +124,27 @@ describe('the stacked navigation, which a narrow viewport gets', () => {
     )
   })
 
+  /*
+   * The switch measures the element, not the window. A host that puts a reference in a column of its
+   * own on a wide page used to get the eighteen-rem sidebar and whatever was left of six hundred
+   * pixels, because the only thing being asked was how wide the window was.
+   */
+  it('stacks an embedded reference that is narrow on a wide page', async () => {
+    const harness = await mountReference({ path: '/' })
+    harness.frame.style.width = '1600px'
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    await harness.settle()
+
+    expect(menuOf(harness)).toBeNull()
+
+    harness.element.style.width = '600px'
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    await harness.settle()
+
+    expect(menuOf(harness)).not.toBeNull()
+    expect(harness.element.shadowRoot!.querySelector('openish-sidebar')).toBeNull()
+  })
+
   it('goes back to a navigation column when there is room again', async () => {
     const harness = await mountReference({ path: '/' })
     await narrow(harness)
@@ -141,8 +162,8 @@ describe('the stacked navigation, which a narrow viewport gets', () => {
 /**
  * The examples column, which is the third band.
  *
- * The navigation switch is a media query on the element; this one is a container query on the
- * content pane, because the pane's width depends on whether the sidebar is beside it. The two are
+ * The navigation switch measures the element in JavaScript; this one is a container query on the
+ * content pane, because the pane's width depends on whether the sidebar is beside it. Both are
  * therefore tested by driving the same thing a reader drives - the window - and asserting on where
  * the panes actually landed rather than on which rule fired.
  */
@@ -196,6 +217,31 @@ describe('the examples column', () => {
      */
     expect(Math.round(examples.getBoundingClientRect().left)).toBe(Math.round(docs.getBoundingClientRect().left))
     expect(docs.getBoundingClientRect().bottom).toBeLessThanOrEqual(examples.getBoundingClientRect().top + 1)
+  })
+
+  /*
+   * The band the threshold actually falls in, which nothing asserted before: the old widths were
+   * 820 and 1600, and the cliff was at about 1247 - so every laptop between them got the stacked
+   * arrangement and the suite was equally happy either way.
+   */
+  it('arrives at the width a laptop is actually read at', async () => {
+    const harness = await mountReference({ path: '/tags/accounts/getAccount' })
+    const beside = async (width: string): Promise<boolean> => {
+      await widen(harness, width)
+      const { docs, examples } = panesOf(harness)
+      return examples.getBoundingClientRect().left > docs.getBoundingClientRect().left
+    }
+
+    /* A window at 1152 or 1200 is two columns. It was one. */
+    expect(await beside('1200px')).toBe(true)
+    expect(await beside('1152px')).toBe(true)
+
+    /*
+     * And 1024 is still one, on purpose: 43rem of content divided in two is two columns of
+     * twenty-one, which is narrower than either half is worth. The cliff is a decision, so it is
+     * asserted rather than left to whatever the arithmetic happens to produce.
+     */
+    expect(await beside('1024px')).toBe(false)
   })
 
   it('follows the window across the threshold, both ways', async () => {
@@ -304,5 +350,71 @@ describe('the examples column', () => {
     const exampleResponses = deepQueryAll(examples, 'openish-response-list').at(-1)!.shadowRoot!
     expect(deepQuery(exampleResponses, 'openish-code-block')).not.toBeNull()
     expect(deepQuery(exampleResponses, 'openish-schema')).toBeNull()
+  })
+})
+
+/**
+ * Nothing scrolls the page sideways.
+ *
+ * `main` carries `overflow-y: auto`, and a box that says that and nothing about x gets `auto` on
+ * both - so a single long line anywhere in the document used to put a horizontal scrollbar under the
+ * whole page rather than overflowing its own column. What legitimately scrolls sideways - a wide
+ * table, a long line of code - wraps its own scroller and is not this.
+ */
+describe('horizontal overflow', () => {
+  /* A schema deep enough to reach the indent cap, with names long enough to have to wrap. */
+  const DEEP_SPEC = (() => {
+    let schema: Record<string, unknown> = {
+      type: 'object',
+      properties: {
+        aPropertyNameLongEnoughToNeedToWrapInsideANarrowColumn: {
+          type: 'string',
+          pattern: '^(?:[a-z0-9!#$%&*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\\.)+[a-z]{2,}$',
+        },
+      },
+    }
+    for (let level = 0; level < 10; level += 1) {
+      schema = { type: 'object', properties: { nested: schema } }
+    }
+
+    return {
+      openapi: '3.1.0',
+      info: { title: 'Deep', version: '1.0.0' },
+      paths: {
+        '/deep': {
+          post: {
+            tags: ['deep'],
+            summary: 'Send the deep thing',
+            operationId: 'sendDeep',
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Deep' } } } },
+            responses: { '200': { description: 'OK' } },
+          },
+        },
+      },
+      components: { schemas: { Deep: schema } },
+    }
+  })()
+
+  /*
+   * Measured on the section, not on `main`: `main` clips, so its scrollWidth can never exceed its
+   * clientWidth and asserting there would be asserting that hidden means hidden. The section is
+   * where the content actually is, and it has no overflow rule of its own - so what it reports is
+   * whether anything inside it needed room the column does not have.
+   */
+  it('stays inside its column at every width', async () => {
+    const harness = await mountReference({
+      path: '/models/Deep',
+      spec: DEEP_SPEC,
+      config: { expandAllSchemaProperties: true },
+    })
+
+    for (const width of ['380px', '1024px', '1600px']) {
+      harness.frame.style.width = width
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      await harness.settle()
+
+      const section = harness.element.shadowRoot!.querySelector('.section')!
+      expect({ width, over: section.scrollWidth - section.clientWidth }).toEqual({ width, over: 0 })
+    }
   })
 })
