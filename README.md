@@ -289,6 +289,12 @@ the tag names, the attributes and the types either side of a binding were unchec
 to fatal except three the tool is currently wrong about — the reasons are in `scripts/guard-templates.mjs`,
 and each is worth re-checking when it releases.
 
+**And a backtick inside one ends it.** There are no comments inside a template literal: a `/* … */`
+in a `css` block or a `<!-- … -->` in an `html` block is content, so a backtick written in one closes
+the template early and `tsc` reports the wreckage wherever it finally gives up — `',' expected`, on a
+line that is fine. It is an easy habit to fall into, because everything *outside* a template in this
+repository writes names in backticks. `npm run guard:backticks` finds it and says what it is.
+
 **Declarative components.** Every element describes its shadow tree from the state it holds and does
 nothing else on the side: no `addEventListener` calls, no `querySelector` after rendering, and no
 reads of `window.location` while rendering. External state arrives as a reactive input through a

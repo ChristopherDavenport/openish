@@ -79,6 +79,16 @@ export type Guard = {
 
 export const GUARDS: readonly Guard[] = [
   {
+    /*
+     * Do not write a backtick inside this entry's prose either - it is describing the rule, and the
+     * rule is a regular expression's worth of literal-mindedness away from flagging its own
+     * documentation. `guard:focus` below has the same problem and the same solution.
+     */
+    name: 'guard:backticks',
+    what: 'No backtick inside a comment inside a css or html template. There are no comments inside a template literal, so one written there closes the template early and TypeScript reports the wreckage somewhere else entirely — this says what actually happened.',
+    script: 'scripts/guard-template-backticks.mjs',
+  },
+  {
     name: 'guard:vue',
     what: 'No Vue in the dependency graph or the build output. Several @scalar/* packages depend on Vue; this is what keeps the Vue-free half of Scalar from quietly acquiring the other half.',
     script: 'scripts/guard-no-vue.mjs',

@@ -264,8 +264,8 @@ export class SitePageWhy extends LitElement {
 
       <h2>What the build refuses</h2>
       <p>
-        Four guards run before the type checker and the tests. Each one exists because the thing it
-        forbids had already happened at least once.
+        ${GUARDS.length} guards run before the type checker and the tests. Each one exists because
+        the thing it forbids had already happened at least once — the newest of them four times.
       </p>
       <dl>
         ${repeat(
