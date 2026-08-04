@@ -552,7 +552,22 @@ export const deepQueryAll = <T extends Element>(root: Element | ShadowRoot, sele
 export const shadowOf = (root: Element | ShadowRoot, selector: string): ShadowRoot => {
   const host = deepQuery(root, selector)
   if (!host?.shadowRoot) {
-    throw new Error(`No element matching "${selector}" with a shadow root.`)
+    /*
+     * What was searched, not just what was wanted.
+     *
+     * `sectionOf` resolves "wherever the reader is", so a plane that has not finished arriving hands
+     * this the wrong section - and "no openish-model" then describes a correct element missing from
+     * a page that was never asked for. Naming the subtree and its contents is the difference between
+     * that failure taking three runs to place and taking one.
+     */
+    const where =
+      'tagName' in root ? `<${root.tagName.toLowerCase()} data-id="${root.getAttribute('data-id')}">` : 'shadow root'
+    const inside = [...root.querySelectorAll('*')].slice(0, 8).map((one) => one.tagName.toLowerCase())
+    const found = host ? ' (found the element, but it has no shadow root)' : ''
+    throw new Error(
+      `No element matching "${selector}" with a shadow root${found}. ` +
+        `Searched ${where}, which holds: ${inside.join(', ') || '(nothing)'}`,
+    )
   }
   return host.shadowRoot
 }
