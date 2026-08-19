@@ -103,6 +103,14 @@ export class SectionsController implements ReactiveController {
   #reported: string | undefined
 
   /**
+   * Where the plane was left when the scroll it was asked for finished.
+   *
+   * Cleared the moment it moves off that, which is the only thing that makes what the spy says news
+   * again. `undefined` when no scroll has been asked for, which is the ordinary reading session.
+   */
+  #restedAt: number | undefined
+
+  /**
    * Where the reader has already been taken, so arriving there twice does nothing.
    *
    * A section, and the heading inside it when the URL named one - the two together are the request,
@@ -258,6 +266,7 @@ export class SectionsController implements ReactiveController {
     clearTimeout(this.#quiet)
     this.#programmatic = undefined
     this.#reported = undefined
+    this.#restedAt = undefined
     this.#target = undefined
     this.#anchor = undefined
     this.#asked = undefined
@@ -289,6 +298,14 @@ export class SectionsController implements ReactiveController {
     this.#target = id
     this.#anchor = anchor || undefined
     this.#programmatic = id
+    this.#restedAt = undefined
+    /*
+     * And drop a report the reader's own scrolling had queued.
+     *
+     * The mute stops new ones; a debounce already ticking is behind it, and it lands a tenth of a
+     * second into the jump naming wherever they were before they clicked.
+     */
+    clearTimeout(this.#quiet)
     clearTimeout(this.#settle)
     this.#settle = setTimeout(() => {
       this.#programmatic = undefined
@@ -478,12 +495,13 @@ export class SectionsController implements ReactiveController {
     return this.#plane?.isConnected === true
   }
 
-  /** The scroll is over: what the plane says about itself can be believed again. */
+  /** The scroll is over: what the plane says about itself can be believed again, once it moves. */
   #arrived(): void {
     this.#frame = undefined
     clearTimeout(this.#settle)
     this.#reported = this.#target
     this.#programmatic = undefined
+    this.#restedAt = this.#scroller?.scrollTop
   }
 
   /**
@@ -535,6 +553,29 @@ export class SectionsController implements ReactiveController {
      */
     if (this.#programmatic !== undefined) {
       return
+    }
+
+    /*
+     * Nor is a report about a plane that has not moved since it was put here.
+     *
+     * A jump parks its target against the top edge and stops as soon as the gap is not worth
+     * correcting, so the section above it ends within a pixel of that edge - and whether it still
+     * overlaps the viewport is decided by how the headings above it happened to lay out. The
+     * virtualiser reports what it *renders*, and the rendered range goes on changing after the scroll
+     * is over as prose and highlighting land, so one of those late reports named the parent header
+     * and the URL, the sidebar and the reader's bookmark all followed it off the section that had
+     * been asked for. Under load and never on its own, because load is what moves the sub-pixel
+     * arithmetic across the line.
+     *
+     * The mute cannot cover this: the scroll genuinely has finished, and holding it open on a longer
+     * timer would move the race rather than settle it. What is true without a margin in it is that
+     * the reader has not gone anywhere while the page has not moved.
+     */
+    if (this.#restedAt !== undefined) {
+      if (this.#scroller?.scrollTop === this.#restedAt) {
+        return
+      }
+      this.#restedAt = undefined
     }
 
     if (id === this.#reported) {

@@ -50,6 +50,28 @@ const sectionTop = (harness: Harness, id: string): number =>
   harness.element.shadowRoot!.querySelector(`.section[data-id$="${id}"]`)!.getBoundingClientRect().top -
   scroller(harness).getBoundingClientRect().top
 
+/**
+ * The last section that has reached the top edge of the scroller, which is the one being read.
+ *
+ * Measured here rather than asked of the reference, because it is the thing the URL is supposed to
+ * agree with - reading both off the same source would assert nothing.
+ */
+const beingRead = (harness: Harness): string => {
+  const top = scroller(harness).getBoundingClientRect().top
+  const reached = [...harness.element.shadowRoot!.querySelectorAll('.section')].filter(
+    (section) => section.getBoundingClientRect().top - top <= 1,
+  )
+  return reached.at(-1)?.getAttribute('data-id') ?? ''
+}
+
+/** The URL, once the spy's debounce has had a chance to write it. */
+const settledHash = async (harness: Harness, from: string): Promise<string> => {
+  for (let attempt = 0; attempt < 60 && harness.window.location.hash === from; attempt += 1) {
+    await new Promise((resolve) => harness.window.setTimeout(resolve, 50))
+  }
+  return harness.window.location.hash
+}
+
 describe('navigating a long way up the plane', () => {
   it('arrives, rather than running out of frames somewhere in the middle', async () => {
     const harness = await mountReference({ path: '/models/Model0299', spec: withProse(300) })
@@ -75,6 +97,40 @@ describe('navigating a long way up the plane', () => {
     await settleScroll(harness, 'tags/things/listThings', 40)
 
     expect(Math.abs(sectionTop(harness, 'tags/things/listThings'))).toBeLessThan(40)
+  })
+})
+
+describe('the URL, while the reader reads', () => {
+  /*
+   * The failure this exists for.
+   *
+   * A jump parks its target against the top edge, so the section above it ends within a pixel of
+   * that edge - and the virtualiser, which reports the topmost item *intersecting* the viewport, then
+   * named the parent header on some runs and the target on others depending on how the headings above
+   * it laid out. The rendered range goes on changing after the scroll is over as prose and
+   * highlighting land, so one of those late reports arrived after the mute had lifted and took the
+   * URL, the sidebar and the reader's bookmark off the section they had asked for.
+   */
+  it('stays on the section a deep link asked for, after the plane has stopped moving', async () => {
+    const harness = await mountReference({ path: '/models/Model0099', spec: withProse(200) })
+    await settleScroll(harness, 'models/Model0099', 40)
+
+    expect(harness.window.location.hash).toBe('#/models/Model0099')
+    expect(beingRead(harness)).toMatch(/\/models\/Model0099$/)
+  })
+
+  /* And the other half: holding the URL still must not leave the spy deaf for the rest of the page. */
+  it('follows the reader as soon as they scroll away from it', async () => {
+    const harness = await mountReference({ path: '/models/Model0099', spec: withProse(200) })
+    await settleScroll(harness, 'models/Model0099', 40)
+
+    scroller(harness).scrollTop += 3000
+    const hash = await settledHash(harness, '#/models/Model0099')
+    await harness.settle()
+
+    expect(hash).not.toBe('#/models/Model0099')
+    expect(beingRead(harness)).toMatch(/\/models\/Model\d+$/)
+    expect(beingRead(harness).endsWith(hash.slice(2))).toBe(true)
   })
 })
 
