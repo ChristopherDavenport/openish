@@ -226,6 +226,41 @@ const idIn = (path: string, basePath: string): string => {
 const hrefInMode = (routing: RoutingMode, path: string, basePath: string): string =>
   routing === 'history' ? path : `#/${idIn(path, basePath)}`
 
+/**
+ * How long a wait on the dev server is given before it is called a failure.
+ *
+ * Under the vitest default of fifteen seconds, and deliberately: whichever of the two fires first is
+ * the one whose message the run carries, and "the frame never loaded" is worth more than "the test
+ * timed out". Ten seconds is also far outside the honest range - the slowest test in a clean full
+ * run is seven and a half seconds *in total*, and these two waits are a fraction of a second each.
+ */
+const SERVER_MS = 10_000
+
+/**
+ * A wait that says what it was waiting for.
+ *
+ * Both of the waits below are on Vite: one for a document it serves, one for the module graph that
+ * document imports. Neither has an end of its own, so a request the dev server stalls or drops
+ * hangs the test until vitest kills it - and what the run then reports is `Test timed out in
+ * 15000ms` against a test that has nothing to do with it. That shape turned up scattered across a
+ * dozen unrelated files, one run in four, and said nothing about where to look.
+ */
+const within = async <T>(work: Promise<T>, what: string, detail: () => string = () => ''): Promise<T> => {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const givenUp = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`Waited ${SERVER_MS}ms for ${what}, and it never happened.${detail()}`)),
+      SERVER_MS,
+    )
+  })
+
+  try {
+    return await Promise.race([work, givenUp])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 export const mountReference = async (
   attributes: Partial<{
     /**
@@ -291,9 +326,12 @@ export const mountReference = async (
   document.body.append(frame)
   frames.push(frame)
 
-  await new Promise<void>((resolve) => {
-    frame.addEventListener('load', () => resolve(), { once: true })
-  })
+  await within(
+    new Promise<void>((resolve) => {
+      frame.addEventListener('load', () => resolve(), { once: true })
+    }),
+    `the test frame to load ${frame.src}`,
+  )
 
   const frameWindow = frame.contentWindow!
   const frameDocument = frame.contentDocument!
@@ -308,7 +346,14 @@ export const mountReference = async (
   )
 
   /* frame.html imports the elements into its own realm; wait for that module to have run. */
-  await frameWindow.customElements.whenDefined('openish-api-reference')
+  await within(
+    frameWindow.customElements.whenDefined('openish-api-reference'),
+    'openish-api-reference to be defined inside the frame, which waits on the module graph frame.html imports',
+    () => {
+      const errors = (frameWindow as never as { __frameErrors?: string[] }).__frameErrors ?? []
+      return errors.length ? `\nThe frame reported:\n  ${errors.join('\n  ')}` : '\nThe frame reported no error at all.'
+    },
+  )
 
   attributes.beforeMount?.(frameWindow)
 

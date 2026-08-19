@@ -28,6 +28,30 @@
       globalThis.__vitest_browser_runner__ ??= { wrapDynamicImport: (factory) => factory() }
     </script>
     <!--
+      Whatever goes wrong in this realm, kept where the parent can read it.
+
+      A module script that fails to fetch, or throws while executing, reports it here and nowhere
+      else - so without this the parent sees only a custom element that is never defined, and a test
+      that hangs on a promise nothing will settle. It is the difference between "the elements never
+      arrived" and the URL that did not load. Capture phase, because resource `error` events do not
+      bubble.
+    -->
+    <script>
+      globalThis.__frameErrors = []
+      addEventListener(
+        'error',
+        (event) => {
+          globalThis.__frameErrors.push(
+            `error: ${event.message ?? ''} ${event.error ?? ''} ${event.target && event.target.src ? event.target.src : ''}`,
+          )
+        },
+        true,
+      )
+      addEventListener('unhandledrejection', (event) => {
+        globalThis.__frameErrors.push(`rejection: ${event.reason}`)
+      })
+    </script>
+    <!--
       The real theme, so a test sees the colours and fonts a reader does. Without it every
       `--openish-*` hook resolves to nothing, and an accessibility check for contrast would be
       measuring the browser's defaults rather than this project's palette.
