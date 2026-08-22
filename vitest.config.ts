@@ -2,6 +2,8 @@ import { fileURLToPath } from 'node:url'
 import { playwright } from '@vitest/browser-playwright'
 import { defineConfig } from 'vitest/config'
 
+import { diagnoseServer } from './scripts/diagnose-server.mjs'
+
 const resolve = (path: string) => fileURLToPath(new URL(path, import.meta.url))
 
 const alias = {
@@ -82,6 +84,12 @@ export default defineConfig({
       },
       {
         resolve: { alias, dedupe: ['lit', 'lit-html', 'lit-element', '@lit/reactive-element'] },
+        /*
+         * Nothing at all unless `DIAGNOSE_LOG` names a file, and Vite drops the falsy plugin when it
+         * does not. Only this project serves documents to a browser, so it is the only one with a
+         * server worth recording. See `scripts/diagnose-server.mjs`.
+         */
+        plugins: [diagnoseServer()],
         /*
          * Named up front rather than discovered.
          *

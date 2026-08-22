@@ -280,6 +280,138 @@ installed CSS before believing a token name, however well documented it is.
   the mode that way, and the Playwright provider's type augmentation has to be in `types` in
   `tsconfig.test.json` or `CDPSession` has no `send`.
 
+**The browser suite fails about one run in five, and it is not the network.** A failing run is not
+evidence that whatever you just changed broke something, and a passing one is not evidence that it
+works. Two explanations have already been written into this repository as fact and both were wrong.
+Before spending a day on it, read "The browser suite fails about one run in five" below - it lists
+what has been ruled out and how, and `scripts/repro-browser-flake.mjs` reports a rate rather than a
+verdict.
+
+---
+
+## The browser suite fails about one run in five, and here is what it is not
+
+The `elements` project fails intermittently, in one of two shapes:
+
+- `Failed to import test file …`, caused by `TypeError: Failed to fetch dynamically imported module`
+- `Waited 10000ms for openish-api-reference to be defined inside the frame`, on tests scattered
+  across unrelated files
+
+**They are one event, not two.** One run produced both at once - two files that never imported, and
+six tests across five other files whose frames never defined an element. Commit `86d0dd7` guessed
+they were the same thing and said it could not show it. They are the same thing.
+
+The cause is **not established**. What follows is what has been ruled out, so that nobody rules it
+out again. Every entry cost a measurement rather than an argument, and the two that sound most
+plausible are the two that were wrong.
+
+### Reproducing it
+
+`npx vitest run` - the whole suite, every project, nothing special - failed **2 of 11**. That is the
+cheapest handle on it and it is the ordinary command. `--project elements` on its own is the easy
+case and hid this for a long time: **0 of 13**. Emptying Vite's dependency cache first raises the
+filtered run to **8 of 28**.
+
+    node scripts/repro-browser-flake.mjs 10
+    node scripts/repro-browser-flake.mjs 10 --cold -- --project elements
+
+The rate is the only language this failure speaks. At one run in five and eighty seconds a run, a
+clean run says almost nothing, and two rates are not different because one is bigger - separating 15%
+from 35% at any confidence takes more than fifty runs an arm, which is over an hour of wall clock.
+Numbers below are quoted with their denominators for that reason.
+
+### What it is not
+
+**Not a keep-alive race.** Node closes an idle connection after five seconds, and a browser reusing a
+pooled socket at that moment loses the race - this is real, and it is handled. Chromium re-sends the
+request on a fresh socket whenever a *reused* connection closes before any response byte arrives,
+which is exactly what an idle close is. Measured with a server that destroyed every request arriving
+on a reused connection - the crossing made deterministic, on every reuse rather than one in
+thousands: the module graph still loaded and five of five fetches succeeded. Measured again with the
+dev server's `keepAliveTimeout` squeezed from 5000ms to **1ms**, the most hostile setting available,
+across twenty real frame loads: zero failures.
+
+**Not fixed by holding the sockets open.** `86d0dd7` raised `keepAliveTimeout` to five minutes on the
+strength of the race above. Cold, `--project elements`: **6 of 18** without it, **2 of 10** with it
+(p = 0.67). Whole suite, warm: **2 of 6** without, **0 of 5** with (p = 0.46). Neither separates, and
+the mechanism it was built on does not exist. The plugin has been removed.
+
+**Not the dev server dropping anything.** Eight runs recorded from inside the server: every request
+for `frame.html` and `packages/elements/src/index.ts` answered 200 or 304, in under a millisecond,
+*including at the moment a frame reported that URL as failed*. Across all eight runs the only errors
+were ten benign `404 /index.html` a run - vitest's own orchestrator, constant in passing and failing
+runs alike - and a single `ECONNRESET`. No 504, no 5xx, no aborted response, no request that arrived
+and went unanswered.
+
+**Not Vite re-optimising dependencies mid-run.** This is the one failure that genuinely cannot be
+retried - an outdated `?v=<hash>` is answered `504 Outdated Optimize Dep`, a valid response - and it
+is what `optimizeDeps.include` above defends against. It is not what is happening: with Vite's own
+logger wrapped, across six cold-cache runs of which three failed, **no optimiser message was emitted
+at all**, and no 504 was ever served. The silence is a finding rather than a broken instrument: the
+same wrapper captures `Re-optimizing dependencies because vite config has changed` the moment
+`vitest.config.ts` is edited, so it was listening.
+
+**Not `optimizeDeps.include` being incomplete.** Stripping the list entirely and running cold failed
+**1 of 7**, which is the background rate. All five entries are plain static imports, and
+`contrast.test.ts` opens with `import '../src/index.js'` in the tester realm - so the scanner already
+walks that graph and the list is largely redundant with it. It is kept because it costs nothing and
+the reasoning above is not certainty.
+
+**Not the settle loop running out of frames.** `settleTree` allows 12 rounds and `planeQuiet` up to
+60 frames each, which multiplies out to about 12 seconds at 60fps - inside vitest's own 15 second
+budget before anything goes wrong, so it looked like the whole answer. It is not: 805 settle calls
+measured across a full run, **none exhausted its rounds, none reached the frame cap**, the median
+settle took 598ms and the slowest 871ms, and `requestAnimationFrame` held 16.5ms per frame under full
+parallelism. The ceiling is unreachable in practice.
+
+**Not contention between parallel browsers.** The obvious next move after the paragraph above, and it
+points the wrong way: cold cache at `--maxWorkers=2` failed **2 of 3**, at `--maxWorkers=24` **1 of
+4**. Fewer browsers failed more often. Loading the machine with eight busy cores changed a passing run
+from 76s to 84s and failed nothing.
+
+### It can also hang, which is worse than failing
+
+A run does not always fail; sometimes it stops. Seen twice - once killed by a 600s timeout, and once
+left alone to see what it would do, where it sat for **42 minutes** at 1% CPU with its headless
+Chromium still alive and never finished. A failing run costs eighty seconds and tells you something.
+A hanging one costs whatever the CI job limit is, tells you nothing, and leaves orphaned browsers
+behind when it is killed - `pkill -9 -f chrome-headless` after any interrupted run.
+
+Anything that runs this suite unattended needs a hard per-run timeout. `scripts/repro-browser-flake.mjs`
+takes one (`--timeout=<seconds>`, 240 by default) and counts a run that exceeds it as a hang rather
+than waiting on it.
+
+### What is still open
+
+The best remaining lead is a symptom, not a mechanism. One run failed with vitest unable to reach its
+*own* tester iframe:
+
+    Cannot connect to the iframe. Did you change the location or submitted a form?
+    Received URL: unknown due to CORS
+    Expected: http://localhost:63315/?sessionId=…&iframeId=…/virtualised-sidebar.test.ts
+
+That is the hazard `frame.html` exists to isolate, arriving one level up. It fits what the network
+explanations could not: no server error, a resource `error` event carrying no message, `/@vite/client`
+failing beside `index.ts` in the same frame, and complete indifference to parallelism. It is a lead,
+nothing more. Four hypotheses that also fit died above.
+
+### The instruments
+
+Both are off by default and neither is part of `npm run verify`.
+
+- `scripts/repro-browser-flake.mjs` runs the suite in a loop and reports a rate and the distinct
+  failure signatures, because a single run of this suite is not evidence of anything.
+- `scripts/diagnose-server.mjs` records the server's side - every status at or above 400, aborted
+  responses, torn-down sockets, Vite's own messages, and the frame and its entry module *at every
+  status*. Wired into the `elements` project and inert unless `DIAGNOSE_LOG` names a file. Recording
+  the successes is the point: a URL the frame calls dead that the server logs as answered in 0.04ms
+  is a different bug from one that never arrived.
+
+The half of `86d0dd7` that is worth keeping is `within` and the frame's error capture in
+`frame.html`. Before them this failure reported `Test timed out in 15000ms` against whichever
+unrelated test happened to be holding the frame; after them it names the URL that did not load. Every
+finding above was read off a failure they made legible.
+
 ---
 
 ## M3 — operation detail (done)
