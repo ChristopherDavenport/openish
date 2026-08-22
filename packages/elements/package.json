@@ -1,6 +1,6 @@
 {
   "name": "@openish/elements",
-  "version": "0.0.1",
+  "version": "0.0.0",
   "description": "Lit web components for rendering OpenAPI reference documentation",
   "license": "MIT",
   "repository": {
@@ -47,9 +47,9 @@
     "@lit-labs/virtualizer": "^2.1.1",
     "@lit/context": "^1.1.6",
     "@lit/task": "^1.0.3",
-    "@openish/client": "0.0.1",
-    "@openish/core": "0.0.1",
-    "@openish/theme": "0.0.1",
+    "@openish/client": "0.0.0",
+    "@openish/core": "0.0.0",
+    "@openish/theme": "0.0.0",
     "@scalar/code-highlight": "^0.4.3",
     "lit": "^3.3.3"
   },

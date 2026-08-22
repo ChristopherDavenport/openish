@@ -1,0 +1,70 @@
+name: Release
+
+# The tag is the version. Nothing in the repository carries a real one - every package.json says
+# `0.0.0` - so cutting a release is `git tag v0.0.2 && git push origin v0.0.2` and nothing else.
+#
+#   npm version --workspaces would be enough for a single package and is not enough here: it leaves
+#   the pins between the four packages alone, so `@openish/elements` would publish asking for an
+#   `@openish/core` at a version that never existed. `scripts/set-version.mjs` writes both.
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write # the GitHub Release
+  id-token: write # npm provenance, and trusted publishing
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+          registry-url: 'https://registry.npmjs.org'
+
+      - run: npm ci
+
+      # The `elements` project runs in real Chromium, and the site's example test reads
+      # `custom-elements.json`, which this build generates and which is gitignored. Both are the same
+      # reasons `ci.yml` does this, and a release that skipped the gate would be the one release
+      # nobody checked.
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build -w @openish/elements
+      - run: npm run verify
+
+      # After the gate, so what was tested is the source and not a version number, and before the
+      # build, so `dist` is produced from manifests that already carry the release version.
+      - name: Set version from tag
+        run: node scripts/set-version.mjs "${GITHUB_REF_NAME#v}"
+
+      - run: npm run build
+
+      # Node 20 ships npm 10.8.2 and trusted publishing wants 11.5.1 or newer, so without this the
+      # publish fails on authentication rather than on anything to do with the release. Node itself
+      # stays on 20, so the gate above runs on the runtime `ci.yml` actually validates.
+      - name: Upgrade npm for trusted publishing
+        run: npm install -g npm@latest
+
+      # Order matters: `@openish/elements` depends on the other three, so it goes last and never
+      # names a version that is not on the registry yet.
+      #
+      # No NODE_AUTH_TOKEN. Each of the four packages is published through npm trusted publishing,
+      # configured once per package on npmjs.com against this repository and this workflow file -
+      # which is also what lets `--provenance` attest where the tarball came from. To use a token
+      # instead, add `NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}` as an `env:` on this step.
+      - name: Publish to npm
+        run: npm publish --provenance --access public -w @openish/core -w @openish/client -w @openish/theme -w @openish/elements
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true

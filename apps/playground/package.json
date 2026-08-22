@@ -1,6 +1,6 @@
 {
   "name": "@openish/playground",
-  "version": "0.0.1",
+  "version": "0.0.0",
   "private": true,
   "type": "module",
   "description": "Dev harness for the openish elements",
@@ -10,9 +10,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@openish/core": "0.0.1",
-    "@openish/elements": "0.0.1",
-    "@openish/theme": "0.0.1",
+    "@openish/core": "0.0.0",
+    "@openish/elements": "0.0.0",
+    "@openish/theme": "0.0.0",
     "lit": "^3.3.3"
   },
   "devDependencies": {

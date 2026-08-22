@@ -1,6 +1,6 @@
 {
   "name": "@openish/core",
-  "version": "0.0.1",
+  "version": "0.0.0",
   "description": "Framework-agnostic OpenAPI document store, navigation traversal, and helpers for openish. No DOM, no Vue.",
   "license": "MIT",
   "repository": {

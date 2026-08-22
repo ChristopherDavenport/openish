@@ -1,6 +1,6 @@
 {
   "name": "@openish/client",
-  "version": "0.0.1",
+  "version": "0.0.0",
   "description": "Sends the request an OpenAPI document describes, and obtains the token it needs. No framework, no dependencies.",
   "license": "MIT",
   "repository": {
