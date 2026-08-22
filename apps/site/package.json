@@ -1,6 +1,6 @@
 {
   "name": "@openish/site",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "private": true,
   "type": "module",
   "description": "The openish documentation and demo site, deployed to GitHub Pages",
@@ -13,10 +13,10 @@
   },
   "dependencies": {
     "@lit-labs/router": "^0.1.4",
-    "@openish/client": "0.0.0",
-    "@openish/core": "0.0.0",
-    "@openish/elements": "0.0.0",
-    "@openish/theme": "0.0.0",
+    "@openish/client": "0.0.1",
+    "@openish/core": "0.0.1",
+    "@openish/elements": "0.0.1",
+    "@openish/theme": "0.0.1",
     "lit": "^3.3.3",
     "urlpattern-polyfill": "^10.1.0"
   },

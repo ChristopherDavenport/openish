@@ -14,6 +14,8 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
+    /* Published maps point at `../src/*.ts`, which the tarball does not ship. Embed instead. */
+    "inlineSources": true,
     "composite": true,
     "skipLibCheck": true,
     "verbatimModuleSyntax": true,
